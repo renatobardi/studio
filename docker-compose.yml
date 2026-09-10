@@ -31,10 +31,12 @@ services:
       SURREAL_PASS: ${SURREAL_PASS}
       SURREAL_NAMESPACE: ${SURREAL_NAMESPACE}
       SURREAL_DATABASE: ${SURREAL_DATABASE}
-      # Ticket #2: a single seeded Workspace stands in for real membership
-      # (ticket #3). Comma-separated hex pubkeys.
       WORKSPACE_SLUG: ${WORKSPACE_SLUG:-family}
-      WORKSPACE_ALLOWED_PUBKEYS: ${WORKSPACE_ALLOWED_PUBKEYS:-}
+      # Encrypts each Workspace Key at rest (ADR-0002) — never the key itself.
+      WORKSPACE_KEY_SECRET: ${WORKSPACE_KEY_SECRET}
+      # Optional: path to a Firebase service-account JSON file. Omit to run
+      # with Firebase auth unconfigured — NIP-98 callers are unaffected.
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
     depends_on:
       - surrealdb
     restart: unless-stopped

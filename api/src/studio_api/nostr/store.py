@@ -23,7 +23,7 @@ from surrealdb.errors import SurrealError
 from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.model import Filter, NostrEvent
 
-_SCHEMA = "DEFINE TABLE event SCHEMALESS"
+_SCHEMA = "DEFINE TABLE IF NOT EXISTS event SCHEMALESS"
 
 
 class PublishResult(Enum):
@@ -40,7 +40,7 @@ def _build_tag_index(tags: list[list[str]]) -> list[str]:
     ]
 
 
-def _replace_key(event: NostrEvent, kind_cls: KindClass) -> str:
+def replace_key(event: NostrEvent, kind_cls: KindClass) -> str:
     if kind_cls is KindClass.REPLACEABLE:
         return f"{event['pubkey']}:{event['kind']}"
     d_value = next((t[1] for t in event["tags"] if len(t) >= 2 and t[0] == "d"), "")
@@ -53,7 +53,7 @@ def _supersedes(new_event: NostrEvent, current_row: dict[str, Any]) -> bool:
     return bool(new_event["id"] < current_row["event_id"])
 
 
-def _to_row(event: NostrEvent) -> dict[str, Any]:
+def to_event_row(event: NostrEvent) -> dict[str, Any]:
     return {
         "event_id": event["id"],
         "pubkey": event["pubkey"],
@@ -190,6 +190,13 @@ class EventStore:
         assert last_error is not None
         raise last_error
 
+    @property
+    def raw(self) -> Any:
+        """The underlying SurrealDB connection, shared with the control-plane
+        repository (same namespace/database, different tables) so the app
+        connects once, not twice."""
+        return self._db
+
     async def close(self) -> None:
         await self._db.close()
 
@@ -204,17 +211,17 @@ class EventStore:
             return PublishResult.OK
 
         if kind_cls in (KindClass.REPLACEABLE, KindClass.ADDRESSABLE):
-            key = _replace_key(event, kind_cls)
+            key = replace_key(event, kind_cls)
             record_id = RecordID("event", key)
             existing_rows = await self._db.select(record_id)
             if existing_rows and not _supersedes(event, existing_rows[0]):
                 return PublishResult.SUPERSEDED
-            await self._db.upsert(record_id, _to_row(event))
+            await self._db.upsert(record_id, to_event_row(event))
             return PublishResult.OK
 
         record_id = RecordID("event", event["id"])
         try:
-            await self._db.create(record_id, _to_row(event))
+            await self._db.create(record_id, to_event_row(event))
         except SurrealError:
             return PublishResult.DUPLICATE
         return PublishResult.OK

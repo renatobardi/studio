@@ -10,27 +10,54 @@ import asyncio
 import secrets
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
-from studio_api.nostr.model import Filter, NostrEvent
+from studio_api.nostr.model import Filter, NostrEvent, first_tag_value
 from studio_api.nostr.store import EventStore, LiveFanout, PublishResult
 from studio_api.nostr.validation import validate_event
 
 SendFn = Callable[[list[Any]], Awaitable[None]]
+CloseTransportFn = Callable[[], Awaitable[None]]
 
 _SINGLE_LETTER_TAG_FILTER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
+# NIP-43/NIP-29 moderation and announcement kinds: only ever written by the
+# repository's own projection (signed by the Workspace Key), never accepted
+# from an ordinary client connection (ticket #3's authorization rules).
+MODERATION_KINDS = frozenset({8000, 8001, 9000, 9001, 13534, 33534, 39000, 39001, 39002, 39003})
 
-class RelayAuthorizer:
-    """Stands in for real Workspace membership (ticket #3) with a seeded
-    allowlist of pubkeys."""
+# Readable by any Workspace Member regardless of Channel membership.
+WORKSPACE_WIDE_KINDS = frozenset({0, 10002, 10050, 10063, *MODERATION_KINDS})
 
-    def __init__(self, allowed_pubkeys: set[str]) -> None:
+
+class RelayAuthorizer(Protocol):
+    """Who may authenticate, and who may read/write a given Channel."""
+
+    async def is_member(self, pubkey: str) -> bool: ...
+    async def is_channel_member(self, channel_id: str, pubkey: str) -> bool: ...
+
+
+class SeededRelayAuthorizer:
+    """A fixed allowlist standing in for real Workspace/Channel membership —
+    used by this module's own tests. `channel_members` lets a test express
+    "workspace member but not a member of this particular channel"; when
+    omitted every workspace member is treated as a member of every channel.
+    """
+
+    def __init__(
+        self, allowed_pubkeys: set[str], *, channel_members: dict[str, set[str]] | None = None
+    ) -> None:
         self._allowed = allowed_pubkeys
+        self._channel_members = channel_members
 
-    def is_member(self, pubkey: str) -> bool:
+    async def is_member(self, pubkey: str) -> bool:
         return pubkey in self._allowed
+
+    async def is_channel_member(self, channel_id: str, pubkey: str) -> bool:
+        if self._channel_members is None:
+            return await self.is_member(pubkey)
+        return pubkey in self._channel_members.get(channel_id, set())
 
 
 def parse_filter(raw: dict[str, Any]) -> Filter:
@@ -46,6 +73,29 @@ def parse_filter(raw: dict[str, Any]) -> Filter:
     return Filter(tags=tags, **kwargs)
 
 
+class ConnectionRegistry:
+    """Every currently-authenticated connection, by pubkey — so removing a
+    Workspace Member can force-close their open sockets immediately."""
+
+    def __init__(self) -> None:
+        self._by_pubkey: dict[str, set[RelayConnection]] = {}
+
+    def register(self, pubkey: str, connection: "RelayConnection") -> None:
+        self._by_pubkey.setdefault(pubkey, set()).add(connection)
+
+    def unregister(self, pubkey: str, connection: "RelayConnection") -> None:
+        connections = self._by_pubkey.get(pubkey)
+        if connections is None:
+            return
+        connections.discard(connection)
+        if not connections:
+            del self._by_pubkey[pubkey]
+
+    async def force_disconnect(self, pubkey: str, *, reason: str) -> None:
+        for connection in list(self._by_pubkey.get(pubkey, ())):
+            await connection.force_close(reason)
+
+
 class RelayConnection:
     def __init__(
         self,
@@ -57,6 +107,8 @@ class RelayConnection:
         send: SendFn,
         connection_id: str | None = None,
         now: Callable[[], int] = lambda: int(time.time()),
+        registry: ConnectionRegistry | None = None,
+        close_transport: CloseTransportFn | None = None,
     ) -> None:
         self._store = store
         self._fanout = fanout
@@ -65,6 +117,8 @@ class RelayConnection:
         self._send = send
         self._connection_id = connection_id or secrets.token_hex(8)
         self._now = now
+        self._registry = registry
+        self._close_transport = close_transport
         self.challenge = secrets.token_hex(16)
         self._authed_pubkey: str | None = None
         self._is_member = False
@@ -92,6 +146,18 @@ class RelayConnection:
     async def close(self) -> None:
         for sub_id in list(self._sub_ids):
             self._cancel_subscription(sub_id)
+        if self._registry is not None and self._authed_pubkey is not None:
+            self._registry.unregister(self._authed_pubkey, self)
+
+    async def force_close(self, reason: str) -> None:
+        """Called by the ConnectionRegistry when this connection's pubkey is
+        removed from the Workspace: end every subscription and the socket
+        itself immediately."""
+        for sub_id in self._sub_ids:
+            await self._send(["CLOSED", sub_id, f"restricted: {reason}"])
+        await self.close()
+        if self._close_transport is not None:
+            await self._close_transport()
 
     def _full_sub_id(self, sub_id: str) -> str:
         return f"{self._connection_id}:{sub_id}"
@@ -103,6 +169,19 @@ class RelayConnection:
         if task is not None:
             task.cancel()
 
+    async def _may_read(self, event: NostrEvent) -> bool:
+        """Channel-scoped events are only for that Channel's Members;
+        everything else (profiles, relay lists, the Workspace's own
+        announcements) is readable by any Workspace Member — re-checked for
+        every event, not just once at REQ time (ticket #3)."""
+        if event["kind"] in WORKSPACE_WIDE_KINDS:
+            return True
+        channel_id = first_tag_value(event, "h")
+        if channel_id is None:
+            return True
+        assert self._authed_pubkey is not None
+        return await self._authorizer.is_channel_member(channel_id, self._authed_pubkey)
+
     async def _handle_auth(self, event: NostrEvent) -> None:
         result = verify_auth_event(
             event, relay_url=self._relay_url, expected_challenge=self.challenge, now=self._now()
@@ -111,7 +190,9 @@ class RelayConnection:
             await self._send(["OK", event.get("id", ""), False, f"invalid: {result.message}"])
             return
         self._authed_pubkey = result
-        self._is_member = self._authorizer.is_member(result)
+        self._is_member = await self._authorizer.is_member(result)
+        if self._registry is not None:
+            self._registry.register(result, self)
         await self._send(["OK", event["id"], True, ""])
 
     async def _handle_event(self, event: NostrEvent) -> None:
@@ -128,6 +209,17 @@ class RelayConnection:
             await self._send(
                 ["OK", event_id, False, "invalid: pubkey does not match the authenticated session"]
             )
+            return
+        if event.get("kind") in MODERATION_KINDS:
+            await self._send(
+                ["OK", event_id, False, "restricted: membership changes go through the REST API"]
+            )
+            return
+        channel_id = first_tag_value(event, "h")
+        if channel_id is not None and not await self._authorizer.is_channel_member(
+            channel_id, self._authed_pubkey
+        ):
+            await self._send(["OK", event_id, False, "restricted: not a member of this channel"])
             return
         rejection = validate_event(event, now=self._now())
         if rejection is not None:
@@ -170,7 +262,8 @@ class RelayConnection:
             await self._send(["CLOSED", sub_id, f"error: {error}"])
             return
         for event in events:
-            await self._send(["EVENT", sub_id, event])
+            if await self._may_read(event):
+                await self._send(["EVENT", sub_id, event])
         await self._send(["EOSE", sub_id])
 
         queue = await self._fanout.subscribe(self._full_sub_id(sub_id), filters)
@@ -185,4 +278,5 @@ class RelayConnection:
     ) -> None:
         while True:
             event = await queue.get()
-            await self._send(["EVENT", sub_id, event])
+            if await self._may_read(event):
+                await self._send(["EVENT", sub_id, event])

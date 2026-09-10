@@ -23,14 +23,15 @@ class AuthError(Exception):
 
 
 class FirebaseVerifier(Protocol):
-    def verify(self, token: str) -> str:
-        """Returns the Firebase uid for a valid ID token, or raises AuthError."""
+    def verify(self, token: str) -> tuple[str, str]:
+        """Returns (uid, email) for a valid ID token, or raises AuthError."""
         ...
 
 
 @dataclass(frozen=True)
 class FirebaseCaller:
     uid: str
+    email: str
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,8 @@ def resolve_caller(
     if scheme == "Bearer":
         if firebase_verifier is None:
             raise AuthError("Firebase authentication is not configured on this server")
-        return FirebaseCaller(uid=firebase_verifier.verify(value))
+        uid, email = firebase_verifier.verify(value)
+        return FirebaseCaller(uid=uid, email=email)
     if scheme == "Nostr":
         try:
             event = json.loads(base64.b64decode(value, validate=True))

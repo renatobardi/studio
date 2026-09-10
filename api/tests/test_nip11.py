@@ -10,6 +10,20 @@ def test_document_names_the_relay() -> None:
     assert document["name"] == "Studio"
 
 
+def test_self_is_the_workspace_key_pubkey_when_given() -> None:
+    document = build_info_document(name="Studio", self_pubkey="a" * 64)
+
+    assert document["self"] == "a" * 64
+    assert document["pubkey"] == "a" * 64
+
+
+def test_self_is_omitted_when_not_given() -> None:
+    document = build_info_document(name="Studio")
+
+    assert "self" not in document
+    assert "pubkey" not in document
+
+
 def test_document_advertises_the_supported_nips() -> None:
     document = build_info_document(name="Studio")
 
