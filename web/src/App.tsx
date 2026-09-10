@@ -20,7 +20,13 @@ export function App() {
   useEffect(() => {
     return onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
-      const signer = firebaseUser ? await getSigner() : null;
+      // A freshly created email/password account is already "signed in" as
+      // far as Firebase is concerned, but the auth/verify step must gate it
+      // until the link is clicked — Google sign-in is verified by construction.
+      const verified =
+        !!firebaseUser &&
+        (firebaseUser.emailVerified || firebaseUser.providerData.some((p) => p.providerId !== "password"));
+      const signer = verified ? await getSigner() : null;
 
       let resumedWorkspace: WorkspaceOut | null = null;
       if (signer) {
@@ -39,7 +45,7 @@ export function App() {
       setWorkspace(resumedWorkspace);
       setView(
         resolveInitialView({
-          account: firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email } : null,
+          account: verified && firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email } : null,
           hasIdentity: signer !== null,
         }),
       );
@@ -52,6 +58,7 @@ export function App() {
   if (view === "auth") {
     return (
       <AuthScreen
+        pendingUnverifiedUser={user && !user.emailVerified ? user : null}
         onAuthenticated={(authedUser, password) => {
           setUser(authedUser);
           setAccountPassword(password);
