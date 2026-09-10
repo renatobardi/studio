@@ -3,3 +3,14 @@
 !.env.example
 node_modules/
 scripts/ops/
+
+.claude/
+
+# Python (api/)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/

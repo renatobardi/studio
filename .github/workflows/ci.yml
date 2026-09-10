@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write test environment
+        run: |
+          cat > .env <<'EOF'
+          SURREAL_USER=root
+          SURREAL_PASS=ci-pass
+          SURREAL_NAMESPACE=studio
+          SURREAL_DATABASE=studio
+          MINIO_ROOT_USER=studio
+          MINIO_ROOT_PASSWORD=ci-password
+          EOF
+
+      - name: Build
+        run: docker compose --profile test build test
+
+      - name: Type-check
+        run: docker compose --profile test run --rm test uv run mypy src tests
+
+      - name: Lint
+        run: docker compose --profile test run --rm test uv run ruff check src tests
+
+      - name: Run test suite against the Compose stack
+        run: docker compose --profile test run --rm test
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
