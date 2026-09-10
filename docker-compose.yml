@@ -31,6 +31,10 @@ services:
       SURREAL_PASS: ${SURREAL_PASS}
       SURREAL_NAMESPACE: ${SURREAL_NAMESPACE}
       SURREAL_DATABASE: ${SURREAL_DATABASE}
+      # Ticket #2: a single seeded Workspace stands in for real membership
+      # (ticket #3). Comma-separated hex pubkeys.
+      WORKSPACE_SLUG: ${WORKSPACE_SLUG:-family}
+      WORKSPACE_ALLOWED_PUBKEYS: ${WORKSPACE_ALLOWED_PUBKEYS:-}
     depends_on:
       - surrealdb
     restart: unless-stopped

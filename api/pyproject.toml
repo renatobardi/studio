@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "surrealdb>=1.0.4",
     "pydantic>=2.9",
+    "coincurve>=21.0.0",
 ]
 
 [dependency-groups]

@@ -1,0 +1,11 @@
+{
+  "name": "studio-interop-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "bun run smoke.mjs"
+  },
+  "dependencies": {
+    "nostr-tools": "^2.10.4"
+  }
+}

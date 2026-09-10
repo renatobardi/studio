@@ -14,25 +14,42 @@ from collections.abc import AsyncIterator
 
 import pytest_asyncio
 
-from studio_api.nostr.store import EventStore
+from studio_api.nostr.store import EventStore, LiveFanout
 
 SURREAL_URL = os.environ.get("SURREAL_URL", "ws://localhost:8010/rpc")
 SURREAL_USER = os.environ.get("SURREAL_USER", "root")
 SURREAL_PASS = os.environ.get("SURREAL_PASS", "root")
 
 
-@pytest_asyncio.fixture
-async def store() -> AsyncIterator[EventStore]:
-    namespace = f"test_{uuid.uuid4().hex}"
-    database = "test"
-    event_store = await EventStore.connect(
+async def connect_test_store() -> EventStore:
+    """A fresh, isolated EventStore on its own namespace. A plain function
+    (not a fixture) so code that must run in a different event loop — e.g.
+    inside Starlette TestClient's own portal, for a real ASGI WebSocket test
+    — can connect its own store rather than reusing one bound elsewhere."""
+    return await EventStore.connect(
         url=SURREAL_URL,
-        namespace=namespace,
-        database=database,
+        namespace=f"test_{uuid.uuid4().hex}",
+        database="test",
         user=SURREAL_USER,
         password=SURREAL_PASS,
     )
+
+
+@pytest_asyncio.fixture
+async def store() -> AsyncIterator[EventStore]:
+    event_store = await connect_test_store()
     try:
         yield event_store
     finally:
         await event_store.close()
+
+
+@pytest_asyncio.fixture
+async def fanout(store: EventStore) -> AsyncIterator[LiveFanout]:
+    """The single, app-wide live query fanned out to many subscriptions
+    (ADR-0004) — shared by every RelayConnection in a real deployment."""
+    live_fanout = await store.start_live_fanout()
+    try:
+        yield live_fanout
+    finally:
+        await live_fanout.stop()
