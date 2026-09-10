@@ -16,16 +16,20 @@ type AuthStep = "signin" | "signup" | "verify" | "reset" | "sent";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AuthScreen({
+  pendingUnverifiedUser,
   onAuthenticated,
 }: {
+  // Set when Firebase already has a signed-in-but-unverified user (e.g. a
+  // page reload mid-verification) — starts straight at the verify step.
+  pendingUnverifiedUser?: User | null;
   onAuthenticated: (user: User, password: string | null) => void;
 }) {
-  const [step, setStep] = useState<AuthStep>("signin");
+  const [step, setStep] = useState<AuthStep>(pendingUnverifiedUser ? "verify" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<{ message: string; code: string | null } | null>(null);
-  const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [pendingUser, setPendingUser] = useState<User | null>(pendingUnverifiedUser ?? null);
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
 
