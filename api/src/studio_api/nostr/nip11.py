@@ -4,11 +4,11 @@ from typing import Any
 
 from studio_api.nostr.validation import LIMITATION
 
-SUPPORTED_NIPS = [1, 11, 42]
+SUPPORTED_NIPS = [1, 11, 29, 42, 43]
 
 
-def build_info_document(*, name: str) -> dict[str, Any]:
-    return {
+def build_info_document(*, name: str, self_pubkey: str | None = None) -> dict[str, Any]:
+    document: dict[str, Any] = {
         "name": name,
         "supported_nips": SUPPORTED_NIPS,
         "limitation": {
@@ -20,3 +20,7 @@ def build_info_document(*, name: str) -> dict[str, Any]:
             "restricted_writes": True,
         },
     }
+    if self_pubkey is not None:
+        document["self"] = self_pubkey
+        document["pubkey"] = self_pubkey
+    return document

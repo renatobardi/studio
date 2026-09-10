@@ -11,7 +11,7 @@ from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
 from studio_api.nostr.model import NostrEvent
-from studio_api.nostr.relay import RelayAuthorizer, RelayConnection
+from studio_api.nostr.relay import ConnectionRegistry, RelayConnection, SeededRelayAuthorizer
 from studio_api.nostr.store import EventStore, LiveFanout
 
 RELAY_URL = "wss://relay.example.com/relay/family"
@@ -22,10 +22,12 @@ def make_connection(
     fanout: LiveFanout,
     *,
     allowed_pubkeys: tuple[str, ...] = (),
+    channel_members: dict[str, set[str]] | None = None,
     now: Callable[[], int] | None = None,
     connection_id: str | None = None,
+    registry: ConnectionRegistry | None = None,
 ) -> tuple[RelayConnection, Recorder]:
-    authorizer = RelayAuthorizer(set(allowed_pubkeys))
+    authorizer = SeededRelayAuthorizer(set(allowed_pubkeys), channel_members=channel_members)
     recorder = Recorder()
     connection = RelayConnection(
         store=store,
@@ -35,6 +37,7 @@ def make_connection(
         send=recorder,
         now=now or (lambda: int(time.time())),
         connection_id=connection_id,
+        registry=registry,
     )
     return connection, recorder
 
@@ -329,3 +332,164 @@ class TestSubscribing:
 
         await subscriber.close()
         await publisher.close()
+
+
+class TestChannelAuthorization:
+    async def test_a_workspace_member_who_is_not_a_channel_member_cannot_publish_to_it(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={}, now=lambda: now
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+
+        await connection.handle_message(["EVENT", event])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("restricted:")
+
+    async def test_a_channel_member_can_publish_to_it(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+
+        await connection.handle_message(["EVENT", event])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok == ["OK", event["id"], True, ""]
+
+    async def test_req_only_returns_channel_events_for_channels_the_caller_belongs_to(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        member_of_chan1, member_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": set()},
+            now=lambda: now, connection_id="member1",
+        )
+        await authenticate(member_of_chan1, member_recorder, sk, pubkey, now=now)
+        event1 = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await member_of_chan1.handle_message(["EVENT", event1])
+
+        admin_of_both, admin_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": {pubkey}},
+            now=lambda: now, connection_id="admin1",
+        )
+        await authenticate(admin_of_both, admin_recorder, sk, pubkey, now=now)
+        event2 = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan2"]])
+        await admin_of_both.handle_message(["EVENT", event2])
+
+        await member_of_chan1.handle_message(["REQ", "sub1", {"kinds": [9]}])
+
+        received_ids = {e[2]["id"] for e in member_recorder.of_type("EVENT")}
+        assert received_ids == {event1["id"]}
+
+    async def test_live_channel_events_are_only_delivered_to_that_channels_members(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        member_of_chan1, member_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": set()},
+            now=lambda: now, connection_id="member1live",
+        )
+        await authenticate(member_of_chan1, member_recorder, sk, pubkey, now=now)
+        await member_of_chan1.handle_message(["REQ", "sub1", {"kinds": [9]}])
+
+        admin_of_both, admin_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": {pubkey}},
+            now=lambda: now, connection_id="admin1live",
+        )
+        await authenticate(admin_of_both, admin_recorder, sk, pubkey, now=now)
+        blocked_event = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan2"]])
+        await admin_of_both.handle_message(["EVENT", blocked_event])
+        allowed_event = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await admin_of_both.handle_message(["EVENT", allowed_event])
+
+        await wait_until(lambda: len(member_recorder.of_type("EVENT")) == 1)
+        await asyncio.sleep(0.1)  # give the (correctly rejected) other event a chance to arrive too
+        received_ids = {e[2]["id"] for e in member_recorder.of_type("EVENT")}
+        assert received_ids == {allowed_event["id"]}
+
+        await member_of_chan1.close()
+        await admin_of_both.close()
+
+    async def test_workspace_wide_kinds_are_readable_without_channel_membership(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="pub-profile"
+        )
+        await authenticate(publisher, pub_recorder, sk, pubkey, now=now)
+        profile = sign_event(sk, pubkey=pubkey, created_at=now, kind=0, content="{}")
+        await publisher.handle_message(["EVENT", profile])
+
+        reader, reader_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={},
+            now=lambda: now, connection_id="reader-profile",
+        )
+        await authenticate(reader, reader_recorder, sk, pubkey, now=now)
+        await reader.handle_message(["REQ", "sub1", {"kinds": [0]}])
+
+        received_ids = {e[2]["id"] for e in reader_recorder.of_type("EVENT")}
+        assert received_ids == {profile["id"]}
+
+    async def test_moderation_kinds_are_always_rejected_from_a_client(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=8000, tags=[["-"], ["p", pubkey]])
+
+        await connection.handle_message(["EVENT", event])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("restricted:")
+
+
+class TestForceDisconnect:
+    async def test_removing_a_member_closes_their_connection_and_subscriptions(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        registry = ConnectionRegistry()
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, registry=registry
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        await connection.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        await registry.force_disconnect(pubkey, reason="removed from workspace")
+
+        closed = recorder.of_type("CLOSED")[-1]
+        assert closed[1] == "sub1"
+        assert str(closed[2]).startswith("restricted:")
+
+    async def test_force_disconnect_of_an_unregistered_pubkey_is_a_no_op(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        registry = ConnectionRegistry()
+        await registry.force_disconnect("never-connected", reason="whatever")  # no error

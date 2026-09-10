@@ -13,6 +13,8 @@ dependencies = [
     "surrealdb>=1.0.4",
     "pydantic>=2.9",
     "coincurve>=21.0.0",
+    "cryptography>=50.0.1",
+    "firebase-admin>=7.5.0",
 ]
 
 [dependency-groups]
@@ -34,8 +36,17 @@ testpaths = ["tests"]
 strict = true
 python_version = "3.12"
 
+[[tool.mypy.overrides]]
+module = "firebase_admin.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's own idiom: `Depends(...)`/`Header(...)` in a parameter default
+# is how dependency injection is declared, not a mutable-default bug.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header"]
 
 [build-system]
 requires = ["uv_build>=0.11.17,<0.12.0"]

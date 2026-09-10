@@ -3,8 +3,10 @@ semantics for replaceable/addressable kinds, against a real SurrealDB.
 """
 
 import asyncio
+import uuid
 
 import pytest
+from conftest import SURREAL_PASS, SURREAL_URL, SURREAL_USER
 
 from studio_api.nostr.model import Filter, NostrEvent
 from studio_api.nostr.store import EventStore, PublishResult
@@ -177,6 +179,26 @@ class TestAddressableUpsert:
 class TestPing:
     async def test_ping_succeeds_against_a_live_connection(self, store: EventStore) -> None:
         await store.ping()  # raises on failure; nothing to assert on success
+
+
+class TestReconnect:
+    async def test_connecting_twice_to_the_same_namespace_succeeds(self) -> None:
+        # Simulates an app restart against a persisted SurrealDB volume,
+        # where the schema DEFINE TABLE from the first boot already ran.
+        namespace = f"test_{uuid.uuid4().hex}"
+        first = await EventStore.connect(
+            url=SURREAL_URL, namespace=namespace, database="test",
+            user=SURREAL_USER, password=SURREAL_PASS,
+        )
+        try:
+            second = await EventStore.connect(
+                url=SURREAL_URL, namespace=namespace, database="test",
+                user=SURREAL_USER, password=SURREAL_PASS,
+            )
+            await second.ping()
+            await second.close()
+        finally:
+            await first.close()
 
 
 class TestRegularDuplicates:

@@ -33,11 +33,12 @@ class _FakeFirebaseVerifier:
     else is rejected — a real verifier calls Firebase, this is the
     injectable stand-in the ticket calls for."""
 
-    def verify(self, token: str) -> str:
+    def verify(self, token: str) -> tuple[str, str]:
         prefix = "valid-token-for:"
         if not token.startswith(prefix):
             raise AuthError("invalid Firebase ID token")
-        return token[len(prefix) :]
+        uid = token[len(prefix) :]
+        return uid, f"{uid}@example.com"
 
 
 def make_nip98_event(
@@ -115,7 +116,7 @@ class TestResolveCaller:
             now=NOW,
         )
 
-        assert caller == FirebaseCaller(uid="abc123")
+        assert caller == FirebaseCaller(uid="abc123", email="abc123@example.com")
 
     def test_an_invalid_bearer_token_is_rejected(self) -> None:
         with pytest.raises(AuthError):
@@ -195,7 +196,7 @@ def _make_protected_app(*, with_firebase_verifier: bool = True) -> FastAPI:
 
     @app.get("/protected")
     async def protected(
-        caller: CallerIdentity = Depends(require_caller),  # noqa: B008 — FastAPI's own idiom
+        caller: CallerIdentity = Depends(require_caller),
     ) -> dict[str, str]:
         if isinstance(caller, FirebaseCaller):
             return {"kind": "firebase", "id": caller.uid}
