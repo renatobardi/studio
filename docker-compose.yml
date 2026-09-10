@@ -42,13 +42,9 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: ./web
-      args:
-        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
-        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
-        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
-        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+    # Picks up web/.env at build time (Vite loads it automatically) for the
+    # VITE_FIREBASE_* client config — see scripts/ops/create-firebase-project.sh.
+    build: ./web
     restart: unless-stopped
 
   caddy:

@@ -81,7 +81,7 @@ jobs:
 
       - name: Unit tests
         working-directory: web
-        run: bun test
+        run: bun run test
 
   web-e2e:
     # Ticket #4 acceptance: Playwright flows 1 and 5 against the deployed
