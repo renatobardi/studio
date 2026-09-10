@@ -15,6 +15,7 @@ name: CD
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 jobs:
   deploy-dev:
@@ -36,11 +37,24 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:cd-dev
 
+      - name: Diagnose Tailscale connectivity to oute-server
+        env:
+          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+        run: |
+          tailscale status || true
+          echo "---netcheck---"
+          tailscale netcheck || true
+          HOST_IP="${HOST#*@}"
+          echo "---ping $HOST_IP---"
+          tailscale ping --timeout=5s -c 3 "$HOST_IP" || true
+          echo "---tcp probe :22---"
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/$HOST_IP/22" && echo "tcp:22 open" || echo "tcp:22 FAILED"
+
       - name: Deploy to studio-test
         env:
           HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
         run: |
-          ssh -o StrictHostKeyChecking=no "$HOST" \
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
             "lxc exec studio-test -- bash -lc 'cd /opt/app && git fetch origin main && git reset --hard origin/main && docker compose up -d --build && docker compose restart caddy'"
           # docker compose doesn't recreate a service whose only changed
           # input is a bind-mounted file (Caddyfile) — restart it
