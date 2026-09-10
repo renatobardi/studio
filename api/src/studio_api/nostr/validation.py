@@ -5,10 +5,14 @@ store (ticket #2)."""
 from dataclasses import dataclass
 
 from studio_api.nostr.crypto import has_valid_integrity
-from studio_api.nostr.model import NostrEvent
+from studio_api.nostr.model import NostrEvent, first_tag_value
 
 FUTURE_TOLERANCE_SECONDS = 15 * 60
 PAST_TOLERANCE_SECONDS = 30 * 24 * 60 * 60
+
+MESSAGE = 9
+REACTION = 7
+THREAD_REPLY = 1111
 
 # Published verbatim in the NIP-11 `limitation` object so clients know what
 # a submission may not exceed.
@@ -39,4 +43,29 @@ def validate_event(event: NostrEvent, *, now: int) -> EventRejection | None:
         )
     if len(event["tags"]) > LIMITATION["max_event_tags"]:
         return EventRejection("invalid", f"more than {LIMITATION['max_event_tags']} tags")
+    return _validate_content_kind_tags(event)
+
+
+def _validate_content_kind_tags(event: NostrEvent) -> EventRejection | None:
+    """Ticket #5: Messages, Thread Replies and Reactions each require a
+    fixed set of tags identifying their Channel and, for replies/reactions,
+    the Message they target."""
+    kind = event["kind"]
+    if kind == MESSAGE:
+        if first_tag_value(event, "h") is None:
+            return EventRejection("invalid", "a Message requires an h tag")
+    elif kind == THREAD_REPLY:
+        for name in ("h", "E", "K", "P", "e", "k", "p"):
+            if first_tag_value(event, name) is None:
+                return EventRejection("invalid", f"a Thread Reply requires a {name} tag")
+        if first_tag_value(event, "e") != first_tag_value(event, "E"):
+            return EventRejection("invalid", "a Thread Reply's e tag must match its E tag")
+        if first_tag_value(event, "k") != first_tag_value(event, "K"):
+            return EventRejection("invalid", "a Thread Reply's k tag must match its K tag")
+        if first_tag_value(event, "p") != first_tag_value(event, "P"):
+            return EventRejection("invalid", "a Thread Reply's p tag must match its P tag")
+    elif kind == REACTION:
+        for name in ("h", "e", "k", "p"):
+            if first_tag_value(event, name) is None:
+                return EventRejection("invalid", f"a Reaction requires a {name} tag")
     return None
