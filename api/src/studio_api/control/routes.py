@@ -45,6 +45,13 @@ async def _caller_pubkey(caller: CallerIdentity, repo: ControlPlaneRepository) -
     return account.pubkey
 
 
+async def _require_workspace_member(repo: ControlPlaneRepository, slug: str, pubkey: str) -> str:
+    role = await repo.get_workspace_role(slug, pubkey)
+    if role is None:
+        raise HTTPException(403, "not a Workspace Member")
+    return role
+
+
 async def _require_workspace_manager(
     repo: ControlPlaneRepository, slug: str, pubkey: str
 ) -> None:
@@ -221,9 +228,7 @@ async def get_workspace(
     if workspace is None:
         raise HTTPException(404, "no such Workspace")
     pubkey = await _caller_pubkey(caller, repo)
-    role = await repo.get_workspace_role(slug, pubkey)
-    if role is None:
-        raise HTTPException(403, "not a Workspace Member")
+    role = await _require_workspace_member(repo, slug, pubkey)
     relay_url, media_url = _workspace_urls(request, slug)
     return WorkspaceOut(
         slug=workspace.slug, name=workspace.name, relay_url=relay_url, media_url=media_url, role=role
@@ -351,8 +356,7 @@ async def list_workspace_members(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> list[WorkspaceMemberOut]:
     pubkey = await _caller_pubkey(caller, repo)
-    if await repo.get_workspace_role(slug, pubkey) is None:
-        raise HTTPException(403, "not a Workspace Member")
+    await _require_workspace_member(repo, slug, pubkey)
     members = await repo.list_workspace_members(slug)
     return [WorkspaceMemberOut(pubkey=m.pubkey, role=m.role) for m in members]
 
@@ -444,8 +448,7 @@ async def list_channels(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> list[ChannelOut]:
     pubkey = await _caller_pubkey(caller, repo)
-    if await repo.get_workspace_role(slug, pubkey) is None:
-        raise HTTPException(403, "not a Workspace Member")
+    await _require_workspace_member(repo, slug, pubkey)
     channels = await repo.list_channels_for(workspace_slug=slug, pubkey=pubkey)
     return [ChannelOut(id=c.id, name=c.name, about=c.about, private=c.private) for c in channels]
 

@@ -63,7 +63,8 @@ class TestAccount:
         await repo.link_identity(uid="uid1", pubkey="pub1")  # no error
 
         account = await repo.get_account("uid1")
-        assert account is not None and account.pubkey == "pub1"
+        assert account is not None
+        assert account.pubkey == "pub1"
 
     async def test_linking_a_second_different_identity_is_rejected(
         self, repo: ControlPlaneRepository

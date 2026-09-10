@@ -2,6 +2,7 @@
 (ADR-0002: "the private key encrypted with a server secret")."""
 
 import pytest
+from cryptography.fernet import InvalidToken
 
 from studio_api.crypto_secrets import decrypt_secret, encrypt_secret
 
@@ -25,5 +26,5 @@ def test_ciphertext_does_not_contain_the_plaintext() -> None:
 def test_wrong_server_secret_cannot_decrypt() -> None:
     ciphertext = encrypt_secret(b"top secret", server_secret="correct-secret")
 
-    with pytest.raises(Exception):  # noqa: B017 — any crypto failure is fine here
+    with pytest.raises(InvalidToken):
         decrypt_secret(ciphertext, server_secret="wrong-secret")

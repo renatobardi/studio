@@ -153,7 +153,7 @@ class RelayConnection:
         """Called by the ConnectionRegistry when this connection's pubkey is
         removed from the Workspace: end every subscription and the socket
         itself immediately."""
-        for sub_id in list(self._sub_ids):
+        for sub_id in self._sub_ids:
             await self._send(["CLOSED", sub_id, f"restricted: {reason}"])
         await self.close()
         if self._close_transport is not None:
