@@ -85,14 +85,19 @@ jobs:
 
   web-e2e:
     # Ticket #4 acceptance: Playwright flows 1 and 5 against the deployed
-    # studio-test stack over Tailscale. Needs Tailscale + Firebase +
-    # studio-test secrets (see scripts/ops/set-ci-secrets.sh). Everything
-    # past "Check secrets" is gated on them being present, so the job goes
-    # green-with-skips rather than red when they aren't configured yet —
-    # a job-level `if:` can't see environment-scoped secrets, hence the
-    # step-level check instead.
+    # studio-test stack over Tailscale. Runs only on push to main (post-merge
+    # smoke test), never on pull_request — matching this org's kubo/cd.yml
+    # pattern: a PR-gated job would hand real Tailscale/Firebase/studio-test
+    # secrets to whatever code an external contributor's PR checks out
+    # (studio-test's GitHub Environment has no required-reviewer protection),
+    # and would fight over the shared, mutable seeded test account/Key Backup
+    # on every concurrent PR run. Needs Tailscale + Firebase + studio-test
+    # secrets (see scripts/ops/set-ci-secrets.sh); everything past "Check
+    # secrets" is gated on them being present, so the job goes green-with-
+    # skips rather than red when they aren't configured yet — a job-level
+    # `if:` can't see environment-scoped secrets, hence the step-level check.
     needs: web
-    if: ${{ github.repository == 'renatobardi/studio' }}
+    if: ${{ github.event_name == 'push' && github.repository == 'renatobardi/studio' }}
     runs-on: ubuntu-latest
     environment: studio-test
     steps:
