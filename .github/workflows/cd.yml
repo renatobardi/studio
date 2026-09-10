@@ -41,18 +41,22 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:studio-cd
 
-      - name: Diagnose Tailscale connectivity to oute-server
-        env:
-          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+      - name: Wait for the Tailscale backend to settle
+        # `tailscale up` reporting success didn't mean the local daemon's
+        # own state was actually "Running" yet — every deploy-dev run so
+        # far hit `tailscale status` immediately after connect and got
+        # "Logged out", timing out on the SSH step that followed. web-e2e
+        # never hit this because bun install + Playwright's ~94MB browser
+        # download bought it a couple of minutes of unintentional slack
+        # before it touched the network. Poll instead of guessing a delay.
         run: |
-          tailscale status || true
-          echo "---netcheck---"
-          tailscale netcheck || true
-          HOST_IP="${HOST#*@}"
-          echo "---ping $HOST_IP---"
-          tailscale ping --timeout=5s -c 3 "$HOST_IP" || true
-          echo "---tcp probe :22---"
-          timeout 10 bash -c "cat < /dev/null > /dev/tcp/$HOST_IP/22" && echo "tcp:22 open" || echo "tcp:22 FAILED"
+          for attempt in $(seq 1 30); do
+            state=$(tailscale status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['BackendState'])")
+            echo "attempt $attempt: BackendState=$state"
+            [[ "$state" == "Running" ]] && exit 0
+            sleep 2
+          done
+          echo "::error::Tailscale backend never reached Running" && exit 1
 
       - name: Deploy to studio-test
         env:
