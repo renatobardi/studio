@@ -20,7 +20,12 @@ jobs:
           SURREAL_DATABASE=studio
           MINIO_ROOT_USER=studio
           MINIO_ROOT_PASSWORD=ci-password
+          WORKSPACE_SLUG=family
+          WORKSPACE_ALLOWED_PUBKEYS=f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
           EOF
+          # That pubkey is BIP-340's public test vector 0 — the interop
+          # smoke script below signs with its matching (equally public,
+          # non-secret) private key.
 
       - name: Build
         run: docker compose --profile test build test
@@ -33,6 +38,23 @@ jobs:
 
       - name: Run test suite against the Compose stack
         run: docker compose --profile test run --rm test
+
+      - name: Start the full stack for the interop smoke
+        run: |
+          docker compose up -d --build
+          for attempt in $(seq 1 30); do
+            curl -fsS http://localhost/api/ready && exit 0
+            sleep 2
+          done
+          echo "::error::api never became ready" && exit 1
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Interop smoke (nostr-tools authenticates, publishes, reads back)
+        working-directory: scripts/interop
+        run: |
+          bun install
+          RELAY_URL=ws://localhost/relay/family bun run smoke.mjs
 
       - name: Tear down
         if: always()

@@ -28,3 +28,12 @@ class Filter(BaseModel):
     limit: int | None = None
     tags: dict[str, list[str]] = Field(default_factory=dict)
     """Single-letter tag filters, e.g. {"e": [...], "p": [...]} for `#e`/`#p`."""
+
+
+def first_tag_value(event: NostrEvent, name: str) -> str | None:
+    """The value of the first tag named `name` (e.g. `"relay"`, `"u"`), or
+    `None` if the event has none."""
+    for tag in event["tags"]:
+        if len(tag) >= 2 and tag[0] == name:
+            return tag[1]
+    return None
