@@ -60,3 +60,73 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Type-check + build
+        working-directory: web
+        run: bun run build
+
+      - name: Lint
+        working-directory: web
+        run: bun run lint
+
+      - name: Unit tests
+        working-directory: web
+        run: bun test
+
+  web-e2e:
+    # Ticket #4 acceptance: Playwright flows 1 and 5 against the deployed
+    # studio-test stack over Tailscale. Needs Tailscale + Firebase +
+    # studio-test secrets (see scripts/ops/set-ci-secrets.sh) — skips
+    # cleanly on forks/PRs that don't have them instead of failing red.
+    needs: web
+    if: ${{ github.repository == 'renatobardi/studio' }}
+    runs-on: ubuntu-latest
+    environment: studio-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Write client env
+        working-directory: web
+        run: |
+          cat > .env <<EOF
+          VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
+          EOF
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run Playwright flows 1 and 5 against studio-test
+        working-directory: web
+        env:
+          STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+          STUDIO_TEST_EMAIL: ${{ secrets.STUDIO_TEST_EMAIL }}
+          STUDIO_TEST_PASSWORD: ${{ secrets.STUDIO_TEST_PASSWORD }}
+          STUDIO_TEST_INVITE_CODE: ${{ secrets.STUDIO_TEST_INVITE_CODE }}
+          STUDIO_TEST_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE }}
+        run: bun run test:e2e

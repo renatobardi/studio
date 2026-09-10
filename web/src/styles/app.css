@@ -1,0 +1,234 @@
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/radius.css";
+
+/* Studio runs the Kubo scale one step down: body 11px, form fields/labels 12px, chrome/meta 10px. */
+body {
+  font-size: 11px;
+}
+
+.field-label,
+.field input,
+.field select {
+  font-size: 12px;
+}
+
+.meta {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+.centered-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--muted) 40%, transparent);
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+  padding: 20px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-label {
+  font-weight: 500;
+}
+
+.field input {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-4xl);
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+.field input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-4xl);
+  border: none;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  transition: all 150ms;
+}
+
+.btn:hover {
+  opacity: 0.8;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--foreground);
+  text-decoration: underline;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.divider-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.divider-or::before,
+.divider-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklab, var(--border) 50%, transparent);
+}
+
+.error-banner {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.error-banner code {
+  display: block;
+  font-family: monospace;
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.onboarding-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.onboarding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+}
+
+.onboarding-progress {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.onboarding-progress .dot {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--foreground) 30%, transparent);
+  width: 6px;
+}
+
+.onboarding-progress .dot.active {
+  width: 28px;
+  background: var(--foreground);
+}
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.account-chip .avatar {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.onboarding-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.onboarding-title {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 320px;
+}
+
+.nsec-reveal {
+  font-family: monospace;
+  padding: 10px;
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+  word-break: break-all;
+  filter: blur(4px);
+  user-select: none;
+  transition: filter 150ms;
+}
+
+.nsec-reveal.revealed {
+  filter: none;
+  user-select: text;
+}

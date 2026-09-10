@@ -42,9 +42,13 @@ services:
     restart: unless-stopped
 
   web:
-    image: nginx:1.27-alpine
-    volumes:
-      - ./web:/usr/share/nginx/html:ro
+    build:
+      context: ./web
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
     restart: unless-stopped
 
   caddy:
