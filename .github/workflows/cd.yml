@@ -64,7 +64,7 @@ jobs:
           SSH_KEY: ${{ secrets.STUDIO_CD_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy to studio-test
