@@ -28,14 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Connect to Tailscale (cd-dev identity)
-        # Same OAuth client as CI's tag:ci — must have tag:cd-dev added to
-        # its allowed tags in the Tailscale admin console for this to work.
+      - name: Connect to Tailscale (studio-cd identity)
+        # Dedicated tag, not tag:cd-dev — kubo-test is a permanent device
+        # already registered under tag:cd-dev, and sharing it with this
+        # ephemeral runner correlated with the runner's own Tailscale
+        # session going "Logged out" moments after connecting (diagnosed
+        # via the step below). Same OAuth client as CI's tag:ci, with
+        # tag:studio-cd added to its allowed tags.
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:cd-dev
+          tags: tag:studio-cd
 
       - name: Diagnose Tailscale connectivity to oute-server
         env:
