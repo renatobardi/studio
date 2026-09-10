@@ -59,6 +59,14 @@ jobs:
           done
           echo "::error::Tailscale backend never reached Running" && exit 1
 
+      - name: Load deploy SSH key
+        env:
+          SSH_KEY: ${{ secrets.STUDIO_CD_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
       - name: Deploy to studio-test
         env:
           HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
