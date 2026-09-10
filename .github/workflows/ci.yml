@@ -60,3 +60,99 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Type-check + build
+        working-directory: web
+        run: bun run build
+
+      - name: Lint
+        working-directory: web
+        run: bun run lint
+
+      - name: Unit tests
+        working-directory: web
+        run: bun run test
+
+  web-e2e:
+    # Ticket #4 acceptance: Playwright flows 1 and 5 against the deployed
+    # studio-test stack over Tailscale. Needs Tailscale + Firebase +
+    # studio-test secrets (see scripts/ops/set-ci-secrets.sh). Everything
+    # past "Check secrets" is gated on them being present, so the job goes
+    # green-with-skips rather than red when they aren't configured yet —
+    # a job-level `if:` can't see environment-scoped secrets, hence the
+    # step-level check instead.
+    needs: web
+    if: ${{ github.repository == 'renatobardi/studio' }}
+    runs-on: ubuntu-latest
+    environment: studio-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Check secrets
+        id: check
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          STUDIO_TEST_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+        run: |
+          if [[ -n "$TS_OAUTH_CLIENT_ID" && -n "$STUDIO_TEST_WEB_URL" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::studio-test secrets not configured yet (see scripts/ops/set-ci-secrets.sh) — skipping e2e."
+          fi
+
+      - name: Connect to Tailscale
+        if: steps.check.outputs.ready == 'true'
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install
+        if: steps.check.outputs.ready == 'true'
+        working-directory: web
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Write client env
+        if: steps.check.outputs.ready == 'true'
+        working-directory: web
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+        run: |
+          cat > .env <<EOF
+          VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
+          VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN
+          VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
+          VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
+          EOF
+
+      - name: Install Playwright browsers
+        if: steps.check.outputs.ready == 'true'
+        working-directory: web
+        run: bunx playwright@1.63.0 install --with-deps chromium
+
+      - name: Run Playwright flows 1 and 5 against studio-test
+        if: steps.check.outputs.ready == 'true'
+        working-directory: web
+        env:
+          STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+          STUDIO_TEST_EMAIL: ${{ secrets.STUDIO_TEST_EMAIL }}
+          STUDIO_TEST_PASSWORD: ${{ secrets.STUDIO_TEST_PASSWORD }}
+          STUDIO_TEST_INVITE_CODE: ${{ secrets.STUDIO_TEST_INVITE_CODE }}
+          STUDIO_TEST_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE }}
+        run: bun run test:e2e

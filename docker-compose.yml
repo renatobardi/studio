@@ -42,9 +42,9 @@ services:
     restart: unless-stopped
 
   web:
-    image: nginx:1.27-alpine
-    volumes:
-      - ./web:/usr/share/nginx/html:ro
+    # Picks up web/.env at build time (Vite loads it automatically) for the
+    # VITE_FIREBASE_* client config — see scripts/ops/create-firebase-project.sh.
+    build: ./web
     restart: unless-stopped
 
   caddy:
