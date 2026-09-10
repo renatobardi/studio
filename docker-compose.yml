@@ -1,0 +1,75 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    user: root
+    command:
+      - start
+      - --user
+      - ${SURREAL_USER}
+      - --pass
+      - ${SURREAL_PASS}
+      - surrealkv:/data/studio.db
+    volumes:
+      - surrealdb_data:/data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    environment:
+      SURREAL_URL: ws://surrealdb:8000/rpc
+      SURREAL_USER: ${SURREAL_USER}
+      SURREAL_PASS: ${SURREAL_PASS}
+      SURREAL_NAMESPACE: ${SURREAL_NAMESPACE}
+      SURREAL_DATABASE: ${SURREAL_DATABASE}
+    depends_on:
+      - surrealdb
+    restart: unless-stopped
+
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+  # `docker compose --profile test run --rm test` runs the suite against the
+  # same surrealdb/minio services used by `api` — never against a developer
+  # laptop's own Python or a fake in-memory substitute.
+  test:
+    profiles: ["test"]
+    build: ./api
+    environment:
+      SURREAL_URL: ws://surrealdb:8000/rpc
+      SURREAL_USER: ${SURREAL_USER}
+      SURREAL_PASS: ${SURREAL_PASS}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      - surrealdb
+      - minio
+    command: ["uv", "run", "pytest", "-q"]
+
+volumes:
+  surrealdb_data:
+  minio_data:

@@ -1,0 +1,229 @@
+"""RED: the ADR-0004 spike — NIP-01 filters mapped to SurrealQL, and upsert
+semantics for replaceable/addressable kinds, against a real SurrealDB.
+"""
+
+import asyncio
+
+import pytest
+
+from studio_api.nostr.model import Filter, NostrEvent
+from studio_api.nostr.store import EventStore, PublishResult
+
+
+def make_event(**overrides: object) -> NostrEvent:
+    base: NostrEvent = {
+        "id": "id-0000",
+        "pubkey": "pub-aaa",
+        "created_at": 1_000,
+        "kind": 1,
+        "tags": [],
+        "content": "hello",
+        "sig": "sig",
+    }
+    base.update(overrides)  # type: ignore[typeddict-item]
+    return base
+
+
+class TestHistoricalQuery:
+    async def test_query_by_ids(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1"))
+        await store.publish(make_event(id="id-2"))
+
+        result = await store.query([Filter(ids=["id-1"])])
+
+        assert [e["id"] for e in result] == ["id-1"]
+
+    async def test_query_by_authors(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", pubkey="alice"))
+        await store.publish(make_event(id="id-2", pubkey="bob"))
+
+        result = await store.query([Filter(authors=["bob"])])
+
+        assert [e["id"] for e in result] == ["id-2"]
+
+    async def test_query_by_kinds(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", kind=1))
+        await store.publish(make_event(id="id-2", kind=9))
+
+        result = await store.query([Filter(kinds=[9])])
+
+        assert [e["id"] for e in result] == ["id-2"]
+
+    async def test_query_by_tag(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", tags=[["h", "general"]]))
+        await store.publish(make_event(id="id-2", tags=[["h", "random"]]))
+
+        result = await store.query([Filter(tags={"h": ["general"]})])
+
+        assert [e["id"] for e in result] == ["id-1"]
+
+    async def test_query_by_since_and_until(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", created_at=100))
+        await store.publish(make_event(id="id-2", created_at=200))
+        await store.publish(make_event(id="id-3", created_at=300))
+
+        result = await store.query([Filter(since=150, until=250)])
+
+        assert [e["id"] for e in result] == ["id-2"]
+
+    async def test_results_are_newest_first_with_lowest_id_tiebreak(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-b", created_at=100))
+        await store.publish(make_event(id="id-a", created_at=100))
+        await store.publish(make_event(id="id-c", created_at=200))
+
+        result = await store.query([Filter()])
+
+        # id-c is newest; id-a and id-b tie on created_at, lowest id first.
+        assert [e["id"] for e in result] == ["id-c", "id-a", "id-b"]
+
+    async def test_limit_bounds_the_result(self, store: EventStore) -> None:
+        for i in range(5):
+            await store.publish(make_event(id=f"id-{i}", created_at=i))
+
+        result = await store.query([Filter(limit=2)])
+
+        assert len(result) == 2
+        # newest two: id-4, id-3
+        assert [e["id"] for e in result] == ["id-4", "id-3"]
+
+    async def test_multiple_filters_are_unioned(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", kind=1))
+        await store.publish(make_event(id="id-2", kind=9))
+        await store.publish(make_event(id="id-3", kind=99))
+
+        result = await store.query([Filter(kinds=[1]), Filter(kinds=[9])])
+
+        assert {e["id"] for e in result} == {"id-1", "id-2"}
+
+
+class TestReplaceableUpsert:
+    async def test_second_publish_of_same_pubkey_kind_replaces_first(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-1", kind=0, created_at=100, content="old"))
+        result = await store.publish(make_event(id="id-2", kind=0, created_at=200, content="new"))
+
+        assert result is PublishResult.OK
+        stored = await store.query([Filter(kinds=[0])])
+        assert len(stored) == 1
+        assert stored[0]["id"] == "id-2"
+        assert stored[0]["content"] == "new"
+
+    async def test_older_replaceable_event_is_superseded_not_stored(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-2", kind=0, created_at=200))
+        result = await store.publish(make_event(id="id-1", kind=0, created_at=100))
+
+        assert result is PublishResult.SUPERSEDED
+        stored = await store.query([Filter(kinds=[0])])
+        assert [e["id"] for e in stored] == ["id-2"]
+
+    async def test_same_timestamp_lowest_id_wins(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-b", kind=3, created_at=100))
+        await store.publish(make_event(id="id-a", kind=3, created_at=100))
+
+        stored = await store.query([Filter(kinds=[3])])
+
+        assert [e["id"] for e in stored] == ["id-a"]
+
+    async def test_different_pubkeys_keep_independent_replaceable_slots(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-1", kind=0, pubkey="alice"))
+        await store.publish(make_event(id="id-2", kind=0, pubkey="bob"))
+
+        stored = await store.query([Filter(kinds=[0])])
+
+        assert {e["id"] for e in stored} == {"id-1", "id-2"}
+
+
+class TestAddressableUpsert:
+    async def test_second_publish_of_same_pubkey_kind_d_replaces_first(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(
+            make_event(id="id-1", kind=30_023, created_at=100, tags=[["d", "my-article"]])
+        )
+        await store.publish(
+            make_event(id="id-2", kind=30_023, created_at=200, tags=[["d", "my-article"]])
+        )
+
+        stored = await store.query([Filter(kinds=[30_023])])
+
+        assert [e["id"] for e in stored] == ["id-2"]
+
+    async def test_different_d_tags_are_independent_slots(self, store: EventStore) -> None:
+        await store.publish(make_event(id="id-1", kind=30_023, tags=[["d", "article-a"]]))
+        await store.publish(make_event(id="id-2", kind=30_023, tags=[["d", "article-b"]]))
+
+        stored = await store.query([Filter(kinds=[30_023])])
+
+        assert {e["id"] for e in stored} == {"id-1", "id-2"}
+
+    async def test_missing_d_tag_is_treated_as_empty_identifier(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-1", kind=30_023, created_at=100, tags=[]))
+        await store.publish(make_event(id="id-2", kind=30_023, created_at=200, tags=[]))
+
+        stored = await store.query([Filter(kinds=[30_023])])
+
+        assert [e["id"] for e in stored] == ["id-2"]
+
+
+class TestPing:
+    async def test_ping_succeeds_against_a_live_connection(self, store: EventStore) -> None:
+        await store.ping()  # raises on failure; nothing to assert on success
+
+
+class TestRegularDuplicates:
+    async def test_publishing_the_same_id_twice_is_a_duplicate(
+        self, store: EventStore
+    ) -> None:
+        await store.publish(make_event(id="id-1"))
+        result = await store.publish(make_event(id="id-1"))
+
+        assert result is PublishResult.DUPLICATE
+        stored = await store.query([Filter(ids=["id-1"])])
+        assert len(stored) == 1
+
+
+class TestLiveFanout:
+    async def test_two_subscriptions_receive_only_their_own_matches(
+        self, store: EventStore
+    ) -> None:
+        fanout = await store.start_live_fanout()
+        try:
+            queue_kind1 = await fanout.subscribe("sub-1", [Filter(kinds=[1])])
+            queue_kind9 = await fanout.subscribe("sub-2", [Filter(kinds=[9])])
+
+            await store.publish(make_event(id="id-1", kind=1))
+            await store.publish(make_event(id="id-2", kind=9))
+
+            received_1 = await asyncio.wait_for(queue_kind1.get(), timeout=2)
+            received_2 = await asyncio.wait_for(queue_kind9.get(), timeout=2)
+
+            assert received_1["id"] == "id-1"
+            assert received_2["id"] == "id-2"
+            assert queue_kind1.empty()
+            assert queue_kind9.empty()
+        finally:
+            await fanout.stop()
+
+    async def test_unsubscribed_subscription_receives_nothing_further(
+        self, store: EventStore
+    ) -> None:
+        fanout = await store.start_live_fanout()
+        try:
+            queue = await fanout.subscribe("sub-1", [Filter(kinds=[1])])
+            fanout.unsubscribe("sub-1")
+
+            await store.publish(make_event(id="id-1", kind=1))
+
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(queue.get(), timeout=0.5)
+        finally:
+            await fanout.stop()

@@ -1,0 +1,25 @@
+{
+	auto_https off
+	admin off
+}
+
+# Plain HTTP inside the container: the network boundary is Tailscale (dev)
+# or the host's own Nginx/Certbot in front of this container (prod
+# `--public`, per oute-server convention) — Caddy here only routes.
+:80 {
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle /relay/* {
+		reverse_proxy api:8000
+	}
+
+	handle /media/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
