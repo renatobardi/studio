@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
-import { clearIdentity, type Signer } from "../../lib/custody";
+import { clearIdentity, loadChannelId, storeChannelId, type Signer } from "../../lib/custody";
 import { RelayClient, type ConnectionState } from "../../lib/relay";
+import { AdminPane } from "./AdminPane";
+import { AppearanceSettings } from "./AppearanceSettings";
 import { ChannelList } from "./ChannelList";
 import { ChannelView } from "./ChannelView";
 import { ConnectionBadge } from "./ConnectionBadge";
 import { DirectMessagesPane } from "./DirectMessagesPane";
+import { IosInstallHint } from "./IosInstallHint";
+import { ProfileEditor } from "./ProfileEditor";
+
+const MANAGER_ROLES = new Set(["owner", "admin"]);
 
 export function AppShell({
   workspace,
@@ -22,7 +28,7 @@ export function AppShell({
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [unreadChannelIds, setUnreadChannelIds] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<"channels" | "dms">("channels");
+  const [mode, setMode] = useState<"channels" | "dms" | "admin" | "settings">("channels");
 
   useEffect(() => {
     const unsubscribe = client.onStateChange(setConnectionState);
@@ -45,7 +51,10 @@ export function AppShell({
       const list = await listChannels(workspace.slug, proof);
       if (cancelled) return;
       setChannels(list);
-      setSelectedChannelId((current) => current ?? list[0]?.id ?? null);
+      const lastChannelId = await loadChannelId();
+      setSelectedChannelId(
+        (current) => current ?? list.find((c) => c.id === lastChannelId)?.id ?? list[0]?.id ?? null,
+      );
     })();
     return () => {
       cancelled = true;
@@ -70,6 +79,7 @@ export function AppShell({
 
   const selectChannel = (channelId: string) => {
     setSelectedChannelId(channelId);
+    void storeChannelId(channelId);
     setUnreadChannelIds((prev) => {
       if (!prev.has(channelId)) return prev;
       const next = new Set(prev);
@@ -103,6 +113,22 @@ export function AppShell({
               data-testid="mode-dms"
             >
               Direct Messages
+            </button>
+            {MANAGER_ROLES.has(workspace.role) && (
+              <button
+                className={`btn btn-outline${mode === "admin" ? " active" : ""}`}
+                onClick={() => setMode("admin")}
+                data-testid="mode-admin"
+              >
+                Admin
+              </button>
+            )}
+            <button
+              className={`btn btn-outline${mode === "settings" ? " active" : ""}`}
+              onClick={() => setMode("settings")}
+              data-testid="mode-settings"
+            >
+              Settings
             </button>
           </nav>
           <ConnectionBadge state={connectionState} />
@@ -138,6 +164,16 @@ export function AppShell({
         )}
         {mode === "dms" && pubkey && (
           <DirectMessagesPane client={client} myPubkey={pubkey} signer={signer} mediaUrl={workspace.media_url} />
+        )}
+        {mode === "admin" && MANAGER_ROLES.has(workspace.role) && (
+          <AdminPane client={client} signer={signer} slug={workspace.slug} />
+        )}
+        {mode === "settings" && pubkey && (
+          <div className="stack">
+            <IosInstallHint />
+            <ProfileEditor client={client} signer={signer} pubkey={pubkey} />
+            <AppearanceSettings />
+          </div>
         )}
       </div>
     </div>

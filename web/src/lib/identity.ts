@@ -27,11 +27,13 @@ export interface Profile {
   about?: string;
 }
 
+/** Unsigned kind:0 template — usable with any Signer (custody.ts), including NIP-07, not just a raw secret key. */
+export function profileEventTemplate(profile: Profile) {
+  return { kind: 0, created_at: Math.floor(Date.now() / 1000), tags: [], content: JSON.stringify(profile) };
+}
+
 export function buildProfileEvent(secretKey: Uint8Array, profile: Profile): VerifiedEvent {
-  return finalizeEvent(
-    { kind: 0, created_at: Math.floor(Date.now() / 1000), tags: [], content: JSON.stringify(profile) },
-    secretKey,
-  );
+  return finalizeEvent(profileEventTemplate(profile), secretKey);
 }
 
 export function buildRelayListEvent(secretKey: Uint8Array, relayUrls: string[]): VerifiedEvent {
