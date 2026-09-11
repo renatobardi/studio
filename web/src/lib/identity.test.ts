@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { verifyEvent } from "nostr-tools";
 import {
   buildProfileEvent,
-  buildRelayListEvent,
-  buildServerListEvent,
+  relayListTemplate,
+  serverListTemplate,
   generateIdentity,
   nsecFromSecretKey,
   profileEventTemplate,
@@ -56,26 +56,24 @@ describe("profileEventTemplate", () => {
   });
 });
 
-describe("buildRelayListEvent", () => {
-  test("signs a kind:10050 event with one r tag per relay", () => {
-    const identity = generateIdentity();
+describe("relayListTemplate", () => {
+  test("a kind:10050 template with one relay tag per relay", () => {
     const relays = ["wss://relay.example/workspace/family"];
-    const event = buildRelayListEvent(identity.secretKey, relays);
 
-    expect(event.kind).toBe(10050);
-    expect(event.tags).toEqual([["relay", relays[0]]]);
-    expect(verifyEvent(event)).toBe(true);
+    const template = relayListTemplate(relays);
+
+    expect(template.kind).toBe(10050);
+    expect(template.tags).toEqual([["relay", relays[0]]]);
   });
 });
 
-describe("buildServerListEvent", () => {
-  test("signs a kind:10063 event with one server tag per media server (BUD-03)", () => {
-    const identity = generateIdentity();
+describe("serverListTemplate", () => {
+  test("a kind:10063 template with one server tag per media server (BUD-03)", () => {
     const servers = ["https://api.example/media"];
-    const event = buildServerListEvent(identity.secretKey, servers);
 
-    expect(event.kind).toBe(10063);
-    expect(event.tags).toEqual([["server", servers[0]]]);
-    expect(verifyEvent(event)).toBe(true);
+    const template = serverListTemplate(servers);
+
+    expect(template.kind).toBe(10063);
+    expect(template.tags).toEqual([["server", servers[0]]]);
   });
 });

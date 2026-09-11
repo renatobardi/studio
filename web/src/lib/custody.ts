@@ -1,10 +1,12 @@
 import { del, get, set } from "idb-keyval";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import { secretKeyFromNsec } from "./identity";
+import { clearMediaCache } from "./mediaCache";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
+
 
 /** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
 export function hasNip07(): boolean {
@@ -31,11 +33,16 @@ export async function storeIdentity(nsec: string): Promise<void> {
   await set(STORE_KEY, nsec);
 }
 
-/** Wipes the locally-stored key, e.g. on sign-out. Does not touch a NIP-07 extension's own storage. */
+/**
+ * Wipes the locally-stored key and every trace of the session, e.g. on
+ * sign-out — the cached media included. Does not touch a NIP-07 extension's
+ * own storage.
+ */
 export async function clearIdentity(): Promise<void> {
   await del(STORE_KEY);
   await del(WORKSPACE_SLUG_KEY);
   await del(CHANNEL_ID_KEY);
+  await clearMediaCache();
 }
 
 /**
