@@ -5,6 +5,7 @@ import { RelayClient, type ConnectionState } from "../../lib/relay";
 import { ChannelList } from "./ChannelList";
 import { ChannelView } from "./ChannelView";
 import { ConnectionBadge } from "./ConnectionBadge";
+import { DirectMessagesPane } from "./DirectMessagesPane";
 
 export function AppShell({
   workspace,
@@ -21,6 +22,7 @@ export function AppShell({
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [unreadChannelIds, setUnreadChannelIds] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<"channels" | "dms">("channels");
 
   useEffect(() => {
     const unsubscribe = client.onStateChange(setConnectionState);
@@ -87,6 +89,22 @@ export function AppShell({
       <header className="app-shell-header">
         <h1>{workspace.name}</h1>
         <div className="app-shell-header-right">
+          <nav className="app-shell-mode-switch" aria-label="Channels or Direct Messages">
+            <button
+              className={`btn btn-outline${mode === "channels" ? " active" : ""}`}
+              onClick={() => setMode("channels")}
+              data-testid="mode-channels"
+            >
+              Channels
+            </button>
+            <button
+              className={`btn btn-outline${mode === "dms" ? " active" : ""}`}
+              onClick={() => setMode("dms")}
+              data-testid="mode-dms"
+            >
+              Direct Messages
+            </button>
+          </nav>
           <ConnectionBadge state={connectionState} />
           <span className="meta">Connected as {workspace.role}</span>
           <button className="btn btn-outline" onClick={() => void handleSignOut()}>
@@ -95,25 +113,32 @@ export function AppShell({
         </div>
       </header>
       <div className="app-shell-body">
-        {channels && (
-          <ChannelList
-            channels={channels}
-            selectedChannelId={selectedChannelId}
-            unreadChannelIds={unreadChannelIds}
-            onSelect={selectChannel}
-          />
+        {mode === "channels" && (
+          <>
+            {channels && (
+              <ChannelList
+                channels={channels}
+                selectedChannelId={selectedChannelId}
+                unreadChannelIds={unreadChannelIds}
+                onSelect={selectChannel}
+              />
+            )}
+            {selectedChannelId && pubkey && (
+              <ChannelView
+                key={selectedChannelId}
+                client={client}
+                channelId={selectedChannelId}
+                pubkey={pubkey}
+                signer={signer}
+                mediaUrl={workspace.media_url}
+              />
+            )}
+            {channels?.length === 0 && <p className="meta">No Channels yet.</p>}
+          </>
         )}
-        {selectedChannelId && pubkey && (
-          <ChannelView
-            key={selectedChannelId}
-            client={client}
-            channelId={selectedChannelId}
-            pubkey={pubkey}
-            signer={signer}
-            mediaUrl={workspace.media_url}
-          />
+        {mode === "dms" && pubkey && (
+          <DirectMessagesPane client={client} myPubkey={pubkey} signer={signer} mediaUrl={workspace.media_url} />
         )}
-        {channels?.length === 0 && <p className="meta">No Channels yet.</p>}
       </div>
     </div>
   );
