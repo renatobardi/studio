@@ -116,3 +116,15 @@ jobs:
           STUDIO_TEST_INVITE_CODE_2: ${{ secrets.STUDIO_TEST_INVITE_CODE_2 }}
           STUDIO_TEST_BACKUP_PASSPHRASE_2: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE_2 }}
         run: bun run test:e2e
+
+      - name: Upload failure screenshots
+        # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
+        # the typed characters a trace.zip would record. See git history for why trace.zip
+        # itself must never be uploaded from this public repo's CI.
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-screenshots
+          path: web/test-results/**/*.png
+          retention-days: 3
+          if-no-files-found: ignore

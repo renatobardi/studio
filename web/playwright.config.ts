@@ -11,5 +11,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.STUDIO_WEB_URL ?? "http://localhost:5173",
     trace: "on-first-retry",
+    // A screenshot is a pixel render (a password field shows masked dots, never the typed
+    // characters) — safe to upload from CD, unlike trace.zip's recorded .fill() values (see
+    // the incident notes on the artifact-upload step removed from cd.yml).
+    screenshot: "only-on-failure",
   },
 });

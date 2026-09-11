@@ -39,6 +39,10 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   });
 
   await pageA.getByTestId("mode-dms").click();
+  // The DM pane's empty-state text briefly overlaps the new-peer form right after the mode
+  // switch (issue #61) — wait for the input to be the one actually receiving events before
+  // interacting, rather than just present in the DOM.
+  await pageA.getByTestId("dm-new-peer-input").waitFor({ state: "visible" });
   await pageA.getByTestId("dm-new-peer-input").fill(pubkeyB);
   await pageA.getByTestId("dm-new-peer-start").click();
 
