@@ -14,6 +14,12 @@ import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
+function replyCountLabel(count: number): string {
+  if (count === 0) return "Reply in thread";
+  if (count === 1) return "1 reply";
+  return `${count} replies`;
+}
+
 export function Timeline({
   client,
   channelId,
@@ -28,7 +34,7 @@ export function Timeline({
   profiles,
   openThreadRootId,
   onOpenThread,
-}: {
+}: Readonly<{
   client: RelayClient;
   channelId: string;
   pubkey: string;
@@ -42,7 +48,7 @@ export function Timeline({
   profiles: ReturnType<typeof useProfiles>["profiles"];
   openThreadRootId: string | null;
   onOpenThread: (root: TargetRef & { content: string }) => void;
-}) {
+}>) {
   const [draft, setDraft] = useState("");
 
   const send = async () => {
@@ -109,7 +115,7 @@ export function Timeline({
                 onClick={() => onOpenThread({ ...target, content: message.content })}
                 data-testid="open-thread"
               >
-                {replyCount === 0 ? "Reply in thread" : replyCount === 1 ? "1 reply" : `${replyCount} replies`}
+                {replyCountLabel(replyCount)}
               </button>
             </li>
           );

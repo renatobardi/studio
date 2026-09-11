@@ -7,12 +7,12 @@ export function ReactionBar({
   ownPubkey,
   onAdd,
   onRemoveOwn,
-}: {
+}: Readonly<{
   groups: ReactionGroup[];
   ownPubkey: string;
   onAdd: (emoji: string) => void;
   onRemoveOwn: (emoji: string) => void;
-}) {
+}>) {
   return (
     <div className="reaction-bar">
       {groups.map((group) => {

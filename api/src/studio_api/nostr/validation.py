@@ -50,26 +50,41 @@ def validate_event(event: NostrEvent, *, now: int) -> EventRejection | None:
     return _validate_content_kind_tags(event)
 
 
+def _require_tags(event: NostrEvent, names: tuple[str, ...], *, kind_label: str) -> EventRejection | None:
+    for name in names:
+        if first_tag_value(event, name) is None:
+            return EventRejection("invalid", f"a {kind_label} requires a {name} tag")
+    return None
+
+
+def _validate_message_tags(event: NostrEvent) -> EventRejection | None:
+    return _require_tags(event, ("h",), kind_label="Message")
+
+
+def _validate_reaction_tags(event: NostrEvent) -> EventRejection | None:
+    return _require_tags(event, ("h", "e", "k", "p"), kind_label="Reaction")
+
+
+def _validate_thread_reply_tags(event: NostrEvent) -> EventRejection | None:
+    rejection = _require_tags(event, ("h", "E", "K", "P", "e", "k", "p"), kind_label="Thread Reply")
+    if rejection is not None:
+        return rejection
+    for lower, upper in (("e", "E"), ("k", "K"), ("p", "P")):
+        if first_tag_value(event, lower) != first_tag_value(event, upper):
+            return EventRejection("invalid", f"a Thread Reply's {lower} tag must match its {upper} tag")
+    return None
+
+
+_CONTENT_KIND_VALIDATORS = {
+    MESSAGE: _validate_message_tags,
+    THREAD_REPLY: _validate_thread_reply_tags,
+    REACTION: _validate_reaction_tags,
+}
+
+
 def _validate_content_kind_tags(event: NostrEvent) -> EventRejection | None:
     """Ticket #5: Messages, Thread Replies and Reactions each require a
     fixed set of tags identifying their Channel and, for replies/reactions,
     the Message they target."""
-    kind = event["kind"]
-    if kind == MESSAGE:
-        if first_tag_value(event, "h") is None:
-            return EventRejection("invalid", "a Message requires an h tag")
-    elif kind == THREAD_REPLY:
-        for name in ("h", "E", "K", "P", "e", "k", "p"):
-            if first_tag_value(event, name) is None:
-                return EventRejection("invalid", f"a Thread Reply requires a {name} tag")
-        if first_tag_value(event, "e") != first_tag_value(event, "E"):
-            return EventRejection("invalid", "a Thread Reply's e tag must match its E tag")
-        if first_tag_value(event, "k") != first_tag_value(event, "K"):
-            return EventRejection("invalid", "a Thread Reply's k tag must match its K tag")
-        if first_tag_value(event, "p") != first_tag_value(event, "P"):
-            return EventRejection("invalid", "a Thread Reply's p tag must match its P tag")
-    elif kind == REACTION:
-        for name in ("h", "e", "k", "p"):
-            if first_tag_value(event, name) is None:
-                return EventRejection("invalid", f"a Reaction requires a {name} tag")
-    return None
+    validator = _CONTENT_KIND_VALIDATORS.get(event["kind"])
+    return validator(event) if validator is not None else None

@@ -5,7 +5,7 @@ import { displayName, useProfiles } from "./useProfiles";
 
 /** Channel Members from the kind 39002 projection (ADR-0002) — a `d`-addressable event the
  * control plane re-publishes on every membership change, so the latest one is the roster. */
-export function MembersPane({ client, channelId }: { client: RelayClient; channelId: string }) {
+export function MembersPane({ client, channelId }: Readonly<{ client: RelayClient; channelId: string }>) {
   const [memberPubkeys, setMemberPubkeys] = useState<string[]>([]);
   const { profiles, ensure } = useProfiles(client);
 

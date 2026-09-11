@@ -13,14 +13,14 @@ export function ThreadPane({
   root,
   allReplies,
   profiles,
-}: {
+}: Readonly<{
   client: RelayClient;
   signer: Signer;
   channelId: string;
   root: TargetRef & { content: string };
   allReplies: VerifiedEvent[];
   profiles: ReturnType<typeof useProfiles>["profiles"];
-}) {
+}>) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
 

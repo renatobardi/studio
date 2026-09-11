@@ -7,7 +7,7 @@ const LABEL: Record<ConnectionState, string> = {
   closed: "Disconnected",
 };
 
-export function ConnectionBadge({ state }: { state: ConnectionState }) {
+export function ConnectionBadge({ state }: Readonly<{ state: ConnectionState }>) {
   return (
     <span className={`connection-badge connection-badge-${state}`} data-testid="connection-state">
       {LABEL[state]}

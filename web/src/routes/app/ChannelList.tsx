@@ -5,12 +5,12 @@ export function ChannelList({
   selectedChannelId,
   unreadChannelIds,
   onSelect,
-}: {
+}: Readonly<{
   channels: ChannelOut[];
   selectedChannelId: string | null;
   unreadChannelIds: Set<string>;
   onSelect: (channelId: string) => void;
-}) {
+}>) {
   return (
     <nav className="channel-list" aria-label="Channels">
       {channels.map((channel) => (

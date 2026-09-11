@@ -15,12 +15,12 @@ export function ChannelView({
   channelId,
   pubkey,
   signer,
-}: {
+}: Readonly<{
   client: RelayClient;
   channelId: string;
   pubkey: string;
   signer: Signer;
-}) {
+}>) {
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
   const [sidePane, setSidePane] = useState<SidePane>(null);

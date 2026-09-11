@@ -225,14 +225,9 @@ class RelayConnection:
         if rejection is not None:
             await self._send(["OK", event_id, False, f"{rejection.prefix}: {rejection.message}"])
             return
-        root_tag = ROOT_TAG_BY_KIND.get(event.get("kind"))
-        if root_tag is not None:
-            root_id = first_tag_value(event, root_tag)
-            root_events = await self._store.query([Filter(ids=[root_id])]) if root_id else []
-            root = root_events[0] if root_events else None
-            if root is None or first_tag_value(root, "h") != channel_id:
-                await self._send(["OK", event_id, False, "invalid: root is not in this channel"])
-                return
+        if not await self._root_in_channel(event, channel_id):
+            await self._send(["OK", event_id, False, "invalid: root is not in this channel"])
+            return
         try:
             result = await self._store.publish(event)
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
@@ -251,6 +246,17 @@ class RelayConnection:
             )
         else:
             await self._send(["OK", event_id, True, ""])
+
+    async def _root_in_channel(self, event: NostrEvent, channel_id: str | None) -> bool:
+        """Ticket #5: a Thread Reply's root (its `E` tag) or a Reaction's target (its `e` tag)
+        must already exist, and be in this same Channel. Kinds with no root tag pass trivially."""
+        root_tag = ROOT_TAG_BY_KIND.get(event.get("kind"))
+        if root_tag is None:
+            return True
+        root_id = first_tag_value(event, root_tag)
+        root_events = await self._store.query([Filter(ids=[root_id])]) if root_id else []
+        root = root_events[0] if root_events else None
+        return root is not None and first_tag_value(root, "h") == channel_id
 
     async def _handle_req(self, sub_id: str, raw_filters: list[dict[str, Any]]) -> None:
         if self._authed_pubkey is None:

@@ -10,11 +10,11 @@ export function AppShell({
   workspace,
   signer,
   onSignOut,
-}: {
+}: Readonly<{
   workspace: WorkspaceOut;
   signer: Signer;
   onSignOut: () => void;
-}) {
+}>) {
   const [client] = useState(() => new RelayClient(workspace.relay_url, signer));
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [pubkey, setPubkey] = useState<string | null>(null);
@@ -106,7 +106,7 @@ export function AppShell({
         {selectedChannelId && pubkey && (
           <ChannelView key={selectedChannelId} client={client} channelId={selectedChannelId} pubkey={pubkey} signer={signer} />
         )}
-        {channels && channels.length === 0 && <p className="meta">No Channels yet.</p>}
+        {channels?.length === 0 && <p className="meta">No Channels yet.</p>}
       </div>
     </div>
   );
