@@ -1,7 +1,9 @@
 import { nip44 } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Signer } from "./custody";
-import { MediaError, blossomAuthorizationHeader, buildBlossomAuthEvent, sha256Hex, validateAttachment, type BlobDescriptor } from "./media";
+import { MediaError, blossomAuthorizationHeader, buildBlossomAuthEvent, sha256Hex, type BlobDescriptor } from "./media";
+
+export { validateAttachment } from "./media";
 
 /** Base64 <-> bytes, without going through `atob`/`btoa`'s Latin1-string round trip for large
  * inputs (an image can be several MB — `String.fromCharCode(...bytes)` blows the call stack). */
@@ -9,7 +11,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    binary += String.fromCodePoint(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
 }
@@ -17,7 +19,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.codePointAt(i)!;
   return bytes;
 }
 
@@ -141,5 +143,3 @@ export function parseDmImetaTags(tags: string[][]): DmAttachment[] {
   }
   return attachments;
 }
-
-export { validateAttachment };

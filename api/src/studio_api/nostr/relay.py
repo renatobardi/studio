@@ -252,11 +252,8 @@ class RelayConnection:
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
-        if result is PublishResult.OK and self._media_repo is not None and channel_id is not None:
-            await self._media_repo.record_references(event, channel_id=channel_id)
-        if result is PublishResult.OK and self._media_repo is not None and event["kind"] in GIFT_WRAP_KINDS:
-            recipients = all_tag_values(event, "p") + [self._authed_pubkey]
-            await self._media_repo.record_dm_references(event, recipients=recipients)
+        if result is PublishResult.OK:
+            await self._record_media_references(event, channel_id)
         if result is PublishResult.DUPLICATE:
             await self._send(["OK", event_id, False, "duplicate: already have this event"])
         elif result is PublishResult.SUPERSEDED:
@@ -270,6 +267,19 @@ class RelayConnection:
             )
         else:
             await self._send(["OK", event_id, True, ""])
+
+    async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
+        """Ticket #6/#7: after an event is accepted, record which blobs it references — by
+        Channel for ordinary content, or by DM recipient for a gift wrap (a gift wrap has no
+        `h` tag, so the two cases are mutually exclusive)."""
+        if self._media_repo is None:
+            return
+        if channel_id is not None:
+            await self._media_repo.record_references(event, channel_id=channel_id)
+        elif event["kind"] in GIFT_WRAP_KINDS:
+            assert self._authed_pubkey is not None
+            recipients = all_tag_values(event, "p") + [self._authed_pubkey]
+            await self._media_repo.record_dm_references(event, recipients=recipients)
 
     async def _root_in_channel(self, event: NostrEvent, channel_id: str | None) -> bool:
         """Ticket #5: a Thread Reply's root (its `E` tag) or a Reaction's target (its `e` tag)

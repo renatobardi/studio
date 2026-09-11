@@ -24,10 +24,16 @@ export interface Rumor {
 
 const TWO_DAYS_SECONDS = 2 * 24 * 60 * 60;
 
+/** A random fraction in [0, 1) from the Web Crypto CSPRNG — this is timestamp obfuscation, not
+ * key material, but there's no reason to reach for `Math.random()`'s weaker generator here. */
+function secureRandomFraction(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
 /** NIP-59: the seal's and gift wrap's own `created_at` are randomized up to two days into the
  * past, so a relay can't correlate a DM's real send time from the outer events it can see. */
 function randomPast(now = Math.floor(Date.now() / 1000)): number {
-  return Math.round(now - Math.random() * TWO_DAYS_SECONDS);
+  return Math.round(now - secureRandomFraction() * TWO_DAYS_SECONDS);
 }
 
 /** kind 14: the Direct Message itself, addressed to every other participant (never the sender —
@@ -113,5 +119,5 @@ export async function unwrapGiftWrap(
  * the same two-or-more people always lands in one conversation regardless of who sent which
  * message. */
 export function conversationKey(participantPubkeys: string[]): string {
-  return [...new Set(participantPubkeys)].sort().join(",");
+  return [...new Set(participantPubkeys)].sort((a, b) => a.localeCompare(b)).join(",");
 }

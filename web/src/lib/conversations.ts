@@ -27,7 +27,7 @@ export function groupConversations(rumors: Rumor[], myPubkey: string): Conversat
   const conversations = [...byKey.entries()].map(([key, list]) => {
     const sorted = [...list].sort((a, b) => a.created_at - b.created_at);
     const peerPubkeys = participantsOf(sorted[0]).filter((pubkey) => pubkey !== myPubkey);
-    return { key, peerPubkeys, messages: sorted, latest: sorted[sorted.length - 1] };
+    return { key, peerPubkeys, messages: sorted, latest: sorted.at(-1)! };
   });
   return conversations.sort((a, b) => b.latest.created_at - a.latest.created_at);
 }

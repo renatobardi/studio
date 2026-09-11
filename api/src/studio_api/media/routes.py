@@ -55,7 +55,7 @@ def _resolve_get_pubkey(authorization: str | None, *, url: str, method: str, now
     return verify_nip98(event, url=url, method=method, now=now)
 
 
-@router.put("/upload")
+@router.put("/upload", responses={415: {"description": "unsupported Content-Type"}})
 async def upload_blob(
     request: Request,
     authorization: str | None = Header(default=None),
