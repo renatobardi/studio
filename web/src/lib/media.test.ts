@@ -38,9 +38,9 @@ describe("validateAttachment", () => {
 });
 
 describe("sha256Hex", () => {
-  test("hashes bytes to a lowercase hex sha256", async () => {
+  test("hashes bytes to a lowercase hex sha256", () => {
     const bytes = new TextEncoder().encode("hello").buffer;
-    expect(await sha256Hex(bytes)).toBe(
+    expect(sha256Hex(bytes)).toBe(
       "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
     );
   });
