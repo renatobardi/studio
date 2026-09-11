@@ -71,3 +71,11 @@ bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see
   persisted anywhere; a channel is marked unread if a Message arrives while it isn't the selected
   one. "Load older messages" is an explicit button, not scroll-position detection.
 - Reactions load 4 quick emoji (👍🔥❤️😂), not a full picker — the issue doesn't specify one.
+- Flows 2 & 3 need two more secrets beyond flows 1/5's: `STUDIO_TEST_WORKSPACE_SLUG` and
+  `STUDIO_TEST_OWNER_PRIVATE_KEY_HEX` (a Workspace owner/admin's raw hex private key). Redeeming
+  an Invite only grants Workspace membership, never Channel membership, and onboarding/restore
+  mint a fresh Identity every run — so `e2e/helpers.ts`'s `ensureChannelMembership` uses that
+  owner identity to add the run's Identity to the Workspace's first Channel via the REST API
+  before the flow tries to publish anything. Whoever owns/administers the `studio-test` Workspace
+  needs to provide that key as a GitHub secret; it was never exercised against a real deployment
+  here.

@@ -97,7 +97,7 @@ jobs:
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
 
-      - name: Playwright smoke (flows 1 & 5) against the just-deployed studio-test
+      - name: Playwright smoke (flows 1, 2, 3 & 5) against the just-deployed studio-test
         working-directory: web
         env:
           STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
@@ -105,4 +105,8 @@ jobs:
           STUDIO_TEST_PASSWORD: ${{ secrets.STUDIO_TEST_PASSWORD }}
           STUDIO_TEST_INVITE_CODE: ${{ secrets.STUDIO_TEST_INVITE_CODE }}
           STUDIO_TEST_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE }}
+          # Flows 2 & 3 (ticket #5): grant the run's fresh Identity Channel
+          # membership before it publishes anything — see e2e/helpers.ts.
+          STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
+          STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
         run: bun run test:e2e
