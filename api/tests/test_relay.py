@@ -11,7 +11,12 @@ from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
 from studio_api.nostr.model import NostrEvent
-from studio_api.nostr.relay import ConnectionRegistry, RelayConnection, SeededRelayAuthorizer
+from studio_api.nostr.relay import (
+    ConnectionRegistry,
+    MediaReferenceRecorder,
+    RelayConnection,
+    SeededRelayAuthorizer,
+)
 from studio_api.nostr.store import EventStore, LiveFanout
 
 RELAY_URL = "wss://relay.example.com/relay/family"
@@ -26,6 +31,7 @@ def make_connection(
     now: Callable[[], int] | None = None,
     connection_id: str | None = None,
     registry: ConnectionRegistry | None = None,
+    media_repo: MediaReferenceRecorder | None = None,
 ) -> tuple[RelayConnection, Recorder]:
     authorizer = SeededRelayAuthorizer(set(allowed_pubkeys), channel_members=channel_members)
     recorder = Recorder()
@@ -38,6 +44,7 @@ def make_connection(
         now=now or (lambda: int(time.time())),
         connection_id=connection_id,
         registry=registry,
+        media_repo=media_repo,
     )
     return connection, recorder
 
@@ -197,6 +204,52 @@ class TestPublishing:
         ok = recorder.of_type("OK")[-1]
         assert ok[2] is False
         assert str(ok[3]).startswith("duplicate:")
+
+
+class _FakeMediaRepo:
+    def __init__(self) -> None:
+        self.recorded: list[tuple[str, str]] = []
+
+    async def record_references(self, event: NostrEvent, *, channel_id: str) -> None:
+        self.recorded.append((event["id"], channel_id))
+
+
+class TestMediaReferenceRecording:
+    async def test_accepting_an_event_with_imeta_records_the_reference(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        media_repo = _FakeMediaRepo()
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, media_repo=media_repo
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        event = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=9,
+            tags=[["h", "chan1"], ["imeta", f"x {'a' * 64}"]],
+        )
+
+        await connection.handle_message(["EVENT", event])
+
+        assert media_repo.recorded == [(event["id"], "chan1")]
+
+    async def test_a_rejected_event_records_no_reference(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        media_repo = _FakeMediaRepo()
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, media_repo=media_repo
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        tampered: NostrEvent = {**event, "content": "tampered"}
+
+        await connection.handle_message(["EVENT", tampered])
+
+        assert media_repo.recorded == []
 
 
 class _BrokenPublishStore:

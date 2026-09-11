@@ -15,6 +15,9 @@ from studio_api.auth import FirebaseVerifier
 from studio_api.control.relay_authorizer import WorkspaceMembershipAuthorizer
 from studio_api.control.repository import ControlPlaneRepository
 from studio_api.control.routes import router as control_router
+from studio_api.media.repository import MediaRepository
+from studio_api.media.routes import router as media_router
+from studio_api.media.storage import ObjectStorage
 from studio_api.nostr.nip11 import build_info_document
 from studio_api.nostr.relay import (
     ConnectionRegistry,
@@ -36,6 +39,8 @@ def create_app(
     allowed_pubkeys: set[str] | None = None,
     relay_name: str = "Studio",
     firebase_verifier: FirebaseVerifier | None = None,
+    media_repo: MediaRepository | None = None,
+    storage: ObjectStorage | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Studio API")
     app.state.store = store
@@ -45,6 +50,8 @@ def create_app(
     app.state.relay_name = relay_name
     app.state.firebase_verifier = firebase_verifier
     app.state.connection_registry = ConnectionRegistry()
+    app.state.media_repo = media_repo
+    app.state.storage = storage
 
     authorizer: RelayAuthorizer
     if repo is not None:
@@ -54,6 +61,8 @@ def create_app(
     app.state.authorizer = authorizer
 
     app.include_router(control_router)
+    if media_repo is not None and storage is not None:
+        app.include_router(media_router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -99,6 +108,7 @@ def create_app(
             send=websocket.send_json,
             registry=app.state.connection_registry,
             close_transport=websocket.close,
+            media_repo=app.state.media_repo,
         )
         await connection.start()
         try:
@@ -132,6 +142,17 @@ def _build_firebase_verifier() -> FirebaseVerifier | None:
     return RealFirebaseVerifier(credentials_path)
 
 
+async def _build_storage() -> ObjectStorage:
+    storage = ObjectStorage(
+        endpoint_url=os.environ["MINIO_ENDPOINT"],
+        access_key=os.environ["MINIO_ROOT_USER"],
+        secret_key=os.environ["MINIO_ROOT_PASSWORD"],
+        bucket=os.environ.get("MINIO_BUCKET", "studio-media"),
+    )
+    await storage.ensure_bucket()
+    return storage
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.store = await build_default_store()
@@ -142,6 +163,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_store=app.state.store,
         server_secret=os.environ["WORKSPACE_KEY_SECRET"],
     )
+    app.state.media_repo = MediaRepository(app.state.store.raw)
+    app.state.storage = await _build_storage()
+    app.include_router(media_router)
     app.state.authorizer = WorkspaceMembershipAuthorizer(
         app.state.repo, workspace_slug=app.state.workspace_slug
     )

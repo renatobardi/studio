@@ -19,6 +19,7 @@ from studio_api.auth import (
     NostrCaller,
     require_caller,
     resolve_caller,
+    verify_blossom_auth,
     verify_nip98,
 )
 from studio_api.nostr.model import NostrEvent
@@ -104,6 +105,74 @@ class TestVerifyNip98:
 
         with pytest.raises(AuthError):
             verify_nip98(tampered, url=URL, method=METHOD, now=NOW)
+
+
+def make_blossom_event(
+    sk: PrivateKey,
+    pubkey: str,
+    *,
+    action: str = "upload",
+    expiration: int = NOW + 60,
+    sha256: str | None = None,
+    created_at: int = NOW,
+) -> NostrEvent:
+    tags = [["t", action], ["expiration", str(expiration)]]
+    if sha256 is not None:
+        tags.append(["x", sha256])
+    return sign_event(sk, pubkey=pubkey, created_at=created_at, kind=24242, tags=tags)
+
+
+class TestVerifyBlossomAuth:
+    def test_a_well_formed_upload_event_resolves_to_its_pubkey(self) -> None:
+        sk, pubkey = new_keypair()
+        event = make_blossom_event(sk, pubkey, action="upload", sha256="a" * 64)
+
+        assert verify_blossom_auth(event, action="upload", now=NOW) == pubkey
+
+    def test_a_well_formed_get_event_resolves_to_its_pubkey(self) -> None:
+        sk, pubkey = new_keypair()
+        event = make_blossom_event(sk, pubkey, action="get")
+
+        assert verify_blossom_auth(event, action="get", now=NOW) == pubkey
+
+    def test_wrong_kind_is_rejected(self) -> None:
+        sk, pubkey = new_keypair()
+        event = sign_event(
+            sk, pubkey=pubkey, created_at=NOW, kind=27235,
+            tags=[["t", "upload"], ["expiration", str(NOW + 60)]],
+        )
+
+        with pytest.raises(AuthError):
+            verify_blossom_auth(event, action="upload", now=NOW)
+
+    def test_wrong_action_is_rejected(self) -> None:
+        sk, pubkey = new_keypair()
+        event = make_blossom_event(sk, pubkey, action="get")
+
+        with pytest.raises(AuthError):
+            verify_blossom_auth(event, action="upload", now=NOW)
+
+    def test_expired_event_is_rejected(self) -> None:
+        sk, pubkey = new_keypair()
+        event = make_blossom_event(sk, pubkey, expiration=NOW - 1)
+
+        with pytest.raises(AuthError):
+            verify_blossom_auth(event, action="upload", now=NOW)
+
+    def test_missing_expiration_is_rejected(self) -> None:
+        sk, pubkey = new_keypair()
+        event = sign_event(sk, pubkey=pubkey, created_at=NOW, kind=24242, tags=[["t", "upload"]])
+
+        with pytest.raises(AuthError):
+            verify_blossom_auth(event, action="upload", now=NOW)
+
+    def test_tampered_event_is_rejected(self) -> None:
+        sk, pubkey = new_keypair()
+        event = make_blossom_event(sk, pubkey)
+        tampered: NostrEvent = {**event, "tags": [["t", "upload"], ["expiration", str(NOW + 999)]]}
+
+        with pytest.raises(AuthError):
+            verify_blossom_auth(tampered, action="upload", now=NOW)
 
 
 class TestResolveCaller:
