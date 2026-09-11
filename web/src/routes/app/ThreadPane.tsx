@@ -3,6 +3,7 @@ import { useState } from "react";
 import { buildThreadReply, type TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
+import { Avatar } from "./Avatar";
 import { displayName, type useProfiles } from "./useProfiles";
 
 export function ThreadPane({
@@ -45,13 +46,19 @@ export function ThreadPane({
     <aside className="side-pane" aria-label="Thread" data-testid="thread-pane">
       <h2 className="side-pane-title">Thread</h2>
       <div className="thread-root">
-        <div className="message-author">{displayName(profiles, root.pubkey)}</div>
+        <div className="message-header">
+          <Avatar profile={profiles.get(root.pubkey)} name={displayName(profiles, root.pubkey)} />
+          <div className="message-author">{displayName(profiles, root.pubkey)}</div>
+        </div>
         <div className="message-content">{root.content}</div>
       </div>
       <ul className="thread-reply-list">
         {sorted.map((reply) => (
           <li key={reply.id} data-testid="thread-reply">
-            <div className="message-author">{displayName(profiles, reply.pubkey)}</div>
+            <div className="message-header">
+              <Avatar profile={profiles.get(reply.pubkey)} name={displayName(profiles, reply.pubkey)} />
+              <div className="message-author">{displayName(profiles, reply.pubkey)}</div>
+            </div>
             <div className="message-content">{reply.content}</div>
           </li>
         ))}

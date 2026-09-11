@@ -145,4 +145,46 @@ describe("RelayClient reconnection", () => {
     expect(newWs.lastSent("REQ")).toBeDefined();
     expect(states).toEqual(["reconnecting", "open"]);
   });
+
+  test("backs off exponentially on repeated failures, resetting after success", async () => {
+    const delays: number[] = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      return originalSetTimeout(fn, 0);
+    }) as typeof setTimeout;
+
+    try {
+      FakeWebSocket.instances = [];
+      const client = new RelayClient(RELAY_URL, fakeSigner(), {
+        wsFactory: (url) => new FakeWebSocket(url) as unknown as WebSocket,
+        reconnectDelayMs: 100,
+        maxReconnectDelayMs: 1000,
+      });
+      const connectPromise = client.connect();
+      const ws1 = FakeWebSocket.instances[0]!;
+      await authenticate(ws1, "challengeA");
+      await connectPromise;
+
+      ws1.close(); // 1st failure: attempt 0 -> 100ms
+      await new Promise((r) => originalSetTimeout(r, 0));
+      const ws2 = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+      ws2.close(); // 2nd failure before re-auth: attempt 1 -> 200ms
+      await new Promise((r) => originalSetTimeout(r, 0));
+
+      expect(delays).toEqual([100, 200]);
+
+      const ws3 = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+      await authenticate(ws3, "challengeB");
+      await new Promise((r) => originalSetTimeout(r, 0));
+      expect(client.state).toBe("open");
+
+      ws3.close(); // reconnected successfully, so this failure resets to attempt 0 -> 100ms again
+      await new Promise((r) => originalSetTimeout(r, 0));
+
+      expect(delays).toEqual([100, 200, 100]);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
 });

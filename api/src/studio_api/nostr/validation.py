@@ -14,6 +14,10 @@ MESSAGE = 9
 REACTION = 7
 THREAD_REPLY = 1111
 
+# The tag naming a Thread Reply's root / a Reaction's target event — the single source of truth
+# for which tag `relay.py` must look up to check that root/target is in the same Channel.
+ROOT_TAG_BY_KIND = {THREAD_REPLY: "E", REACTION: "e"}
+
 # Published verbatim in the NIP-11 `limitation` object so clients know what
 # a submission may not exceed.
 LIMITATION = {

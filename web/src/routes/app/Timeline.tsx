@@ -10,6 +10,7 @@ import {
   type TargetRef,
 } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
+import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
@@ -92,6 +93,7 @@ export function Timeline({
               data-testid="timeline-message"
             >
               <div className="message-header">
+                <Avatar profile={profiles.get(message.pubkey)} name={displayName(profiles, message.pubkey)} />
                 <span className="message-author">{displayName(profiles, message.pubkey)}</span>
                 <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
               </div>

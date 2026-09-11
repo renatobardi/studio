@@ -2,7 +2,7 @@ import type { VerifiedEvent } from "nostr-tools";
 import { useEffect, useRef, useState } from "react";
 import type { RelayClient } from "../../lib/relay";
 
-interface Profile {
+export interface Profile {
   name?: string;
   picture?: string;
 }

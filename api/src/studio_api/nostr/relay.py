@@ -15,7 +15,7 @@ from typing import Any, Protocol
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
 from studio_api.nostr.model import Filter, NostrEvent, first_tag_value
 from studio_api.nostr.store import EventStore, LiveFanout, PublishResult
-from studio_api.nostr.validation import validate_event
+from studio_api.nostr.validation import ROOT_TAG_BY_KIND, validate_event
 
 SendFn = Callable[[list[Any]], Awaitable[None]]
 CloseTransportFn = Callable[[], Awaitable[None]]
@@ -29,11 +29,6 @@ MODERATION_KINDS = frozenset({8000, 8001, 9000, 9001, 13534, 33534, 39000, 39001
 
 # Readable by any Workspace Member regardless of Channel membership.
 WORKSPACE_WIDE_KINDS = frozenset({0, 10002, 10050, 10063, *MODERATION_KINDS})
-
-# Ticket #5: a Thread Reply's root (its `E` tag) or a Reaction's target (its
-# `e` tag) must be a real event already in that same Channel — the root/
-# target tag naming each kind uses to point at it.
-_ROOT_TAG_BY_KIND = {1111: "E", 7: "e"}
 
 
 class RelayAuthorizer(Protocol):
@@ -230,7 +225,7 @@ class RelayConnection:
         if rejection is not None:
             await self._send(["OK", event_id, False, f"{rejection.prefix}: {rejection.message}"])
             return
-        root_tag = _ROOT_TAG_BY_KIND.get(event.get("kind"))
+        root_tag = ROOT_TAG_BY_KIND.get(event.get("kind"))
         if root_tag is not None:
             root_id = first_tag_value(event, root_tag)
             root_events = await self._store.query([Filter(ids=[root_id])]) if root_id else []

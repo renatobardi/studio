@@ -14,18 +14,20 @@ export function useChannelFeed(client: RelayClient, channelId: string) {
   const [deletions, setDeletions] = useState<Map<string, VerifiedEvent>>(new Map());
   const [hasMore, setHasMore] = useState(true);
 
+  const applyEvent = (event: VerifiedEvent) => {
+    if (event.kind === 9) setMessages((m) => new Map(m).set(event.id, event));
+    else if (event.kind === 1111) setReplies((m) => new Map(m).set(event.id, event));
+    else if (event.kind === 7) setReactions((m) => new Map(m).set(event.id, event));
+    else if (event.kind === 5) setDeletions((m) => new Map(m).set(event.id, event));
+  };
+
   useEffect(() => {
-    const onEvent = (event: VerifiedEvent) => {
-      if (event.kind === 9) setMessages((m) => new Map(m).set(event.id, event));
-      else if (event.kind === 1111) setReplies((m) => new Map(m).set(event.id, event));
-      else if (event.kind === 7) setReactions((m) => new Map(m).set(event.id, event));
-      else if (event.kind === 5) setDeletions((m) => new Map(m).set(event.id, event));
-    };
     const unsubscribe = client.subscribe(
       [{ kinds: [9, 1111, 7, 5], "#h": [channelId], limit: PAGE_SIZE }],
-      { onEvent },
+      { onEvent: applyEvent },
     );
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyEvent closes over setters only, stable in effect
   }, [client, channelId]);
 
   const loadOlder = () => {
@@ -37,10 +39,7 @@ export function useChannelFeed(client: RelayClient, channelId: string) {
       {
         onEvent: (event) => {
           received += 1;
-          if (event.kind === 9) setMessages((m) => new Map(m).set(event.id, event));
-          else if (event.kind === 1111) setReplies((m) => new Map(m).set(event.id, event));
-          else if (event.kind === 7) setReactions((m) => new Map(m).set(event.id, event));
-          else if (event.kind === 5) setDeletions((m) => new Map(m).set(event.id, event));
+          applyEvent(event);
         },
         onEose: () => {
           if (received === 0) setHasMore(false);

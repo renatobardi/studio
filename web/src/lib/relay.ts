@@ -66,8 +66,10 @@ interface Subscription {
 
 export interface RelayClientOptions {
   wsFactory?: (url: string) => WebSocket;
-  /** Delay before a reconnect attempt after the socket drops. Defaults to 2s. */
+  /** Delay before the *first* reconnect attempt; doubles on each further attempt. Defaults to 1s. */
   reconnectDelayMs?: number;
+  /** Ceiling the doubling delay never exceeds. Defaults to 30s. */
+  maxReconnectDelayMs?: number;
 }
 
 let subCounter = 0;
@@ -86,13 +88,16 @@ export class RelayClient {
   private readonly subscriptions = new Map<string, Subscription>();
   private explicitlyClosed = false;
   private readonly wsFactory: (url: string) => WebSocket;
-  private readonly reconnectDelayMs: number;
+  private readonly baseReconnectDelayMs: number;
+  private readonly maxReconnectDelayMs: number;
+  private reconnectAttempt = 0;
 
   constructor(relayUrl: string, signer: Signer, options: RelayClientOptions = {}) {
     this.relayUrl = relayUrl;
     this.signer = signer;
     this.wsFactory = options.wsFactory ?? ((url) => new WebSocket(url));
-    this.reconnectDelayMs = options.reconnectDelayMs ?? 2000;
+    this.baseReconnectDelayMs = options.reconnectDelayMs ?? 1000;
+    this.maxReconnectDelayMs = options.maxReconnectDelayMs ?? 30_000;
   }
 
   get state(): ConnectionState {
@@ -137,6 +142,7 @@ export class RelayClient {
         if (msg[0] === "OK" && msg[1] === authEventId) {
           const [, , ok] = msg as [string, string, boolean, string];
           if (ok) {
+            this.reconnectAttempt = 0;
             this.setState("open");
             this.resubscribeAll();
             if (!settled) {
@@ -182,9 +188,14 @@ export class RelayClient {
       return;
     }
     this.setState("reconnecting");
+    const delay = Math.min(
+      this.baseReconnectDelayMs * 2 ** this.reconnectAttempt,
+      this.maxReconnectDelayMs,
+    );
+    this.reconnectAttempt += 1;
     setTimeout(() => {
       this.open().catch(() => {});
-    }, this.reconnectDelayMs);
+    }, delay);
   }
 
   private resubscribeAll(): void {
