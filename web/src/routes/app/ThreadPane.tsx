@@ -23,16 +23,20 @@ export function ThreadPane({
 }>) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const send = async () => {
     const content = draft.trim();
     if (!content) return;
     setSending(true);
+    setSendError(null);
     try {
       const template = buildThreadReply(channelId, root, content);
       const signed = await signer.signEvent(template);
       await client.publish(signed);
       setDraft("");
+    } catch {
+      setSendError("Couldn't send — check your connection and try again.");
     } finally {
       setSending(false);
     }
@@ -63,20 +67,24 @@ export function ThreadPane({
           </li>
         ))}
       </ul>
-      <div className="composer">
+      {sendError && <div className="error-banner">{sendError}</div>}
+      <form
+        className="composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send();
+        }}
+      >
         <input
           className="composer-input"
           value={draft}
           placeholder="Reply in thread…"
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void send();
-          }}
         />
-        <button className="btn btn-primary" disabled={sending || !draft.trim()} onClick={() => void send()}>
+        <button className="btn btn-primary" type="submit" disabled={sending || !draft.trim()}>
           Reply
         </button>
-      </div>
+      </form>
     </aside>
   );
 }

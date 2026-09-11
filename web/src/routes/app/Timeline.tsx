@@ -50,14 +50,20 @@ export function Timeline({
   onOpenThread: (root: TargetRef & { content: string }) => void;
 }>) {
   const [draft, setDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const send = async () => {
     const content = draft.trim();
     if (!content) return;
-    const template = buildMessage(channelId, content);
-    const signed = await signer.signEvent(template);
-    await client.publish(signed);
-    setDraft("");
+    setSendError(null);
+    try {
+      const template = buildMessage(channelId, content);
+      const signed = await signer.signEvent(template);
+      await client.publish(signed);
+      setDraft("");
+    } catch {
+      setSendError("Couldn't send — check your connection and try again.");
+    }
   };
 
   const react = async (target: TargetRef, emoji: string) => {
@@ -121,21 +127,25 @@ export function Timeline({
           );
         })}
       </ul>
-      <div className="composer">
+      {sendError && <div className="error-banner">{sendError}</div>}
+      <form
+        className="composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send();
+        }}
+      >
         <input
           className="composer-input"
           value={draft}
           placeholder="Message the channel…"
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void send();
-          }}
           data-testid="message-composer"
         />
-        <button className="btn btn-primary" disabled={!draft.trim()} onClick={() => void send()}>
+        <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
           Send
         </button>
-      </div>
+      </form>
     </div>
   );
 }

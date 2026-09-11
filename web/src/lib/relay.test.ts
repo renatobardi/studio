@@ -125,6 +125,40 @@ describe("RelayClient.subscribe", () => {
   });
 });
 
+describe("RelayClient.publish", () => {
+  test("sends immediately when already open", async () => {
+    const { client, ws } = await connectedClient();
+
+    const publishPromise = client.publish({ id: "m1" } as never);
+    await Promise.resolve();
+    await Promise.resolve();
+    ws.emitMessage(["OK", "m1", true, ""]);
+    await publishPromise;
+
+    expect(ws.lastSent("EVENT")).toEqual(["EVENT", { id: "m1" }]);
+  });
+
+  test("waits out a reconnect instead of failing on a stale socket", async () => {
+    const { client, ws } = await connectedClient();
+
+    ws.close(); // drops to "reconnecting"; this.ws is now the dead socket
+    expect(client.state).toBe("reconnecting");
+
+    const publishPromise = client.publish({ id: "m1" } as never);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const newWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+    await authenticate(newWs, "challengeC");
+    await Promise.resolve();
+    expect(client.state).toBe("open");
+
+    newWs.emitMessage(["OK", "m1", true, ""]);
+    await publishPromise;
+
+    expect(newWs.lastSent("EVENT")).toEqual(["EVENT", { id: "m1" }]);
+  });
+});
+
 describe("RelayClient reconnection", () => {
   test("on close, reconnects and re-issues active subscriptions", async () => {
     const { client, ws } = await connectedClient();
