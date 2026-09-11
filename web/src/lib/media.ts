@@ -1,3 +1,4 @@
+import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import type { VerifiedEvent } from "nostr-tools";
 import type { Signer } from "./custody";
 
@@ -31,9 +32,12 @@ export function validateAttachment(file: { type: string; size: number }): void {
   }
 }
 
-export async function sha256Hex(data: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** `crypto.subtle` only exists in a secure context (HTTPS, or literally `localhost`) — studio-test
+ * runs over plain HTTP behind Tailscale, so a WebCrypto-based hash would break there. `@noble/hashes`
+ * (already a transitive dependency of nostr-tools) works the same everywhere. */
+export function sha256Hex(data: ArrayBuffer): string {
+  const digest = nobleSha256(new Uint8Array(data));
+  return [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** kind 24242 (BUD-01): a Blossom authorization event — `t` names the action, `expiration`
@@ -90,7 +94,7 @@ export function uploadBlob(
   return (async () => {
     validateAttachment(file);
     const bytes = await file.arrayBuffer();
-    const sha256 = await sha256Hex(bytes);
+    const sha256 = sha256Hex(bytes);
     const authEvent = await buildBlossomAuthEvent("upload", { sha256 }, signer);
 
     return new Promise<BlobDescriptor>((resolve, reject) => {
@@ -118,7 +122,7 @@ export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Si
   const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
   const bytes = await response.arrayBuffer();
-  const actual = await sha256Hex(bytes);
+  const actual = sha256Hex(bytes);
   if (actual !== sha256) throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
   return URL.createObjectURL(new Blob([bytes], { type: response.headers.get("content-type") ?? "application/octet-stream" }));
 }
