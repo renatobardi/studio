@@ -36,17 +36,19 @@ export function AttachmentImage({ descriptor, signer }: Readonly<{ descriptor: B
 
   return (
     <>
-      <img
-        src={objectUrl}
-        alt=""
-        className="attachment-thumb"
-        data-testid="attachment-image"
-        onClick={() => setFullSize(true)}
-      />
+      <button type="button" className="attachment-thumb-button" onClick={() => setFullSize(true)}>
+        <img src={objectUrl} alt="" className="attachment-thumb" data-testid="attachment-image" />
+      </button>
       {fullSize && (
-        <div className="attachment-lightbox" onClick={() => setFullSize(false)} data-testid="attachment-lightbox">
+        <button
+          type="button"
+          className="attachment-lightbox"
+          onClick={() => setFullSize(false)}
+          data-testid="attachment-lightbox"
+          aria-label="Close full-size image"
+        >
           <img src={objectUrl} alt="" className="attachment-full" />
-        </div>
+        </button>
       )}
     </>
   );

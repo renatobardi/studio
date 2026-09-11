@@ -473,7 +473,14 @@ body {
   font-size: 12px;
 }
 
+.attachment-thumb-button {
+  all: unset;
+  cursor: zoom-in;
+  display: inline-block;
+}
+
 .attachment-lightbox {
+  all: unset;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.85);

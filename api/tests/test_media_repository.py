@@ -2,13 +2,14 @@
 against a real SurrealDB (same store as ControlPlaneRepository's tests)."""
 
 from studio_api.media.repository import MediaRepository
+from studio_api.nostr.model import NostrEvent
 from studio_api.nostr.store import EventStore
 
 SHA = "a" * 64
 OTHER_SHA = "b" * 64
 
 
-def _message_event(*, sha256: str, channel_id: str = "chan1") -> dict:
+def _message_event(*, sha256: str, channel_id: str = "chan1") -> NostrEvent:
     return {
         "id": "evt1",
         "pubkey": "author",
