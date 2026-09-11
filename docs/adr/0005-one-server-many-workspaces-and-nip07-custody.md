@@ -39,3 +39,11 @@ We decided:
   recovery is the extension's concern. The Account still exists, but it recovers nothing.
 - Content already delivered to a device is not revocable while the session lives. The media cache
   is a local cache, not a lease; revocation takes effect on the next fetch, and at sign-out.
+- Event record ids changed shape, so events written before this decision are unreachable under
+  the new keys. No migration is provided: the only deployment holding such events is
+  `studio-test`, whose data is disposable. A deployment that had to keep its events would need
+  one before taking this change.
+- Blobs stay server-wide, keyed by content hash alone (`/media` is not per-Workspace). Read
+  authorization is by Channel or DM reference, which is safe because Channel ids are unique, but
+  the uploader recorded against a hash is whoever uploaded those exact bytes last, in any
+  Workspace. Uploading requires being a Workspace Member somewhere on the server.

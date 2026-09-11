@@ -7,7 +7,6 @@ const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
 
-
 /** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
 export function hasNip07(): boolean {
   return typeof window !== "undefined" && "nostr" in window;

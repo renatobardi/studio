@@ -91,7 +91,6 @@ async def client(
     app.state.repo = control_repo
     app.state.media_repo = media_repo
     app.state.storage = storage
-    app.state.workspace_slug = WORKSPACE_SLUG
     app.include_router(router)
     transport = ASGITransport(app=app)
     # Matches MINIO_ENDPOINT so the app's own base_url (used to presign GET
@@ -115,6 +114,29 @@ async def _make_workspace_member(control_repo: ControlPlaneRepository, pubkey: s
 
 
 class TestUpload:
+    async def test_a_member_of_any_hosted_workspace_can_upload(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        """Ticket #45: the server hosts many Workspaces and blobs are shared
+        across it (/media is server-wide), so upload asks whether this pubkey
+        is a Workspace Member here at all — not of one configured slug."""
+        sk, pubkey = new_keypair()
+        await control_repo.create_workspace(
+            slug="book-club", name="Book Club", owner_pubkey=pubkey
+        )
+        sha256 = hashlib.sha256(JPEG_BYTES).hexdigest()
+
+        response = await client.put(
+            "/media/upload",
+            headers={
+                **blossom_header(sk, pubkey, action="upload", sha256=sha256),
+                "content-type": "image/jpeg",
+            },
+            content=JPEG_BYTES,
+        )
+
+        assert response.status_code == 200
+
     async def test_a_workspace_member_can_upload_an_image(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
     ) -> None:

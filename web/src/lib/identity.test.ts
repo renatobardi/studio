@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { verifyEvent } from "nostr-tools";
 import {
-  buildProfileEvent,
   relayListTemplate,
   serverListTemplate,
   generateIdentity,
@@ -31,18 +29,6 @@ describe("nsec round-trip", () => {
     const nsec = nsecFromSecretKey(identity.secretKey);
     expect(nsec).toMatch(/^nsec1/);
     expect(secretKeyFromNsec(nsec)).toEqual(identity.secretKey);
-  });
-});
-
-describe("buildProfileEvent", () => {
-  test("signs a kind:0 event with the given profile as JSON content", () => {
-    const identity = generateIdentity();
-    const event = buildProfileEvent(identity.secretKey, { name: "Renato", picture: "🌸" });
-
-    expect(event.kind).toBe(0);
-    expect(event.pubkey).toBe(identity.publicKey);
-    expect(JSON.parse(event.content)).toEqual({ name: "Renato", picture: "🌸" });
-    expect(verifyEvent(event)).toBe(true);
   });
 });
 

@@ -11,7 +11,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // Ticket #6: caches attached images by content hash, so a Channel Member
 // who has already fetched a blob doesn't re-authenticate/re-download it.
-// Emptied on sign-out by clearIdentity(), which owns the name.
+// Emptied on sign-out — see mediaCache.ts, which owns the name.
 const MEDIA_PATH = /^\/media\/[0-9a-f]{64}(\.\w+)?$/;
 
 self.addEventListener("install", () => {

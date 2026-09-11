@@ -167,6 +167,18 @@ class ControlPlaneRepository:
         row = await _select_or_none(self._db, RecordID("workspace_member", f"{slug}:{pubkey}"))
         return row["role"] if row is not None else None
 
+    async def is_workspace_member_anywhere(self, pubkey: str) -> bool:
+        """Whether this pubkey is a Workspace Member of any Workspace this
+        server hosts. Blobs are server-wide (/media is not per-Workspace), so
+        this is what gates an upload — a single configured slug would be
+        wrong on a server holding many Workspaces (ticket #45)."""
+        rows = await _query_or_empty(
+            self._db,
+            "SELECT VALUE pubkey FROM workspace_member WHERE pubkey = $pubkey LIMIT 1;",
+            {"pubkey": pubkey},
+        )
+        return len(rows) > 0
+
     async def _workspace_signing_key(self, slug: str) -> PrivateKey:
         row = await _select_or_none(self._db, RecordID("workspace", slug))
         assert row is not None, f"workspace {slug!r} does not exist"

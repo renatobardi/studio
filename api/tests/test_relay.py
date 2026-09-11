@@ -836,7 +836,9 @@ class TestForceDisconnect:
         await authenticate(connection, recorder, sk, pubkey, now=now)
         await connection.handle_message(["REQ", "sub1", {"kinds": [1]}])
 
-        await registry.force_disconnect(pubkey, reason="removed from workspace")
+        await registry.force_disconnect(
+            pubkey, workspace_slug=store.workspace_slug, reason="removed from workspace"
+        )
 
         closed = recorder.of_type("CLOSED")[-1]
         assert closed[1] == "sub1"
@@ -846,4 +848,35 @@ class TestForceDisconnect:
         self, store: EventStore, fanout: LiveFanout
     ) -> None:
         registry = ConnectionRegistry()
-        await registry.force_disconnect("never-connected", reason="whatever")  # no error
+        await registry.force_disconnect(
+            "never-connected", workspace_slug="family", reason="whatever"
+        )  # no error
+
+    async def test_removal_from_one_workspace_leaves_the_others_connected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """Ticket #45: one process serves many Workspaces, and the same
+        Identity may hold a connection to several. Being removed from one
+        must not close the sockets it holds on the others."""
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        registry = ConnectionRegistry()
+        here, here_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, registry=registry,
+            connection_id="here",
+        )
+        there, there_recorder = make_connection(
+            store.for_workspace("book-club"), fanout, allowed_pubkeys=(pubkey,),
+            now=lambda: now, registry=registry, connection_id="there",
+        )
+        await authenticate(here, here_recorder, sk, pubkey, now=now)
+        await authenticate(there, there_recorder, sk, pubkey, now=now)
+        await here.handle_message(["REQ", "sub1", {"kinds": [1]}])
+        await there.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        await registry.force_disconnect(
+            pubkey, workspace_slug=store.workspace_slug, reason="removed from the Workspace"
+        )
+
+        assert here_recorder.of_type("CLOSED")
+        assert there_recorder.of_type("CLOSED") == []

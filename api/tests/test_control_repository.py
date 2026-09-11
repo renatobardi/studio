@@ -492,3 +492,25 @@ class TestChannel:
 
         await repo.remove_channel_member(channel_id=channel.id, pubkey="member1")
         assert await repo.is_channel_member(channel.id, "member1") is False
+
+
+class TestRelayAuthorizerIsolation:
+    """Ticket #45: Channel ids are globally unique, so a Channel membership
+    check alone says nothing about which Workspace the Channel is in."""
+
+    async def test_a_channel_in_another_workspace_is_not_this_relays_channel(
+        self, repo: ControlPlaneRepository
+    ) -> None:
+        from studio_api.control.relay_authorizer import WorkspaceMembershipAuthorizer
+
+        await repo.create_workspace(slug="family", name="Family", owner_pubkey="owner1")
+        await repo.create_workspace(slug="book-club", name="Book Club", owner_pubkey="owner1")
+        elsewhere = await repo.create_channel(
+            workspace_slug="book-club", name="general", about="", private=False,
+            created_by="owner1",
+        )
+
+        here = WorkspaceMembershipAuthorizer(repo, workspace_slug="family")
+
+        assert await repo.is_channel_member(elsewhere.id, "owner1") is True
+        assert await here.is_channel_member(elsewhere.id, "owner1") is False
