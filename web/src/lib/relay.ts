@@ -204,8 +204,13 @@ export class RelayClient {
     }
   }
 
+  /** No-op when the socket isn't open (still CONNECTING, or already CLOSING/CLOSED) — calling
+   * WebSocket.send() in those states throws synchronously. A subscribe() cleanup can legitimately
+   * run before the connection ever opened (e.g. two state updates that used to land in the same
+   * React batch landing in separate ones instead), so this must be silent, not just avoided by
+   * callers. */
   private send(message: unknown[]): void {
-    this.ws?.send(JSON.stringify(message));
+    if (this._state === "open") this.ws?.send(JSON.stringify(message));
   }
 
   /** Subscribes to `filters`; returns an unsubscribe function. Safe to call before `connect()`

@@ -47,14 +47,16 @@ export function AppShell({
     let cancelled = false;
     (async () => {
       const url = `${window.location.origin}/api/workspaces/${workspace.slug}/channels`;
-      const proof = await authProof(url, "GET", signer);
+      const [proof, lastChannelId] = await Promise.all([authProof(url, "GET", signer), loadChannelId()]);
       const list = await listChannels(workspace.slug, proof);
       if (cancelled) return;
+      // Both setState calls together, in the same tick — keeping them batched into one render
+      // (as they were before this file needed a second, async lastChannelId source) matters: a
+      // channels-then-selectedChannelId split across two renders churns the unread-subscription
+      // effect below through subscribe→unsubscribe→resubscribe, which used to crash the app on
+      // still-CONNECTING sockets (see relay.ts's send() guard) — this avoids the churn outright.
       setChannels(list);
-      const lastChannelId = await loadChannelId();
-      setSelectedChannelId(
-        (current) => current ?? list.find((c) => c.id === lastChannelId)?.id ?? list[0]?.id ?? null,
-      );
+      setSelectedChannelId((current) => current ?? list.find((c) => c.id === lastChannelId)?.id ?? list[0]?.id ?? null);
     })();
     return () => {
       cancelled = true;

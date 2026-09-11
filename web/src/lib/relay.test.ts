@@ -129,6 +129,21 @@ describe("RelayClient.subscribe", () => {
     ws.emitMessage(["EVENT", subId, { id: "e1", kind: 9 }]);
     expect(events).toEqual([]);
   });
+
+  test("unsubscribing before the connection ever opens does not throw", () => {
+    // Regression: two React state updates that used to land in the same batch (and so ran this
+    // effect's subscribe/unsubscribe/resubscribe only once, after the socket was already open)
+    // landing in separate renders instead — subscribe() then immediately unsubscribe() while
+    // still CONNECTING crashed the app (WebSocket.send() throws InvalidStateError on a socket
+    // that isn't open yet; see AppShell.tsx's channels effect).
+    const client = newClient();
+    client.connect().catch(() => {});
+    const ws = FakeWebSocket.instances[0]!;
+
+    const unsubscribe = client.subscribe([{ kinds: [9] }], { onEvent: () => {} });
+    expect(unsubscribe).not.toThrow();
+    expect(ws.sent).toEqual([]);
+  });
 });
 
 describe("RelayClient.publish", () => {
