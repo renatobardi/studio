@@ -17,6 +17,8 @@ from studio_api.nostr.model import NostrEvent, first_tag_value
 NIP98_KIND = 27235
 NIP98_FRESHNESS_SECONDS = 60
 
+BLOSSOM_KIND = 24242
+
 
 class AuthError(Exception):
     pass
@@ -57,6 +59,32 @@ def verify_nip98(event: NostrEvent, *, url: str, method: str, now: int) -> str:
     return event["pubkey"]
 
 
+def decode_nostr_authorization_event(value: str) -> NostrEvent:
+    """Decodes the base64 event payload of a `Nostr <...>` Authorization
+    value — shared by NIP-98 (kind 27235) and Blossom (kind 24242) callers,
+    which differ only in which kind/tags they then check."""
+    try:
+        return json.loads(base64.b64decode(value, validate=True))  # type: ignore[no-any-return]
+    except (binascii.Error, ValueError) as error:
+        raise AuthError("malformed Nostr authorization event") from error
+
+
+def verify_blossom_auth(event: NostrEvent, *, action: str, now: int) -> str:
+    """Blossom's kind-24242 authorization event (BUD-01): a `t` tag naming
+    the action ("upload"/"get") and an `expiration` unix timestamp still in
+    the future. Returns the pubkey, or raises AuthError."""
+    if event["kind"] != BLOSSOM_KIND:
+        raise AuthError("wrong kind")
+    if not has_valid_integrity(event):
+        raise AuthError("id/signature is invalid")
+    if first_tag_value(event, "t") != action:
+        raise AuthError(f"t tag must be {action!r}")
+    expiration = first_tag_value(event, "expiration")
+    if expiration is None or int(expiration) < now:
+        raise AuthError("expiration is missing or in the past")
+    return event["pubkey"]
+
+
 def resolve_caller(
     authorization_header: str | None,
     *,
@@ -74,10 +102,7 @@ def resolve_caller(
         uid, email = firebase_verifier.verify(value)
         return FirebaseCaller(uid=uid, email=email)
     if scheme == "Nostr":
-        try:
-            event = json.loads(base64.b64decode(value, validate=True))
-        except (binascii.Error, ValueError) as error:
-            raise AuthError("malformed Nostr authorization event") from error
+        event = decode_nostr_authorization_event(value)
         return NostrCaller(pubkey=verify_nip98(event, url=url, method=method, now=now))
     raise AuthError(f"unsupported authorization scheme: {scheme!r}")
 

@@ -7,6 +7,7 @@ import { decryptBackup, encryptBackup, validateBackupPassphrase } from "../../li
 import {
   buildProfileEvent,
   buildRelayListEvent,
+  buildServerListEvent,
   generateIdentity,
   nsecFromSecretKey,
   secretKeyFromNsec,
@@ -188,8 +189,10 @@ export function OnboardingScreen({
       if (mode === "new") {
         const profileEvent = buildProfileEvent(identity.secretKey, { name, picture: emoji });
         const relayListEvent = buildRelayListEvent(identity.secretKey, [redeemed.relay_url]);
+        const serverListEvent = buildServerListEvent(identity.secretKey, [redeemed.media_url]);
         await publishEvent(ws, profileEvent);
         await publishEvent(ws, relayListEvent);
+        await publishEvent(ws, serverListEvent);
       }
       ws.close();
 

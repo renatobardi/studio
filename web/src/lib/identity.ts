@@ -45,3 +45,16 @@ export function buildRelayListEvent(secretKey: Uint8Array, relayUrls: string[]):
     secretKey,
   );
 }
+
+/** kind 10063 (BUD-03): the user's media servers, so other clients know where to fetch blobs from. */
+export function buildServerListEvent(secretKey: Uint8Array, serverUrls: string[]): VerifiedEvent {
+  return finalizeEvent(
+    {
+      kind: 10063,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: serverUrls.map((url) => ["server", url]),
+      content: "",
+    },
+    secretKey,
+  );
+}

@@ -20,6 +20,14 @@ from studio_api.nostr.validation import ROOT_TAG_BY_KIND, validate_event
 SendFn = Callable[[list[Any]], Awaitable[None]]
 CloseTransportFn = Callable[[], Awaitable[None]]
 
+
+class MediaReferenceRecorder(Protocol):
+    """Ticket #6: records that a Channel references the blobs named by an
+    accepted event's `imeta` tags. Implemented by MediaRepository."""
+
+    async def record_references(self, event: NostrEvent, *, channel_id: str) -> None: ...
+
+
 _SINGLE_LETTER_TAG_FILTER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 # NIP-43/NIP-29 moderation and announcement kinds: only ever written by the
@@ -109,6 +117,7 @@ class RelayConnection:
         now: Callable[[], int] = lambda: int(time.time()),
         registry: ConnectionRegistry | None = None,
         close_transport: CloseTransportFn | None = None,
+        media_repo: MediaReferenceRecorder | None = None,
     ) -> None:
         self._store = store
         self._fanout = fanout
@@ -119,6 +128,7 @@ class RelayConnection:
         self._now = now
         self._registry = registry
         self._close_transport = close_transport
+        self._media_repo = media_repo
         self.challenge = secrets.token_hex(16)
         self._authed_pubkey: str | None = None
         self._is_member = False
@@ -233,6 +243,8 @@ class RelayConnection:
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
+        if result is PublishResult.OK and self._media_repo is not None and channel_id is not None:
+            await self._media_repo.record_references(event, channel_id=channel_id)
         if result is PublishResult.DUPLICATE:
             await self._send(["OK", event_id, False, "duplicate: already have this event"])
         elif result is PublishResult.SUPERSEDED:

@@ -20,6 +20,12 @@ describe("buildMessage", () => {
     expect(template.content).toBe("hello");
     expect(template.tags).toEqual([["h", "chan1"]]);
   });
+
+  test("appends imeta tags for attached images after the h tag", () => {
+    const imeta = ["imeta", "url https://x/1", "m image/jpeg", "x " + "a".repeat(64)];
+    const template = buildMessage("chan1", "look", [imeta]);
+    expect(template.tags).toEqual([["h", "chan1"], imeta]);
+  });
 });
 
 describe("buildThreadReply", () => {

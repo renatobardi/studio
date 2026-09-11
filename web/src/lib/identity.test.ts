@@ -3,6 +3,7 @@ import { verifyEvent } from "nostr-tools";
 import {
   buildProfileEvent,
   buildRelayListEvent,
+  buildServerListEvent,
   generateIdentity,
   nsecFromSecretKey,
   secretKeyFromNsec,
@@ -52,6 +53,18 @@ describe("buildRelayListEvent", () => {
 
     expect(event.kind).toBe(10050);
     expect(event.tags).toEqual([["relay", relays[0]]]);
+    expect(verifyEvent(event)).toBe(true);
+  });
+});
+
+describe("buildServerListEvent", () => {
+  test("signs a kind:10063 event with one server tag per media server (BUD-03)", () => {
+    const identity = generateIdentity();
+    const servers = ["https://api.example/media"];
+    const event = buildServerListEvent(identity.secretKey, servers);
+
+    expect(event.kind).toBe(10063);
+    expect(event.tags).toEqual([["server", servers[0]]]);
     expect(verifyEvent(event)).toBe(true);
   });
 });
