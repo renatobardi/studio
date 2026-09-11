@@ -209,9 +209,13 @@ class TestPublishing:
 class _FakeMediaRepo:
     def __init__(self) -> None:
         self.recorded: list[tuple[str, str]] = []
+        self.dm_recorded: list[tuple[str, tuple[str, ...]]] = []
 
     async def record_references(self, event: NostrEvent, *, channel_id: str) -> None:
         self.recorded.append((event["id"], channel_id))
+
+    async def record_dm_references(self, event: NostrEvent, *, recipients: list[str]) -> None:
+        self.dm_recorded.append((event["id"], tuple(recipients)))
 
 
 class TestMediaReferenceRecording:
@@ -643,6 +647,155 @@ class TestThreadReplyAndReactionRootChannel:
 
         ok = recorder.of_type("OK")[-1]
         assert ok == ["OK", reaction["id"], True, ""]
+
+
+class TestGiftWrapAuthorization:
+    """Ticket #7: a kind 1059 gift wrap is readable only by the pubkey in
+    its own `p` tag — regardless of what any subscription filters for,
+    never by generic Workspace membership like other kindless-`h` events."""
+
+    async def test_the_recipient_can_read_a_gift_wrap_addressed_to_them(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now)
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[["p", pubkey]])
+        await connection.handle_message(["EVENT", wrap])
+
+        await connection.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+
+        received_ids = {e[2]["id"] for e in recorder.of_type("EVENT")}
+        assert received_ids == {wrap["id"]}
+
+    async def test_a_third_party_with_no_p_filter_never_receives_someone_elses_gift_wrap(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        eavesdropper_sk, eavesdropper_pubkey = new_keypair()
+        now = int(time.time())
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
+            now=lambda: now, connection_id="publisher-gw",
+        )
+        await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            sender_sk, pubkey=sender_pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]]
+        )
+        await publisher.handle_message(["EVENT", wrap])
+
+        eavesdropper, eve_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
+            now=lambda: now, connection_id="eavesdropper-gw",
+        )
+        await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
+
+        # No `#p` filter at all — the leak this ticket closes.
+        await eavesdropper.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+
+        assert eve_recorder.of_type("EVENT") == []
+
+    async def test_live_gift_wrap_delivery_is_restricted_to_the_recipient(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        eavesdropper_sk, eavesdropper_pubkey = new_keypair()
+        now = int(time.time())
+        eavesdropper, eve_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
+            now=lambda: now, connection_id="eavesdropper-gw-live",
+        )
+        await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
+        await eavesdropper.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
+            now=lambda: now, connection_id="publisher-gw-live",
+        )
+        await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            sender_sk, pubkey=sender_pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]]
+        )
+        await publisher.handle_message(["EVENT", wrap])
+
+        await asyncio.sleep(0.2)
+        assert eve_recorder.of_type("EVENT") == []
+
+        await eavesdropper.close()
+        await publisher.close()
+
+    async def test_any_workspace_member_may_publish_a_gift_wrap(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]])
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok == ["OK", wrap["id"], True, ""]
+
+    async def test_a_gift_wrap_without_a_p_tag_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now)
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[])
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+
+class TestDmMediaReferenceRecording:
+    async def test_accepting_a_gift_wrap_with_x_tags_records_dm_references_for_sender_and_recipients(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        media_repo = _FakeMediaRepo()
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, media_repo=media_repo
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        wrap = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey], ["x", "a" * 64]],
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        assert media_repo.dm_recorded == [(wrap["id"], (recipient_pubkey, pubkey))]
+
+    async def test_a_rejected_gift_wrap_records_no_dm_reference(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        media_repo = _FakeMediaRepo()
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, media_repo=media_repo
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[])
+
+        await connection.handle_message(["EVENT", wrap])
+
+        assert media_repo.dm_recorded == []
 
 
 class TestForceDisconnect:

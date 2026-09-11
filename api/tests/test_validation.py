@@ -183,3 +183,22 @@ def test_a_reaction_missing_a_required_tag_is_rejected() -> None:
 
     assert rejection is not None
     assert rejection.prefix == "invalid"
+
+
+def test_a_gift_wrap_with_a_p_tag_is_valid() -> None:
+    sk, pubkey = new_keypair()
+    event = sign_event(
+        sk, pubkey=pubkey, created_at=NOW, kind=1059, tags=[["p", "b" * 64]], content="ciphertext"
+    )
+
+    assert validate_event(event, now=NOW) is None
+
+
+def test_a_gift_wrap_without_a_p_tag_is_rejected() -> None:
+    sk, pubkey = new_keypair()
+    event = sign_event(sk, pubkey=pubkey, created_at=NOW, kind=1059, tags=[], content="ciphertext")
+
+    rejection = validate_event(event, now=NOW)
+
+    assert rejection is not None
+    assert rejection.prefix == "invalid"
