@@ -19,13 +19,16 @@ WORKSPACE_SLUG = "family"
 
 
 async def make_app(
-    store: EventStore, *, allowed_pubkeys: tuple[str, ...] = ()
+    store: EventStore,
+    *,
+    allowed_pubkeys: tuple[str, ...] = (),
+    workspaces: tuple[str, ...] = (WORKSPACE_SLUG,),
 ) -> tuple[FastAPI, LiveFanout]:
     fanout = await store.start_live_fanout()
     app = create_app(
         store=store,
         fanout=fanout,
-        workspace_slug=WORKSPACE_SLUG,
+        relay_workspaces=set(workspaces),
         allowed_pubkeys=set(allowed_pubkeys),
     )
     return app, fanout
@@ -95,7 +98,7 @@ async def _test_lifespan(app: FastAPI) -> AsyncIterator[None]:
 class TestRelayWebSocket:
     def test_full_round_trip_over_a_real_websocket(self) -> None:
         sk, pubkey = new_keypair()
-        app = create_app(store=None, workspace_slug=WORKSPACE_SLUG, allowed_pubkeys={pubkey})
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG}, allowed_pubkeys={pubkey})
         app.router.lifespan_context = _test_lifespan
 
         with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
@@ -129,7 +132,7 @@ class TestRelayWebSocket:
     def test_an_unknown_workspace_slug_closes_the_connection(self) -> None:
         from starlette.websockets import WebSocketDisconnect
 
-        app = create_app(store=None, workspace_slug=WORKSPACE_SLUG)
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG})
 
         with TestClient(app) as client:
             raised = False
@@ -139,3 +142,22 @@ class TestRelayWebSocket:
             except WebSocketDisconnect:
                 raised = True
             assert raised
+
+
+class TestManyWorkspacesOnOneServer:
+    """Ticket #45: the server hosts every Workspace it holds, resolved from
+    the request path — not one Workspace fixed by configuration."""
+
+    async def test_each_hosted_workspace_serves_its_own_nip11_document(
+        self, store: EventStore
+    ) -> None:
+        app, fanout = await make_app(store, workspaces=("family", "book-club"))
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = {"Accept": "application/nostr+json"}
+                assert (await client.get("/relay/family", headers=headers)).status_code == 200
+                assert (await client.get("/relay/book-club", headers=headers)).status_code == 200
+                assert (await client.get("/relay/nope", headers=headers)).status_code == 404
+        finally:
+            await fanout.stop()

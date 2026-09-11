@@ -31,7 +31,6 @@ from studio_api.control.models import (
 from studio_api.crypto_secrets import decrypt_secret, encrypt_secret
 from studio_api.db import query_or_empty as _query_or_empty
 from studio_api.db import select_or_none as _select_or_none
-from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.model import NostrEvent
 from studio_api.nostr.projection import (
     WORKSPACE_ROLES,
@@ -46,17 +45,19 @@ from studio_api.nostr.projection import (
     build_workspace_remove,
     build_workspace_role_definition,
 )
-from studio_api.nostr.store import EventStore, replace_key, to_event_row
+from studio_api.nostr.store import EventStore, record_key, to_event_row
 
 
-def _event_statement(statements: list[str], params: dict[str, Any], var: str, event: NostrEvent) -> None:
+def _event_statement(
+    statements: list[str], params: dict[str, Any], var: str, event: NostrEvent,
+    *, workspace_slug: str,
+) -> None:
     """Appends an UPSERT for one projected event, keyed exactly the way
-    EventStore.publish() would key it, so a later REQ against the relay
-    finds the same row a normal client-published event would replace."""
-    cls = kind_class(event["kind"])
-    key = replace_key(event, cls) if cls in (KindClass.REPLACEABLE, KindClass.ADDRESSABLE) else event["id"]
-    params[f"{var}_id"] = key
-    params[f"{var}_row"] = to_event_row(event)
+    EventStore.publish() would key it — Workspace-namespaced, so a later REQ
+    on that Workspace's relay finds the same row a client-published event
+    would replace, and no other Workspace ever sees it."""
+    params[f"{var}_id"] = record_key(event, workspace_slug=workspace_slug)
+    params[f"{var}_row"] = to_event_row(event, workspace_slug=workspace_slug)
     statements.append(f"UPSERT type::thing('event', ${var}_id) CONTENT ${var}_row;")
 
 
@@ -135,14 +136,19 @@ class ControlPlaneRepository:
 
         for i, role in enumerate(WORKSPACE_ROLES):
             _event_statement(
-                statements, params, f"role{i}", build_workspace_role_definition(workspace_sk, role=role)
+                statements, params, f"role{i}",
+                build_workspace_role_definition(workspace_sk, role=role),
+                workspace_slug=slug,
             )
         _event_statement(
             statements, params, "memlist",
             build_workspace_member_list(workspace_sk, members=[(owner_pubkey, "owner")]),
+            workspace_slug=slug,
         )
         _event_statement(
-            statements, params, "add0", build_workspace_add(workspace_sk, pubkey=owner_pubkey)
+            statements, params, "add0",
+            build_workspace_add(workspace_sk, pubkey=owner_pubkey),
+            workspace_slug=slug,
         )
 
         surql, bound = _run_in_transaction(statements, params)
@@ -268,9 +274,12 @@ class ControlPlaneRepository:
         _event_statement(
             statements, params, "memlist",
             build_workspace_member_list(workspace_sk, members=updated_members),
+            workspace_slug=invite.workspace_slug,
         )
         _event_statement(
-            statements, params, "add0", build_workspace_add(workspace_sk, pubkey=pubkey)
+            statements, params, "add0",
+            build_workspace_add(workspace_sk, pubkey=pubkey),
+            workspace_slug=invite.workspace_slug,
         )
 
         surql, bound = _run_in_transaction(statements, params)
@@ -290,7 +299,9 @@ class ControlPlaneRepository:
         statements = ["UPDATE type::thing('workspace_member', $wm_id) SET role = $role;"]
         params: dict[str, Any] = {"wm_id": f"{slug}:{pubkey}", "role": role}
         _event_statement(
-            statements, params, "memlist", build_workspace_member_list(workspace_sk, members=updated)
+            statements, params, "memlist",
+            build_workspace_member_list(workspace_sk, members=updated),
+            workspace_slug=slug,
         )
         surql, bound = _run_in_transaction(statements, params)
         await self._db.query(surql, bound)
@@ -317,9 +328,12 @@ class ControlPlaneRepository:
         _event_statement(
             statements, params, "memlist",
             build_workspace_member_list(workspace_sk, members=[(m.pubkey, m.role) for m in members]),
+            workspace_slug=slug,
         )
         _event_statement(
-            statements, params, "remove0", build_workspace_remove(workspace_sk, pubkey=pubkey)
+            statements, params, "remove0",
+            build_workspace_remove(workspace_sk, pubkey=pubkey),
+            workspace_slug=slug,
         )
         for i, channel_id in enumerate(channel_ids):
             statements.append(f"DELETE type::thing('channel_member', $cm_id_{i});")
@@ -330,6 +344,7 @@ class ControlPlaneRepository:
                 build_channel_members(
                     workspace_sk, channel_id=channel_id, member_pubkeys=[m.pubkey for m in remaining]
                 ),
+                workspace_slug=slug,
             )
             _event_statement(
                 statements, params, f"cadmins{i}",
@@ -337,10 +352,12 @@ class ControlPlaneRepository:
                     workspace_sk, channel_id=channel_id,
                     admin_pubkeys=[m.pubkey for m in remaining if m.role == "admin"],
                 ),
+                workspace_slug=slug,
             )
             _event_statement(
                 statements, params, f"cremove{i}",
                 build_channel_remove(workspace_sk, channel_id=channel_id, pubkey=pubkey),
+                workspace_slug=slug,
             )
 
         surql, bound = _run_in_transaction(statements, params)
@@ -370,21 +387,27 @@ class ControlPlaneRepository:
         _event_statement(
             statements, params, "meta",
             build_channel_metadata(workspace_sk, channel_id=channel_id, name=name, about=about),
+            workspace_slug=workspace_slug,
         )
         _event_statement(
             statements, params, "admins",
             build_channel_admins(workspace_sk, channel_id=channel_id, admin_pubkeys=[created_by]),
+            workspace_slug=workspace_slug,
         )
         _event_statement(
             statements, params, "members",
             build_channel_members(workspace_sk, channel_id=channel_id, member_pubkeys=[created_by]),
+            workspace_slug=workspace_slug,
         )
         _event_statement(
-            statements, params, "roles", build_channel_roles(workspace_sk, channel_id=channel_id)
+            statements, params, "roles",
+            build_channel_roles(workspace_sk, channel_id=channel_id),
+            workspace_slug=workspace_slug,
         )
         _event_statement(
             statements, params, "add0",
             build_channel_add(workspace_sk, channel_id=channel_id, pubkey=created_by),
+            workspace_slug=workspace_slug,
         )
 
         surql, bound = _run_in_transaction(statements, params)
@@ -474,16 +497,19 @@ class ControlPlaneRepository:
             build_channel_members(
                 workspace_sk, channel_id=channel_id, member_pubkeys=[m.pubkey for m in members]
             ),
+            workspace_slug=channel.workspace_slug,
         )
         if role == "admin":
             admins = [m.pubkey for m in members if m.role == "admin"]
             _event_statement(
                 statements, params, "admins",
                 build_channel_admins(workspace_sk, channel_id=channel_id, admin_pubkeys=admins),
+                workspace_slug=channel.workspace_slug,
             )
         _event_statement(
             statements, params, "add0",
             build_channel_add(workspace_sk, channel_id=channel_id, pubkey=pubkey),
+            workspace_slug=channel.workspace_slug,
         )
         surql, bound = _run_in_transaction(statements, params)
         await self._db.query(surql, bound)
@@ -501,6 +527,7 @@ class ControlPlaneRepository:
             build_channel_members(
                 workspace_sk, channel_id=channel_id, member_pubkeys=[m.pubkey for m in remaining]
             ),
+            workspace_slug=channel.workspace_slug,
         )
         _event_statement(
             statements, params, "admins",
@@ -508,10 +535,12 @@ class ControlPlaneRepository:
                 workspace_sk, channel_id=channel_id,
                 admin_pubkeys=[m.pubkey for m in remaining if m.role == "admin"],
             ),
+            workspace_slug=channel.workspace_slug,
         )
         _event_statement(
             statements, params, "remove0",
             build_channel_remove(workspace_sk, channel_id=channel_id, pubkey=pubkey),
+            workspace_slug=channel.workspace_slug,
         )
         surql, bound = _run_in_transaction(statements, params)
         await self._db.query(surql, bound)

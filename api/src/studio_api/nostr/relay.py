@@ -316,7 +316,9 @@ class RelayConnection:
                 await self._send(["EVENT", sub_id, event])
         await self._send(["EOSE", sub_id])
 
-        queue = await self._fanout.subscribe(self._full_sub_id(sub_id), filters)
+        queue = await self._fanout.subscribe(
+            self._full_sub_id(sub_id), filters, workspace_slug=self._store.workspace_slug
+        )
         self._sub_ids.add(sub_id)
         self._tasks[sub_id] = asyncio.create_task(self._forward_live_events(sub_id, queue))
 

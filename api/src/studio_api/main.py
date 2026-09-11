@@ -6,6 +6,7 @@ the ticket #2 seeded allowlist remains available for relay-only tests."""
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI, Header, Response
 from fastapi.responses import JSONResponse
@@ -30,12 +31,28 @@ from studio_api.nostr.store import EventStore, LiveFanout
 NOSTR_JSON_MEDIA_TYPE = "application/nostr+json"
 
 
+async def _relay_authorizer(app: FastAPI, slug: str) -> RelayAuthorizer | None:
+    """The authorizer for one Workspace's relay, or None when this server
+    hosts no Workspace by that slug. A server holds many Workspaces, so the
+    slug comes from the request path — never from configuration (ticket #45).
+    """
+    repo: ControlPlaneRepository | None = app.state.repo
+    if repo is not None:
+        workspace = await repo.get_workspace(slug)
+        if workspace is None:
+            return None
+        return WorkspaceMembershipAuthorizer(repo, workspace_slug=slug)
+    if slug in app.state.relay_workspaces:
+        return cast(RelayAuthorizer, app.state.seeded_authorizer)
+    return None
+
+
 def create_app(
     *,
     store: EventStore | None,
     fanout: LiveFanout | None = None,
     repo: ControlPlaneRepository | None = None,
-    workspace_slug: str = "",
+    relay_workspaces: set[str] | None = None,
     allowed_pubkeys: set[str] | None = None,
     relay_name: str = "Studio",
     firebase_verifier: FirebaseVerifier | None = None,
@@ -46,19 +63,16 @@ def create_app(
     app.state.store = store
     app.state.fanout = fanout
     app.state.repo = repo
-    app.state.workspace_slug = workspace_slug
+    # Only consulted when there is no control plane: the ticket #2 relay-only
+    # seam, where Workspaces are a fixed test allowlist rather than rows.
+    app.state.relay_workspaces = relay_workspaces or set()
     app.state.relay_name = relay_name
     app.state.firebase_verifier = firebase_verifier
     app.state.connection_registry = ConnectionRegistry()
     app.state.media_repo = media_repo
     app.state.storage = storage
 
-    authorizer: RelayAuthorizer
-    if repo is not None:
-        authorizer = WorkspaceMembershipAuthorizer(repo, workspace_slug=workspace_slug)
-    else:
-        authorizer = SeededRelayAuthorizer(allowed_pubkeys or set())
-    app.state.authorizer = authorizer
+    app.state.seeded_authorizer = SeededRelayAuthorizer(allowed_pubkeys or set())
 
     app.include_router(control_router)
     app.include_router(media_router)
@@ -84,7 +98,7 @@ def create_app(
     async def relay_info(
         slug: str, accept: str | None = Header(default=None)
     ) -> Response:
-        if slug != app.state.workspace_slug or accept != NOSTR_JSON_MEDIA_TYPE:
+        if accept != NOSTR_JSON_MEDIA_TYPE or await _relay_authorizer(app, slug) is None:
             return Response(status_code=404)
         self_pubkey = None
         if app.state.repo is not None:
@@ -95,14 +109,15 @@ def create_app(
 
     @app.websocket("/relay/{slug}")
     async def relay_ws(websocket: WebSocket, slug: str) -> None:
-        if slug != app.state.workspace_slug:
+        authorizer = await _relay_authorizer(app, slug)
+        if authorizer is None:
             await websocket.close(code=4404)
             return
         await websocket.accept()
         connection = RelayConnection(
-            store=app.state.store,
+            store=app.state.store.for_workspace(slug),
             fanout=app.state.fanout,
-            authorizer=app.state.authorizer,
+            authorizer=authorizer,
             relay_url=str(websocket.url),
             send=websocket.send_json,
             registry=app.state.connection_registry,
@@ -156,7 +171,6 @@ async def _build_storage() -> ObjectStorage:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.store = await build_default_store()
     app.state.fanout = await app.state.store.start_live_fanout()
-    app.state.workspace_slug = os.environ.get("WORKSPACE_SLUG", "")
     app.state.repo = ControlPlaneRepository(
         app.state.store.raw,
         event_store=app.state.store,
@@ -164,9 +178,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.media_repo = MediaRepository(app.state.store.raw)
     app.state.storage = await _build_storage()
-    app.state.authorizer = WorkspaceMembershipAuthorizer(
-        app.state.repo, workspace_slug=app.state.workspace_slug
-    )
     app.state.firebase_verifier = _build_firebase_verifier()
     try:
         yield

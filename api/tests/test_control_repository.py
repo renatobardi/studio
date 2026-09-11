@@ -151,7 +151,7 @@ class TestWorkspace:
     ) -> None:
         await repo.create_workspace(slug="family", name="Family", owner_pubkey="owner1")
 
-        roles = await repo._events.query([Filter(kinds=[33534])])
+        roles = await repo._events.for_workspace("family").query([Filter(kinds=[33534])])
         assert {r["pubkey"] for r in roles} == {
             (await repo.get_workspace("family")).key_pubkey  # type: ignore[union-attr]
         }
@@ -159,11 +159,13 @@ class TestWorkspace:
             "owner", "admin", "member", "agent"
         }
 
-        member_lists = await repo._events.query([Filter(kinds=[13534])])
+        member_lists = await repo._events.for_workspace("family").query([Filter(kinds=[13534])])
         assert len(member_lists) == 1
         assert any(t == ["member", "owner1", "owner"] for t in member_lists[0]["tags"])
 
-        add_events = await repo._events.query([Filter(kinds=[8000]), Filter(kinds=[8000])])
+        add_events = await repo._events.for_workspace("family").query(
+            [Filter(kinds=[8000]), Filter(kinds=[8000])]
+        )
         assert any(
             any(t == ["p", "owner1"] for t in e["tags"]) for e in add_events
         )
@@ -273,7 +275,7 @@ class TestInvite:
 
         await repo.redeem_invite(code=invite.code, pubkey="newmember1", now=NOW)
 
-        lists = await repo._events.query([Filter(kinds=[13534])])
+        lists = await repo._events.for_workspace("family").query([Filter(kinds=[13534])])
         assert len(lists) == 1
         assert {tuple(t) for t in lists[0]["tags"] if t[0] == "member"} == {
             ("member", "owner1", "owner"),
@@ -348,7 +350,7 @@ class TestWorkspaceMemberManagement:
         await repo.set_workspace_member_role(slug="family", pubkey="member1", role="admin")
 
         assert await repo.get_workspace_role("family", "member1") == "admin"
-        lists = await repo._events.query([Filter(kinds=[13534])])
+        lists = await repo._events.for_workspace("family").query([Filter(kinds=[13534])])
         assert {tuple(t) for t in lists[0]["tags"] if t[0] == "member"} == {
             ("member", "owner1", "owner"),
             ("member", "member1", "admin"),
@@ -418,9 +420,9 @@ class TestChannel:
             created_by="owner1",
         )
 
-        metas = await repo._events.query([Filter(kinds=[39000])])
+        metas = await repo._events.for_workspace("family").query([Filter(kinds=[39000])])
         assert any(any(t == ["d", channel.id] for t in e["tags"]) for e in metas)
-        admins = await repo._events.query([Filter(kinds=[39001])])
+        admins = await repo._events.for_workspace("family").query([Filter(kinds=[39001])])
         assert any(
             any(t == ["p", "owner1"] for t in e["tags"])
             for e in admins

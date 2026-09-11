@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import pytest
-from conftest import SURREAL_PASS, SURREAL_URL, SURREAL_USER
+from conftest import SURREAL_PASS, SURREAL_URL, SURREAL_USER, TEST_WORKSPACE
 
 from studio_api.nostr.model import Filter, NostrEvent
 from studio_api.nostr.store import EventStore, PublishResult
@@ -188,12 +188,12 @@ class TestReconnect:
         namespace = f"test_{uuid.uuid4().hex}"
         first = await EventStore.connect(
             url=SURREAL_URL, namespace=namespace, database="test",
-            user=SURREAL_USER, password=SURREAL_PASS,
+            user=SURREAL_USER, password=SURREAL_PASS, workspace_slug=TEST_WORKSPACE,
         )
         try:
             second = await EventStore.connect(
                 url=SURREAL_URL, namespace=namespace, database="test",
-                user=SURREAL_USER, password=SURREAL_PASS,
+                user=SURREAL_USER, password=SURREAL_PASS, workspace_slug=TEST_WORKSPACE,
             )
             await second.ping()
             await second.close()
@@ -219,8 +219,12 @@ class TestLiveFanout:
     ) -> None:
         fanout = await store.start_live_fanout()
         try:
-            queue_kind1 = await fanout.subscribe("sub-1", [Filter(kinds=[1])])
-            queue_kind9 = await fanout.subscribe("sub-2", [Filter(kinds=[9])])
+            queue_kind1 = await fanout.subscribe(
+                "sub-1", [Filter(kinds=[1])], workspace_slug=TEST_WORKSPACE
+            )
+            queue_kind9 = await fanout.subscribe(
+                "sub-2", [Filter(kinds=[9])], workspace_slug=TEST_WORKSPACE
+            )
 
             await store.publish(make_event(id="id-1", kind=1))
             await store.publish(make_event(id="id-2", kind=9))
@@ -240,12 +244,68 @@ class TestLiveFanout:
     ) -> None:
         fanout = await store.start_live_fanout()
         try:
-            queue = await fanout.subscribe("sub-1", [Filter(kinds=[1])])
+            queue = await fanout.subscribe(
+                "sub-1", [Filter(kinds=[1])], workspace_slug=TEST_WORKSPACE
+            )
             fanout.unsubscribe("sub-1")
 
             await store.publish(make_event(id="id-1", kind=1))
 
             with pytest.raises(asyncio.TimeoutError):
                 await asyncio.wait_for(queue.get(), timeout=0.5)
+        finally:
+            await fanout.stop()
+
+
+class TestWorkspaceIsolation:
+    """Ticket #45: one server hosts many Workspaces. An event published to
+    one Workspace must be invisible to every other, and each Workspace keeps
+    its own replaceable slots — a pubkey's kind 0 in one Workspace must not
+    overwrite the same pubkey's kind 0 in another."""
+
+    async def test_an_event_published_to_one_workspace_is_invisible_to_another(
+        self, store: EventStore
+    ) -> None:
+        other = store.for_workspace("other-ws")
+        await store.publish(make_event(id="id-1"))
+
+        assert await other.query([Filter()]) == []
+        assert [e["id"] for e in await store.query([Filter()])] == ["id-1"]
+
+    async def test_same_pubkey_and_kind_keep_independent_slots_per_workspace(
+        self, store: EventStore
+    ) -> None:
+        other = store.for_workspace("other-ws")
+        await store.publish(make_event(id="id-here", kind=0, created_at=200, content="here"))
+        result = await other.publish(
+            make_event(id="id-there", kind=0, created_at=100, content="there")
+        )
+
+        assert result is PublishResult.OK
+        assert [e["content"] for e in await store.query([Filter(kinds=[0])])] == ["here"]
+        assert [e["content"] for e in await other.query([Filter(kinds=[0])])] == ["there"]
+
+    async def test_the_same_regular_event_can_exist_in_two_workspaces(
+        self, store: EventStore
+    ) -> None:
+        other = store.for_workspace("other-ws")
+        await store.publish(make_event(id="id-1"))
+
+        assert await other.publish(make_event(id="id-1")) is PublishResult.OK
+
+    async def test_a_live_subscription_only_sees_its_own_workspace(
+        self, store: EventStore
+    ) -> None:
+        other = store.for_workspace("other-ws")
+        fanout = await store.start_live_fanout()
+        try:
+            queue = await fanout.subscribe("sub-1", [Filter(kinds=[1])], workspace_slug="other-ws")
+
+            await store.publish(make_event(id="id-here", kind=1))
+            await other.publish(make_event(id="id-there", kind=1))
+
+            received = await asyncio.wait_for(queue.get(), timeout=2)
+            assert received["id"] == "id-there"
+            assert queue.empty()
         finally:
             await fanout.stop()

@@ -20,6 +20,10 @@ SURREAL_URL = os.environ.get("SURREAL_URL", "ws://localhost:8010/rpc")
 SURREAL_USER = os.environ.get("SURREAL_USER", "root")
 SURREAL_PASS = os.environ.get("SURREAL_PASS", "root")
 
+# Every store fixture is scoped to this Workspace; isolation tests derive a
+# second one with EventStore.for_workspace().
+TEST_WORKSPACE = "test-ws"
+
 
 async def connect_test_store() -> EventStore:
     """A fresh, isolated EventStore on its own namespace. A plain function
@@ -32,6 +36,7 @@ async def connect_test_store() -> EventStore:
         database="test",
         user=SURREAL_USER,
         password=SURREAL_PASS,
+        workspace_slug=TEST_WORKSPACE,
     )
 
 

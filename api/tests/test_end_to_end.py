@@ -16,7 +16,6 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient, WebSocketTestSession
 from support import new_keypair, sign_event
 
-from studio_api.control.relay_authorizer import WorkspaceMembershipAuthorizer
 from studio_api.control.repository import ControlPlaneRepository
 from studio_api.main import create_app
 
@@ -31,9 +30,6 @@ async def _test_lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.fanout = await store.start_live_fanout()
     app.state.repo = ControlPlaneRepository(
         store.raw, event_store=store, server_secret=SERVER_SECRET
-    )
-    app.state.authorizer = WorkspaceMembershipAuthorizer(
-        app.state.repo, workspace_slug=WORKSPACE_SLUG
     )
     try:
         yield
@@ -52,7 +48,7 @@ def nostr_auth_headers(sk: PrivateKey, pubkey: str, *, url: str, method: str) ->
 
 
 def test_channel_membership_gates_events_and_removal_disconnects() -> None:
-    app = create_app(store=None, workspace_slug=WORKSPACE_SLUG)
+    app = create_app(store=None)
     app.router.lifespan_context = _test_lifespan
 
     owner_sk, owner_pubkey = new_keypair()
