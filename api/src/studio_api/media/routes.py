@@ -127,5 +127,8 @@ async def get_blob(
         raise HTTPException(403, "forbidden")
 
     assert blob is not None
-    url = await storage.presigned_get_url(blob.storage_key, expires_in=GET_URL_TTL_SECONDS)
+    public_endpoint_url = str(request.base_url).rstrip("/")
+    url = await storage.presigned_get_url(
+        blob.storage_key, expires_in=GET_URL_TTL_SECONDS, public_endpoint_url=public_endpoint_url
+    )
     return RedirectResponse(url, status_code=302)

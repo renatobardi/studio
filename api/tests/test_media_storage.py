@@ -36,9 +36,24 @@ async def test_put_then_fetch_via_presigned_url_round_trips(storage: ObjectStora
 
     await storage.put_object("hello.txt", b"hello blossom", content_type="text/plain")
 
-    url = await storage.presigned_get_url("hello.txt", expires_in=60)
+    url = await storage.presigned_get_url("hello.txt", expires_in=60, public_endpoint_url=MINIO_ENDPOINT)
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
 
     assert response.status_code == 200
     assert response.content == b"hello blossom"
+
+
+async def test_presigned_url_uses_the_given_public_endpoint_not_the_internal_one(
+    storage: ObjectStorage,
+) -> None:
+    """A browser fetching a presigned GET isn't on the Docker network the internal
+    endpoint_url points at — the URL must be built against whatever public endpoint
+    the caller passes, e.g. the request's own base_url (see media/routes.py)."""
+    await storage.put_object("hello.txt", b"hello blossom", content_type="text/plain")
+
+    url = await storage.presigned_get_url(
+        "hello.txt", expires_in=60, public_endpoint_url="http://127.0.0.1:9010"
+    )
+
+    assert url.startswith("http://127.0.0.1:9010/")
