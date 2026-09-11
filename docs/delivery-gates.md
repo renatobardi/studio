@@ -53,9 +53,8 @@ compute it). Every condition in that gate is scoped to *new code* and to
 metrics nothing currently publishes, so today's green `SonarCloud Code
 Analysis` check means "analysis ran", not "quality threshold met". Closing that
 gap means either enabling main-branch automatic analysis or moving to a
-CI-based scan with coverage upload — tracked separately, along with the backlog
-of existing findings. `scripts/ops/check-sonar-gate.sh` reports the current
-state.
+CI-based scan with coverage upload — tracked in #76, along with the backlog of
+existing findings. `scripts/ops/check-sonar-gate.sh` reports the current state.
 
 ## Production
 
