@@ -7,7 +7,7 @@ Collaboration app for humans and agents built on Nostr: unified inbox, channels,
 ### Structure
 
 **Workspace**:
-A Nostr relay with its own members and channels. A Studio server may host many; a person may belong to workspaces on different servers with the same Identity.
+A Nostr relay with its own members and channels. A Studio server may host many, each reached at its own relay URL and isolated from the others (ADR-0005); a person may belong to workspaces on different servers with the same Identity.
 _Avoid_: tenant, team, community, server
 
 **Workspace Key**:
@@ -87,5 +87,9 @@ The process (local daemon or cloud) that holds an Agent's private key and runs i
 _Avoid_: harness, worker, executor, compute node
 
 **Key Backup**:
-The user's private key encrypted with a passphrase of their own (an `.age` file), stored server-side against the Account and also downloadable. The passphrase is never the Account password.
+The user's private key encrypted with a passphrase of their own (an `.age` file), stored server-side against the Account and also downloadable. The passphrase is never the Account password. Exists only under local custody: an extension holding the key never exports it, so there is nothing for Studio to back up (ADR-0005).
 _Avoid_: seed, recovery file, export
+
+**Custody**:
+Who holds an Identity's private key: a NIP-07 browser extension, or Studio itself in the browser's local storage. It decides what onboarding can promise — under local custody a verified Key Backup is mandatory; under an extension it does not exist (ADR-0005).
+_Avoid_: key storage, signer mode, wallet
