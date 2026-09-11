@@ -4,6 +4,7 @@ import { secretKeyFromNsec } from "./identity";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
+const CHANNEL_ID_KEY = "studio.identity.channelId";
 
 /** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
 export function hasNip07(): boolean {
@@ -34,6 +35,7 @@ export async function storeIdentity(nsec: string): Promise<void> {
 export async function clearIdentity(): Promise<void> {
   await del(STORE_KEY);
   await del(WORKSPACE_SLUG_KEY);
+  await del(CHANNEL_ID_KEY);
 }
 
 /**
@@ -47,6 +49,15 @@ export async function storeWorkspaceSlug(slug: string): Promise<void> {
 
 export async function loadWorkspaceSlug(): Promise<string | undefined> {
   return get<string>(WORKSPACE_SLUG_KEY);
+}
+
+/** Remembers which Channel was open, so the app can open directly on it next launch. */
+export async function storeChannelId(channelId: string): Promise<void> {
+  await set(CHANNEL_ID_KEY, channelId);
+}
+
+export async function loadChannelId(): Promise<string | undefined> {
+  return get<string>(CHANNEL_ID_KEY);
 }
 
 async function loadStoredNsec(): Promise<string | undefined> {

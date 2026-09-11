@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
-export {};
+import { precacheAndRoute } from "workbox-precaching";
+
 declare const self: ServiceWorkerGlobalScope;
+
+// App shell (issue #8): precache the build's own JS/CSS/HTML so the app still opens offline.
+// self.__WB_MANIFEST is injected by vite-plugin-pwa's injectManifest strategy at build time.
+precacheAndRoute(self.__WB_MANIFEST);
 
 // Ticket #6: caches attached images by content hash, so a Channel Member
 // who has already fetched a blob doesn't re-authenticate/re-download it.
