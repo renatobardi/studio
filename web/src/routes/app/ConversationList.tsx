@@ -61,12 +61,15 @@ export function ConversationList({
       {conversations.map((conversation) => (
         <button
           key={conversation.key}
-          className={`channel-list-item${conversation.key === selectedKey ? " active" : ""}`}
+          className={`channel-list-item conversation-list-item-button${conversation.key === selectedKey ? " active" : ""}`}
           onClick={() => onSelect(conversation.key)}
           data-testid="conversation-list-item"
         >
-          <span className="channel-list-name">
-            {conversation.peerPubkeys.map((pubkey) => displayName(profiles, pubkey)).join(", ")}
+          <span className="conversation-list-item-row">
+            <span className="channel-list-name">
+              {conversation.peerPubkeys.map((pubkey) => displayName(profiles, pubkey)).join(", ")}
+            </span>
+            <span className="meta">{new Date(conversation.latest.created_at * 1000).toLocaleTimeString()}</span>
           </span>
           <span className="meta">{conversation.latest.content.slice(0, 40)}</span>
         </button>
