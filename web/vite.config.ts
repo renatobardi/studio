@@ -13,7 +13,10 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      registerType: 'autoUpdate',
+      // registerType stays the default ('prompt'): 'autoUpdate' wires an automatic
+      // window.location.reload() on SW activation (see main.tsx's registerSW call), which
+      // fired mid-session on studio-test and broke the CD Playwright smoke — nothing here
+      // surfaces a reload prompt to the user, so there's no UI to drive it anyway.
       manifest: {
         name: 'Studio',
         short_name: 'Studio',
