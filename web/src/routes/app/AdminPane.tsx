@@ -142,6 +142,12 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
     })();
   }, [reload]);
 
+  // Re-reads the REST list whenever the server projects a fresh kind 13534 Workspace member
+  // list (ADR-0002) — picks up another admin's concurrent change, not just the caller's own.
+  useEffect(() => {
+    return client.subscribe([{ kinds: [13534] }], { onEvent: () => void reload() });
+  }, [client, reload]);
+
   const changeRole = async (pubkey: string, role: string) => {
     setError(null);
     try {
@@ -194,6 +200,7 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [name, setName] = useState("");
   const [about, setAbout] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [managing, setManaging] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -217,9 +224,10 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
     if (!name.trim()) return;
     try {
       const proof = await proofFor(slug, "/channels", "POST", signer);
-      await api.createChannel(slug, proof, { name, about, private: false });
+      await api.createChannel(slug, proof, { name, about, private: isPrivate });
       setName("");
       setAbout("");
+      setIsPrivate(false);
       await reload();
     } catch {
       setError("Couldn't create the Channel.");
@@ -232,6 +240,10 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
       <div className="field">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Channel name" />
         <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="About (optional)" />
+        <label className="conversation-list-item-row">
+          <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+          Private
+        </label>
         <button className="btn btn-primary" onClick={() => void create()}>
           Create Channel
         </button>
@@ -239,7 +251,10 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
       <ul className="member-list">
         {channels?.map((channel) => (
           <li key={channel.id} className="conversation-list-item-row">
-            <span>{channel.name}</span>
+            <span>
+              {channel.name}
+              {channel.private ? " · private" : ""}
+            </span>
             <button
               className="btn btn-outline"
               onClick={() => setManaging((current) => (current === channel.id ? null : channel.id))}
@@ -281,6 +296,12 @@ function ChannelMembersEditor({
       }
     })();
   }, [reload]);
+
+  // Re-reads the REST list whenever the server projects a fresh kind 39002 Channel member list
+  // (ADR-0002) — same projection MembersPane.tsx already subscribes to for the timeline view.
+  useEffect(() => {
+    return client.subscribe([{ kinds: [39002], "#d": [channelId] }], { onEvent: () => void reload() });
+  }, [client, channelId, reload]);
 
   const add = async () => {
     setError(null);
