@@ -469,6 +469,129 @@ class TestChannelAuthorization:
         assert str(ok[3]).startswith("restricted:")
 
 
+class TestThreadReplyAndReactionRootChannel:
+    async def test_a_thread_reply_whose_root_is_in_a_different_channel_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        root = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await connection.handle_message(["EVENT", root])
+        reply = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=1111,
+            tags=[
+                ["h", "chan2"],
+                ["E", root["id"]], ["K", "9"], ["P", pubkey],
+                ["e", root["id"]], ["k", "9"], ["p", pubkey],
+            ],
+        )
+
+        await connection.handle_message(["EVENT", reply])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[0:2] == ["OK", reply["id"]]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    async def test_a_thread_reply_whose_root_is_in_the_same_channel_is_accepted(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={"chan1": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        root = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await connection.handle_message(["EVENT", root])
+        reply = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=1111,
+            tags=[
+                ["h", "chan1"],
+                ["E", root["id"]], ["K", "9"], ["P", pubkey],
+                ["e", root["id"]], ["k", "9"], ["p", pubkey],
+            ],
+        )
+
+        await connection.handle_message(["EVENT", reply])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok == ["OK", reply["id"], True, ""]
+
+    async def test_a_thread_reply_whose_root_doesnt_exist_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={"chan1": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        reply = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=1111,
+            tags=[
+                ["h", "chan1"],
+                ["E", "no-such-event"], ["K", "9"], ["P", pubkey],
+                ["e", "no-such-event"], ["k", "9"], ["p", pubkey],
+            ],
+        )
+
+        await connection.handle_message(["EVENT", reply])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    async def test_a_reaction_whose_target_is_in_a_different_channel_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}, "chan2": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        target = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await connection.handle_message(["EVENT", target])
+        reaction = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=7, content="+",
+            tags=[["h", "chan2"], ["e", target["id"]], ["k", "9"], ["p", pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", reaction])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    async def test_a_reaction_whose_target_is_in_the_same_channel_is_accepted(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), channel_members={"chan1": {pubkey}}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        target = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await connection.handle_message(["EVENT", target])
+        reaction = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=7, content="+",
+            tags=[["h", "chan1"], ["e", target["id"]], ["k", "9"], ["p", pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", reaction])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok == ["OK", reaction["id"], True, ""]
+
+
 class TestForceDisconnect:
     async def test_removing_a_member_closes_their_connection_and_subscriptions(
         self, store: EventStore, fanout: LiveFanout
