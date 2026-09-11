@@ -11,13 +11,16 @@ it. Issue #51.
    checks pass (see below).
 3. **CI runs again on `main`.** Its conclusion — not the push — is what
    triggers `cd.yml` (`workflow_run`).
-4. **`cd.yml` `resolve`** deploys only when `workflow_run.conclusion == 'success'`,
-   and stands down when the validated SHA is no longer `main`'s tip (two
-   commits landing close together must not roll `studio-test` backwards).
-5. **`cd.yml` `deploy-dev`** checks out `/opt/app` on the `studio-test`
-   container at the exact validated SHA (`git checkout --force --detach`),
-   rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails if it is not
-   that SHA. The deployed SHA is written to the run's job summary.
+4. **`cd.yml` `gate`** proceeds only when CI concluded `success` on that exact
+   SHA — asked of the manual `workflow_dispatch` path too, which carries no CI
+   run of its own and would otherwise be a hole straight through the gate. It
+   then stands down when the SHA is no longer `main`'s tip, so two commits
+   landing close together cannot roll `studio-test` backwards.
+5. **`cd.yml` `deploy-dev`** re-reads `main`'s tip (the job may have waited on
+   its concurrency group since the gate ran), checks out `/opt/app` on the
+   `studio-test` container at the exact validated SHA (`git checkout --force
+   --detach`), rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails
+   if it is not that SHA. The deployed SHA goes to the run's job summary.
 6. **Post-deploy Playwright smoke** (flows 1, 2, 3 & 5) runs against what was
    just deployed, from the specs of that same commit.
 
@@ -39,6 +42,10 @@ still marks the check green — a green that carries no review, so requiring it
 would only manufacture false assurance.
 
 ## Known limits of the Sonar gate
+
+`sonar-project.properties` excludes `docs/UI/design/**` — a vendored, generated
+design artefact nothing imports, which on its own produced most of the
+project's CRITICAL findings and drowned the ones that are ours.
 
 The project is on the built-in `Sonar way` quality gate, but `alert_status` has
 no value on `main` and no coverage is reported (automatic analysis does not

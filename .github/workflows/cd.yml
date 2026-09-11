@@ -29,32 +29,43 @@ permissions:
   contents: read
 
 jobs:
-  resolve:
-    # The promotion gate: a CI run that did not conclude `success` never
-    # reaches the deploy job. workflow_dispatch is the manual escape hatch and
-    # deploys main's tip, which is what `github.sha` is for a dispatched run.
+  gate:
+    # The promotion gate. A CI run that did not conclude `success` never
+    # reaches the deploy job, and `workflow_dispatch` — which carries no CI run
+    # of its own — has to produce one below rather than walk around the gate.
     if: >-
       github.repository == 'renatobardi/studio' &&
       (github.event_name == 'workflow_dispatch' ||
-       github.event.workflow_run.conclusion == 'success')
+       (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
       stale: ${{ steps.pick.outputs.stale }}
     steps:
-      - name: Resolve the validated SHA and reject a stale one
+      - name: Resolve the SHA, and refuse an unvalidated or superseded one
         id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          # Two commits landing close together produce two CI runs, and
-          # nothing guarantees they finish in commit order. Deploying an older
-          # validated SHA after a newer one would silently roll studio-test
-          # back, so a run whose SHA is no longer main's tip stands down — the
-          # newer run deploys the newer commit.
           CANDIDATE: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
           echo "sha=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+          # Asked of every path, dispatch included: one rule, and no branch of
+          # the gate that trusts its trigger instead of the evidence.
+          conclusion=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$CANDIDATE&event=push&status=completed" \
+            --jq '[.workflow_runs[].conclusion] | first // "missing"')
+          if [[ "$conclusion" != "success" ]]; then
+            echo "::error::CI has not passed on $CANDIDATE (conclusion: $conclusion)"
+            exit 1
+          fi
+
+          # Two commits landing close together produce two CI runs, and nothing
+          # guarantees they finish in commit order. Deploying an older validated
+          # SHA after a newer one would silently roll studio-test back, so a
+          # superseded run stands down and the newer one deploys.
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
           if [[ "$CANDIDATE" == "$tip" ]]; then
             echo "stale=false" >> "$GITHUB_OUTPUT"
             echo "deploying $CANDIDATE (main's tip)"
@@ -65,21 +76,23 @@ jobs:
           fi
 
   deploy-dev:
-    needs: resolve
-    if: needs.resolve.outputs.stale != 'true'
+    needs: gate
+    # Positive match: a skipped or errored gate yields an empty output, which
+    # must never read as "fresh".
+    if: needs.gate.outputs.stale == 'false'
     runs-on: ubuntu-latest
     environment: studio-test
     concurrency:
       group: cd-studio-test
       cancel-in-progress: false
     env:
-      DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}
+      DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           # The Playwright specs run below must be the ones from the commit
           # being deployed, not whatever main's tip carries now.
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Connect to Tailscale (studio-cd identity)
         # A static, reusable, ephemeral auth key — not an OAuth-client-
@@ -120,27 +133,34 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-      - name: Deploy the validated commit to studio-test
+      - name: Deploy the validated commit to studio-test and verify it
         env:
           HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          on_host() {
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
+              "lxc exec studio-test -- bash -lc '$1'"
+          }
+
+          # main can move while this job waits on its concurrency group, so the
+          # gate job's check is not the last word: deploying a superseded SHA
+          # here would roll studio-test back onto an older commit.
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [[ "$tip" != "$DEPLOY_SHA" ]]; then
+            echo "::error::$DEPLOY_SHA was superseded by $tip while this deploy queued"
+            exit 1
+          fi
+
           # Detached checkout of the exact SHA: a branch checkout would follow
           # origin/main wherever it has moved to since CI validated this one.
           # --force discards whatever the previous deploy's build left behind,
-          # which is what the old hard reset was doing.
-          remote="set -eu; cd /opt/app; git fetch --quiet origin main; git checkout --force --detach $DEPLOY_SHA; docker compose up -d --build; docker compose restart caddy"
-          # docker compose doesn't recreate a service whose only changed
-          # input is a bind-mounted file (Caddyfile) — restart it
-          # unconditionally so config changes always take effect.
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
-            "lxc exec studio-test -- bash -lc '$remote'"
+          # which is what the old hard reset was doing. The caddy restart is
+          # unconditional because compose doesn't recreate a service whose only
+          # changed input is a bind-mounted file (the Caddyfile).
+          on_host "set -eu; cd /opt/app; git fetch --quiet origin main; git checkout --force --detach $DEPLOY_SHA; docker compose up -d --build; docker compose restart caddy"
 
-      - name: Verify and record the deployed commit
-        env:
-          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
-        run: |
-          running=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
-            "lxc exec studio-test -- bash -lc 'cd /opt/app && git rev-parse HEAD'" | tr -d '\r')
+          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r')
           if [[ "$running" != "$DEPLOY_SHA" ]]; then
             echo "::error::studio-test is running $running, expected $DEPLOY_SHA"
             exit 1

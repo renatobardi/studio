@@ -13,3 +13,8 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Delivery gates
+
+What must pass before a commit reaches `studio-test`, and which repo settings
+enforce it: `docs/delivery-gates.md`.
