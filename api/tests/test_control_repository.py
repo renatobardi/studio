@@ -472,5 +472,23 @@ class TestChannel:
         await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
         assert await repo.is_channel_member(channel.id, "member1") is True
 
+    async def test_adding_an_existing_channel_member_again_is_a_no_op(
+        self, repo: ControlPlaneRepository
+    ) -> None:
+        await self._workspace(repo)
+        invite = await repo.create_invite(
+            workspace_slug="family", role="member", expires_at=None, max_uses=None,
+            created_by="owner1",
+        )
+        await repo.redeem_invite(code=invite.code, pubkey="member1", now=NOW)
+        channel = await repo.create_channel(
+            workspace_slug="family", name="general", about="", private=False, created_by="owner1"
+        )
+        await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
+
+        await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
+
+        assert await repo.is_channel_member(channel.id, "member1") is True
+
         await repo.remove_channel_member(channel_id=channel.id, pubkey="member1")
         assert await repo.is_channel_member(channel.id, "member1") is False
