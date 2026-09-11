@@ -1,4 +1,4 @@
-import { finalizeEvent, generateSecretKey, getPublicKey, type VerifiedEvent } from "nostr-tools";
+import { generateSecretKey, getPublicKey } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 export interface Identity {
@@ -32,31 +32,23 @@ export function profileEventTemplate(profile: Profile) {
   return { kind: 0, created_at: Math.floor(Date.now() / 1000), tags: [], content: JSON.stringify(profile) };
 }
 
-export function buildProfileEvent(secretKey: Uint8Array, profile: Profile): VerifiedEvent {
-  return finalizeEvent(profileEventTemplate(profile), secretKey);
+/** Unsigned kind:10050 template — the user's DM relays (NIP-17). */
+export function relayListTemplate(relayUrls: string[]) {
+  return {
+    kind: 10050,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: relayUrls.map((url) => ["relay", url]),
+    content: "",
+  };
 }
 
-export function buildRelayListEvent(secretKey: Uint8Array, relayUrls: string[]): VerifiedEvent {
-  return finalizeEvent(
-    {
-      kind: 10050,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: relayUrls.map((url) => ["relay", url]),
-      content: "",
-    },
-    secretKey,
-  );
-}
-
-/** kind 10063 (BUD-03): the user's media servers, so other clients know where to fetch blobs from. */
-export function buildServerListEvent(secretKey: Uint8Array, serverUrls: string[]): VerifiedEvent {
-  return finalizeEvent(
-    {
-      kind: 10063,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: serverUrls.map((url) => ["server", url]),
-      content: "",
-    },
-    secretKey,
-  );
+/** Unsigned kind:10063 template (BUD-03): the user's media servers, so other
+ * clients know where to fetch blobs from. */
+export function serverListTemplate(serverUrls: string[]) {
+  return {
+    kind: 10063,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: serverUrls.map((url) => ["server", url]),
+    content: "",
+  };
 }

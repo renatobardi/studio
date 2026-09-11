@@ -47,14 +47,28 @@ def replace_key(event: NostrEvent, kind_cls: KindClass) -> str:
     return f"{event['pubkey']}:{event['kind']}:{d_value}"
 
 
+def record_key(event: NostrEvent, *, workspace_slug: str) -> str:
+    """The `event` table's record id. Namespaced by Workspace so two
+    Workspaces on the same server never share a row — neither a replaceable
+    slot (same pubkey + kind) nor the same regular event id (ticket #45)."""
+    kind_cls = kind_class(event["kind"])
+    key = (
+        replace_key(event, kind_cls)
+        if kind_cls in (KindClass.REPLACEABLE, KindClass.ADDRESSABLE)
+        else event["id"]
+    )
+    return f"{workspace_slug}:{key}"
+
+
 def _supersedes(new_event: NostrEvent, current_row: dict[str, Any]) -> bool:
     if new_event["created_at"] != current_row["created_at"]:
         return bool(new_event["created_at"] > current_row["created_at"])
     return bool(new_event["id"] < current_row["event_id"])
 
 
-def to_event_row(event: NostrEvent) -> dict[str, Any]:
+def to_event_row(event: NostrEvent, *, workspace_slug: str) -> dict[str, Any]:
     return {
+        "workspace_slug": workspace_slug,
         "event_id": event["id"],
         "pubkey": event["pubkey"],
         "created_at": event["created_at"],
@@ -78,10 +92,11 @@ def _from_row(row: dict[str, Any]) -> NostrEvent:
     }
 
 
-def build_query(flt: Filter) -> tuple[str, dict[str, Any]]:
-    """Map one NIP-01 filter to a SurrealQL SELECT + its bound params."""
-    clauses: list[str] = []
-    params: dict[str, Any] = {}
+def build_query(flt: Filter, *, workspace_slug: str) -> tuple[str, dict[str, Any]]:
+    """Map one NIP-01 filter to a SurrealQL SELECT + its bound params, always
+    scoped to one Workspace."""
+    clauses: list[str] = ["workspace_slug = $workspace_slug"]
+    params: dict[str, Any] = {"workspace_slug": workspace_slug}
 
     if flt.ids is not None:
         clauses.append("event_id IN $ids")
@@ -103,7 +118,7 @@ def build_query(flt: Filter) -> tuple[str, dict[str, Any]]:
         clauses.append(f"tag_index CONTAINSANY ${param_name}")
         params[param_name] = [f"{tag_name}:{v}" for v in values]
 
-    where = " AND ".join(clauses) if clauses else "true"
+    where = " AND ".join(clauses)
     surql = f"SELECT * FROM event WHERE {where} ORDER BY created_at DESC, event_id ASC"
     if flt.limit is not None:
         surql += " LIMIT $limit"
@@ -118,7 +133,7 @@ class LiveFanout:
     def __init__(self, db: Any, live_id: object) -> None:
         self._db = db
         self._live_id = live_id
-        self._subs: dict[str, tuple[list[Filter], asyncio.Queue[NostrEvent]]] = {}
+        self._subs: dict[str, tuple[str, list[Filter], asyncio.Queue[NostrEvent]]] = {}
         self._task: asyncio.Task[None] | None = None
 
     def _start_consuming(self) -> None:
@@ -127,18 +142,23 @@ class LiveFanout:
     async def _consume(self) -> None:
         generator = await self._db.subscribe_live(self._live_id)
         async for row in generator:
-            event = _from_row(cast(dict[str, Any], row))
-            for filters, queue in list(self._subs.values()):
+            typed_row = cast(dict[str, Any], row)
+            event = _from_row(typed_row)
+            row_workspace = typed_row.get("workspace_slug")
+            for workspace_slug, filters, queue in list(self._subs.values()):
                 from studio_api.nostr.matching import event_matches_filters
 
-                if event_matches_filters(event, filters):
+                if row_workspace == workspace_slug and event_matches_filters(event, filters):
                     await queue.put(event)
 
     async def subscribe(
-        self, sub_id: str, filters: list[Filter]
+        self, sub_id: str, filters: list[Filter], *, workspace_slug: str
     ) -> "asyncio.Queue[NostrEvent]":
+        """One subscription, scoped to one Workspace: this single app-wide
+        live query feeds every Workspace, so the slug is what keeps them
+        apart (ticket #45)."""
         queue: asyncio.Queue[NostrEvent] = asyncio.Queue()
-        self._subs[sub_id] = (filters, queue)
+        self._subs[sub_id] = (workspace_slug, filters, queue)
         return queue
 
     def unsubscribe(self, sub_id: str) -> None:
@@ -155,8 +175,26 @@ class LiveFanout:
 
 
 class EventStore:
-    def __init__(self, db: Any) -> None:
+    """Reads and writes events for exactly one Workspace. A server hosting
+    several Workspaces holds one connection and derives a store per Workspace
+    with `for_workspace()`; there is no unscoped way to publish or query."""
+
+    def __init__(self, db: Any, workspace_slug: str | None = None) -> None:
         self._db = db
+        self._workspace_slug = workspace_slug
+
+    @property
+    def workspace_slug(self) -> str:
+        if self._workspace_slug is None:
+            raise RuntimeError(
+                "this EventStore is the bare connection — call for_workspace(slug) before "
+                "reading or writing events"
+            )
+        return self._workspace_slug
+
+    def for_workspace(self, slug: str) -> "EventStore":
+        """Another Workspace on the same connection."""
+        return EventStore(self._db, slug)
 
     @classmethod
     async def connect(
@@ -167,6 +205,7 @@ class EventStore:
         database: str,
         user: str,
         password: str,
+        workspace_slug: str | None = None,
         max_attempts: int = 20,
         retry_delay_seconds: float = 1.0,
     ) -> "EventStore":
@@ -183,7 +222,7 @@ class EventStore:
                 await db.signin({"username": user, "password": password})
                 await db.use(namespace, database)
                 await db.query(_SCHEMA)
-                return cls(db)
+                return cls(db, workspace_slug)
             except Exception as error:  # noqa: BLE001 — broad: any connect-phase failure retries
                 last_error = error
                 await asyncio.sleep(retry_delay_seconds)
@@ -210,18 +249,18 @@ class EventStore:
         if kind_cls is KindClass.EPHEMERAL:
             return PublishResult.OK
 
+        record_id = RecordID("event", record_key(event, workspace_slug=self.workspace_slug))
+        row = to_event_row(event, workspace_slug=self.workspace_slug)
+
         if kind_cls in (KindClass.REPLACEABLE, KindClass.ADDRESSABLE):
-            key = replace_key(event, kind_cls)
-            record_id = RecordID("event", key)
             existing_rows = await self._db.select(record_id)
             if existing_rows and not _supersedes(event, existing_rows[0]):
                 return PublishResult.SUPERSEDED
-            await self._db.upsert(record_id, to_event_row(event))
+            await self._db.upsert(record_id, row)
             return PublishResult.OK
 
-        record_id = RecordID("event", event["id"])
         try:
-            await self._db.create(record_id, to_event_row(event))
+            await self._db.create(record_id, row)
         except SurrealError:
             return PublishResult.DUPLICATE
         return PublishResult.OK
@@ -229,7 +268,7 @@ class EventStore:
     async def query(self, filters: Sequence[Filter]) -> list[NostrEvent]:
         seen: dict[str, NostrEvent] = {}
         for flt in filters:
-            surql, params = build_query(flt)
+            surql, params = build_query(flt, workspace_slug=self.workspace_slug)
             rows = await self._db.query(surql, params)
             for row in rows:
                 event = _from_row(row)

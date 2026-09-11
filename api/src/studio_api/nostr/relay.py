@@ -89,25 +89,32 @@ def parse_filter(raw: dict[str, Any]) -> Filter:
 
 
 class ConnectionRegistry:
-    """Every currently-authenticated connection, by pubkey — so removing a
-    Workspace Member can force-close their open sockets immediately."""
+    """Every currently-authenticated connection, by Workspace and pubkey — so
+    removing a Workspace Member can force-close their open sockets
+    immediately.
+
+    Keyed by Workspace as well as pubkey because one process serves many
+    (ticket #45): the same Identity may hold connections to several, and
+    losing one membership must not close the others.
+    """
 
     def __init__(self) -> None:
-        self._by_pubkey: dict[str, set[RelayConnection]] = {}
+        self._by_member: dict[tuple[str, str], set[RelayConnection]] = {}
 
     def register(self, pubkey: str, connection: "RelayConnection") -> None:
-        self._by_pubkey.setdefault(pubkey, set()).add(connection)
+        self._by_member.setdefault((connection.workspace_slug, pubkey), set()).add(connection)
 
     def unregister(self, pubkey: str, connection: "RelayConnection") -> None:
-        connections = self._by_pubkey.get(pubkey)
+        key = (connection.workspace_slug, pubkey)
+        connections = self._by_member.get(key)
         if connections is None:
             return
         connections.discard(connection)
         if not connections:
-            del self._by_pubkey[pubkey]
+            del self._by_member[key]
 
-    async def force_disconnect(self, pubkey: str, *, reason: str) -> None:
-        for connection in list(self._by_pubkey.get(pubkey, ())):
+    async def force_disconnect(self, pubkey: str, *, workspace_slug: str, reason: str) -> None:
+        for connection in list(self._by_member.get((workspace_slug, pubkey), ())):
             await connection.force_close(reason)
 
 
@@ -141,6 +148,10 @@ class RelayConnection:
         self._is_member = False
         self._sub_ids: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
+
+    @property
+    def workspace_slug(self) -> str:
+        return self._store.workspace_slug
 
     async def start(self) -> None:
         await self._send(["AUTH", self.challenge])
@@ -316,7 +327,9 @@ class RelayConnection:
                 await self._send(["EVENT", sub_id, event])
         await self._send(["EOSE", sub_id])
 
-        queue = await self._fanout.subscribe(self._full_sub_id(sub_id), filters)
+        queue = await self._fanout.subscribe(
+            self._full_sub_id(sub_id), filters, workspace_slug=self._store.workspace_slug
+        )
         self._sub_ids.add(sub_id)
         self._tasks[sub_id] = asyncio.create_task(self._forward_live_events(sub_id, queue))
 

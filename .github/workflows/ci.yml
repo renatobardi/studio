@@ -20,7 +20,6 @@ jobs:
           SURREAL_DATABASE=studio
           MINIO_ROOT_USER=studio
           MINIO_ROOT_PASSWORD=ci-password
-          WORKSPACE_SLUG=family
           WORKSPACE_KEY_SECRET=ci-workspace-key-secret
           EOF
           # The interop smoke script signs with BIP-340's public test

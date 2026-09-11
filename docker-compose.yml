@@ -33,7 +33,6 @@ services:
       SURREAL_PASS: ${SURREAL_PASS}
       SURREAL_NAMESPACE: ${SURREAL_NAMESPACE}
       SURREAL_DATABASE: ${SURREAL_DATABASE}
-      WORKSPACE_SLUG: ${WORKSPACE_SLUG:-family}
       # Encrypts each Workspace Key at rest (ADR-0002) — never the key itself.
       WORKSPACE_KEY_SECRET: ${WORKSPACE_KEY_SECRET}
       # Optional: path to a Firebase service-account JSON file. Omit to run

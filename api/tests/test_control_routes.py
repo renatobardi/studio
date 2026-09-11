@@ -148,6 +148,22 @@ class TestWorkspace:
         assert body["role"] == "owner"
         assert body["relay_url"] == "ws://test/relay/family"
 
+    @pytest.mark.parametrize(
+        "slug", ["with:colon", "With-Capitals", "trailing-", "has space", "", "a" * 65]
+    )
+    async def test_a_malformed_slug_is_rejected(self, client: AsyncClient, slug: str) -> None:
+        """Ticket #45: the slug namespaces every event row (`<slug>:<key>`)
+        and is a URL path segment, so a slug carrying the separator — or any
+        other shape — would let one Workspace reach another's rows."""
+        sk, pubkey = new_keypair()
+        headers = nostr_header(sk, pubkey, url="http://test/api/workspaces", method="POST")
+
+        response = await client.post(
+            "/api/workspaces", headers=headers, json={"slug": slug, "name": "Nope"}
+        )
+
+        assert response.status_code == 422
+
     async def test_getting_by_slug_returns_the_callers_role(self, client: AsyncClient) -> None:
         sk, pubkey = new_keypair()
         create_headers = nostr_header(sk, pubkey, url="http://test/api/workspaces", method="POST")

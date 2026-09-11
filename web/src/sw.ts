@@ -1,6 +1,8 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute } from "workbox-precaching";
 
+import { MEDIA_CACHE } from "./lib/mediaCache";
+
 declare const self: ServiceWorkerGlobalScope;
 
 // App shell (issue #8): precache the build's own JS/CSS/HTML so the app still opens offline.
@@ -9,7 +11,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // Ticket #6: caches attached images by content hash, so a Channel Member
 // who has already fetched a blob doesn't re-authenticate/re-download it.
-const MEDIA_CACHE = "studio-media-v1";
+// Emptied on sign-out — see mediaCache.ts, which owns the name.
 const MEDIA_PATH = /^\/media\/[0-9a-f]{64}(\.\w+)?$/;
 
 self.addEventListener("install", () => {

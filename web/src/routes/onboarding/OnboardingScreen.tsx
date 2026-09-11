@@ -5,18 +5,31 @@ import * as api from "../../lib/api";
 import type { WorkspaceOut } from "../../lib/api";
 import { decryptBackup, encryptBackup, validateBackupPassphrase } from "../../lib/backup";
 import {
-  buildProfileEvent,
-  buildRelayListEvent,
-  buildServerListEvent,
   generateIdentity,
   nsecFromSecretKey,
+  profileEventTemplate,
+  relayListTemplate,
   secretKeyFromNsec,
+  serverListTemplate,
 } from "../../lib/identity";
-import { storeIdentity, storeWorkspaceSlug, hasNip07, type Signer } from "../../lib/custody";
+import {
+  getSigner,
+  hasNip07,
+  storeIdentity,
+  storeWorkspaceSlug,
+  type Signer,
+} from "../../lib/custody";
+import {
+  isSkippable,
+  nextStep,
+  previousStep,
+  stepsFor,
+  type Custody,
+  type OnboardingStep,
+} from "../../lib/onboardingSteps";
 import { connectAndAuthenticate, publishEvent } from "../../lib/relay";
 
-const STEPS = ["invite", "profile", "avatar", "backup", "backup-options", "download", "setup", "config"] as const;
-type Step = (typeof STEPS)[number] | "restore";
+type Step = OnboardingStep | "restore";
 
 const EMOJIS = ["🌸", "🦊", "🐙", "🌊", "🔥", "🌙", "🍄", "🐝"];
 
@@ -29,6 +42,13 @@ export function OnboardingScreen({
   accountPassword: string | null;
   onComplete: (workspace: WorkspaceOut) => void;
 }) {
+  // A NIP-07 extension holds the key itself, so the app neither generates an
+  // Identity nor takes custody of one — and the Key Backup steps fall away
+  // (#45). Fixed for the run: an extension appearing mid-flow would change
+  // who is being onboarded.
+  const [custody] = useState<Custody>(() => (hasNip07() ? "extension" : "local"));
+  const steps = stepsFor(custody);
+
   const [step, setStep] = useState<Step>("invite");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +59,9 @@ export function OnboardingScreen({
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(EMOJIS[0]);
 
+  // Only ever set under local custody; an extension's key never reaches here.
   const [identity, setIdentity] = useState<ReturnType<typeof generateIdentity> | null>(null);
+  const [pubkey, setPubkey] = useState<string | null>(null);
   const [nsecRevealed, setNsecRevealed] = useState(false);
 
   const [passphrase, setPassphrase] = useState("");
@@ -53,13 +75,18 @@ export function OnboardingScreen({
   const [mode, setMode] = useState<"new" | "restore">("new");
   const [restorePassphrase, setRestorePassphrase] = useState("");
 
-  const stepIndex = STEPS.indexOf(step as (typeof STEPS)[number]);
   const goBack = () => {
     if (step === "restore") {
       setStep("invite");
       return;
     }
-    if (stepIndex > 0) setStep(STEPS[stepIndex - 1]);
+    const previous = previousStep(step, custody);
+    if (previous) setStep(previous);
+  };
+
+  const advance = (from: OnboardingStep) => {
+    const next = nextStep(from, custody);
+    if (next) setStep(next);
   };
 
   const idToken = () => user.getIdToken();
@@ -101,6 +128,7 @@ export function OnboardingScreen({
       const nsec = await decryptBackup(blob, restorePassphrase);
       const secretKey = secretKeyFromNsec(nsec);
       setIdentity({ secretKey, publicKey: getPublicKey(secretKey) });
+      setPubkey(getPublicKey(secretKey));
       setStep("setup");
     }, "Wrong passphrase, or no Key Backup on file for this account.");
 
@@ -109,16 +137,27 @@ export function OnboardingScreen({
       setError("Enter a name.");
       return;
     }
-    setError(null);
-    setStep("avatar");
+    // The Identity is established here, on the last step nobody can skip —
+    // never on leaving the avatar, which they may skip past.
+    return runStep(async () => {
+      if (custody === "extension") {
+        // Ask the extension who it is. Generating an Identity here would
+        // leave this person with two: one onboarded, one that signs (#45).
+        const signer = await getSigner();
+        if (!signer) throw new Error("the NIP-07 extension did not answer");
+        setPubkey(await signer.getPublicKey());
+      } else if (!identity) {
+        const fresh = generateIdentity();
+        setIdentity(fresh);
+        setPubkey(fresh.publicKey);
+      }
+      advance("profile");
+    }, "Couldn't read your Identity from your Nostr extension. Try again.");
   };
 
-  const handleAvatarNext = () => {
-    if (!identity) setIdentity(generateIdentity());
-    setStep("backup");
-  };
+  const handleAvatarNext = () => advance("avatar");
 
-  const handleBackupNext = () => setStep("backup-options");
+  const handleBackupNext = () => advance("backup");
 
   const handleCreateBackup = () => {
     if (!identity) return;
@@ -135,7 +174,7 @@ export function OnboardingScreen({
       const blob = await encryptBackup(nsecFromSecretKey(identity.secretKey), passphrase);
       setBackupBlob(blob);
       setBackupState("created");
-      setStep("download");
+      advance("backup-options");
     }, "Couldn't create the Key Backup. Try again.");
   };
 
@@ -150,7 +189,7 @@ export function OnboardingScreen({
       setBackupState("verified");
       const blobBase64 = btoa(String.fromCharCode(...backupBlob));
       await api.putKeyBackup(await idToken(), blobBase64);
-      setStep("setup");
+      advance("download");
     }, "Wrong passphrase — the backup didn't decrypt.");
   };
 
@@ -165,23 +204,31 @@ export function OnboardingScreen({
     URL.revokeObjectURL(url);
   };
 
+  const localSigner = (secretKey: Uint8Array, publicKey: string): Signer => ({
+    async getPublicKey() {
+      return publicKey;
+    },
+    async signEvent(template) {
+      return finalizeEvent(template, secretKey);
+    },
+    async nip44Encrypt(other, plaintext) {
+      return nip44.encrypt(plaintext, nip44.getConversationKey(secretKey, other));
+    },
+    async nip44Decrypt(other, ciphertext) {
+      return nip44.decrypt(ciphertext, nip44.getConversationKey(secretKey, other));
+    },
+  });
+
   const handleSetup = () => {
-    if (!identity) return;
+    if (custody === "local" && !identity) return;
     return runStep(async () => {
-      const signer: Signer = {
-        async getPublicKey() {
-          return identity.publicKey;
-        },
-        async signEvent(template) {
-          return finalizeEvent(template, identity.secretKey);
-        },
-        async nip44Encrypt(pubkey, plaintext) {
-          return nip44.encrypt(plaintext, nip44.getConversationKey(identity.secretKey, pubkey));
-        },
-        async nip44Decrypt(pubkey, ciphertext) {
-          return nip44.decrypt(ciphertext, nip44.getConversationKey(identity.secretKey, pubkey));
-        },
-      };
+      // Under an extension this is the extension's own signer: the key never
+      // leaves it, and no parallel Identity is ever created (#45).
+      const signer =
+        identity !== null
+          ? localSigner(identity.secretKey, identity.publicKey)
+          : await getSigner();
+      if (!signer) throw new Error("no signer available");
       const proof = await nip98.getToken(
         `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`,
         "POST",
@@ -193,22 +240,19 @@ export function OnboardingScreen({
 
       const ws = await connectAndAuthenticate(redeemed.relay_url, signer);
       if (mode === "new") {
-        const profileEvent = buildProfileEvent(identity.secretKey, { name, picture: emoji });
-        const relayListEvent = buildRelayListEvent(identity.secretKey, [redeemed.relay_url]);
-        const serverListEvent = buildServerListEvent(identity.secretKey, [redeemed.media_url]);
-        await publishEvent(ws, profileEvent);
-        await publishEvent(ws, relayListEvent);
-        await publishEvent(ws, serverListEvent);
+        await publishEvent(ws, await signer.signEvent(profileEventTemplate({ name, picture: emoji })));
+        await publishEvent(ws, await signer.signEvent(relayListTemplate([redeemed.relay_url])));
+        await publishEvent(ws, await signer.signEvent(serverListTemplate([redeemed.media_url])));
       }
       ws.close();
 
-      setStep("config");
+      advance("setup");
     }, "Couldn't connect to the workspace. Try again.");
   };
 
   const handleFinish = async () => {
-    if (!identity || !workspace) return;
-    if (!hasNip07()) {
+    if (!workspace) return;
+    if (identity) {
       await storeIdentity(nsecFromSecretKey(identity.secretKey));
     }
     await storeWorkspaceSlug(workspace.slug);
@@ -220,7 +264,7 @@ export function OnboardingScreen({
       <div className="onboarding-header">
         <div style={{ fontSize: 30 }}>🌸</div>
         <div className="onboarding-progress">
-          {STEPS.map((s) => (
+          {steps.map((s) => (
             <span key={s} className={`dot${s === step ? " active" : ""}`} />
           ))}
         </div>
@@ -247,9 +291,11 @@ export function OnboardingScreen({
                 Continue
               </button>
               {workspaceName && <span className="meta">Joining {workspaceName}</span>}
-              <button type="button" className="link" disabled={!inviteCode} onClick={handleGoRestore}>
-                Restore an existing Identity from Key Backup
-              </button>
+              {custody === "local" && (
+                <button type="button" className="link" disabled={!inviteCode} onClick={handleGoRestore}>
+                  Restore an existing Identity from Key Backup
+                </button>
+              )}
             </div>
           </>
         )}
@@ -277,7 +323,7 @@ export function OnboardingScreen({
             <h1 className="onboarding-title">What should we call you?</h1>
             <div className="onboarding-actions">
               <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-              <button className="btn btn-primary btn-block" onClick={handleProfileNext}>
+              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleProfileNext}>
                 Continue
               </button>
             </div>
@@ -378,7 +424,7 @@ export function OnboardingScreen({
                 Verify
               </button>
               <button className="btn btn-outline btn-block" onClick={handleDownload}>
-                Download backup file
+                Download backup file (optional)
               </button>
               {backupState === "verified" && <span className="meta">✓ Verified</span>}
             </div>
@@ -403,7 +449,7 @@ export function OnboardingScreen({
                 Playwright grant this run's freshly-restored Identity Channel membership before
                 it needs to publish anything (flows 2 & 3, e2e/helpers.ts's
                 ensureChannelMembership). */}
-            {identity && <span data-testid="own-pubkey" hidden>{identity.publicKey}</span>}
+            {pubkey && <span data-testid="own-pubkey" hidden>{pubkey}</span>}
             <div className="onboarding-actions">
               <button className="btn btn-primary btn-block" onClick={handleFinish}>
                 Finish
@@ -412,9 +458,14 @@ export function OnboardingScreen({
           </>
         )}
 
-        {(stepIndex > 0 || step === "restore") && (
+        {step !== "invite" && (
           <button type="button" className="link" onClick={goBack}>
             Back
+          </button>
+        )}
+        {step !== "restore" && isSkippable(step, custody) && (
+          <button type="button" className="link" onClick={() => advance(step)}>
+            Skip
           </button>
         )}
       </div>

@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from studio_api.auth import (
     AuthError,
@@ -185,8 +185,13 @@ async def get_key_backup(
 # --- Workspace ----------------------------------------------------------------
 
 
+# The slug namespaces every event row as `<slug>:<key>` (ticket #45) and is a
+# URL path segment, so it is kebab-case only — no separator, no surprises.
+WORKSPACE_SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+
+
 class CreateWorkspaceBody(BaseModel):
-    slug: str
+    slug: str = Field(pattern=WORKSPACE_SLUG_PATTERN, max_length=64)
     name: str
 
 
@@ -410,7 +415,9 @@ async def remove_workspace_member(
         raise _control_error_to_http(error) from error
     registry = getattr(request.app.state, "connection_registry", None)
     if registry is not None:
-        await registry.force_disconnect(member_pubkey, reason="removed from the Workspace")
+        await registry.force_disconnect(
+            member_pubkey, workspace_slug=slug, reason="removed from the Workspace"
+        )
     return {"status": "ok"}
 
 

@@ -70,8 +70,7 @@ async def upload_blob(
     except AuthError as error:
         raise HTTPException(401, str(error)) from error
 
-    workspace_slug: str = request.app.state.workspace_slug
-    if await repo.get_workspace_role(workspace_slug, pubkey) is None:
+    if not await repo.is_workspace_member_anywhere(pubkey):
         raise HTTPException(403, "not a Workspace Member")
 
     content_type = request.headers.get("content-type", "")
