@@ -43,7 +43,7 @@ would only manufacture false assurance.
 
 ## Known limits of the Sonar gate
 
-`sonar-project.properties` excludes `docs/UI/design/**` — a vendored, generated
+`.sonarcloud.properties` excludes `docs/UI/design/**` — a vendored, generated
 design artefact nothing imports, which on its own produced most of the
 project's CRITICAL findings and drowned the ones that are ours.
 
