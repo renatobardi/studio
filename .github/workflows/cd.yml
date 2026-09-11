@@ -109,6 +109,12 @@ jobs:
           # membership before it publishes anything — see e2e/helpers.ts.
           STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
           STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
+          # Flow 4 (ticket #7): a second, independently-seeded Account — see
+          # e2e/helpers.ts's testAccountTwo and scripts/ops/seed-e2e-test-account-2.mjs.
+          STUDIO_TEST_EMAIL_2: ${{ secrets.STUDIO_TEST_EMAIL_2 }}
+          STUDIO_TEST_PASSWORD_2: ${{ secrets.STUDIO_TEST_PASSWORD_2 }}
+          STUDIO_TEST_INVITE_CODE_2: ${{ secrets.STUDIO_TEST_INVITE_CODE_2 }}
+          STUDIO_TEST_BACKUP_PASSPHRASE_2: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE_2 }}
         run: bun run test:e2e
 
       - name: Upload Playwright report
