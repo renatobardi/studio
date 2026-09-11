@@ -37,3 +37,9 @@ def first_tag_value(event: NostrEvent, name: str) -> str | None:
         if len(tag) >= 2 and tag[0] == name:
             return tag[1]
     return None
+
+
+def all_tag_values(event: NostrEvent, name: str) -> list[str]:
+    """Every value of every tag named `name`, in order — e.g. the `x`
+    (blob sha256) tags on a gift wrap."""
+    return [tag[1] for tag in event["tags"] if len(tag) >= 2 and tag[0] == name]

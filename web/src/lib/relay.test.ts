@@ -52,6 +52,12 @@ function fakeSigner(pubkey = "a".repeat(64)): Signer {
     async signEvent(template) {
       return { ...template, id: `sig-${Math.random()}`, pubkey, sig: "s" } as never;
     },
+    async nip44Encrypt() {
+      throw new Error("not used in these tests");
+    },
+    async nip44Decrypt() {
+      throw new Error("not used in these tests");
+    },
   };
 }
 

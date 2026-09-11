@@ -25,6 +25,16 @@ export const testInviteCode = () => requiredEnv("STUDIO_TEST_INVITE_CODE");
 export const testBackupPassphrase = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE");
 export const testWorkspaceSlug = () => requiredEnv("STUDIO_TEST_WORKSPACE_SLUG");
 
+/** A second, independently-seeded test Account — Direct Messages (ticket #7) need two distinct
+ * Identities in the same Workspace, unlike flows 2/3/5 which only ever drive one. Requires the
+ * env vars below in addition to the ones flow 2/3/5 already need. */
+export const testAccountTwo = {
+  email: () => requiredEnv("STUDIO_TEST_EMAIL_2"),
+  password: () => requiredEnv("STUDIO_TEST_PASSWORD_2"),
+};
+export const testInviteCodeTwo = () => requiredEnv("STUDIO_TEST_INVITE_CODE_2");
+export const testBackupPassphraseTwo = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE_2");
+
 /** A Workspace owner/admin identity used only to grant the just-onboarded test Identity Channel
  * membership (see `ensureChannelMembership`) — never used to sign in through the UI. Redeeming
  * an Invite only grants Workspace membership (`repository.py`'s `redeem_invite`); flows 2 & 3
@@ -72,23 +82,32 @@ export async function ensureChannelMembership(pageURL: string, pubkey: string): 
   }
 }
 
-/** Sign in and restore the Identity from Key Backup (same steps as flow 5,
- * restore.spec.ts) — the deterministic way for a flow to reach the app
- * shell without depending on run order or re-running onboarding's Key
- * Backup creation. Requires a Key Backup to already exist for this account
- * (onboarding.spec.ts creates one). Also grants Channel membership (see
- * `ensureChannelMembership`) since flows 2 & 3 need to publish into one. */
-export async function reachAppViaRestore(page: import("@playwright/test").Page): Promise<void> {
+interface RestoreCredentials {
+  email: string;
+  password: string;
+  inviteCode: string;
+  backupPassphrase: string;
+}
+
+/** Sign in and restore the Identity from Key Backup for arbitrary credentials — the shared
+ * implementation behind `reachAppViaRestore` (the default test account) and Flow 4's second
+ * party (`testAccountTwo`). Requires a Key Backup to already exist for the account. Also grants
+ * Channel membership (see `ensureChannelMembership`) so a flow can publish into a Channel too,
+ * even though Direct Messages themselves only need Workspace membership. */
+export async function reachAppViaRestoreWithCredentials(
+  page: import("@playwright/test").Page,
+  credentials: RestoreCredentials,
+): Promise<string> {
   await page.goto("/");
 
-  await page.getByLabel("Email").fill(testAccount.email());
-  await page.getByLabel("Password").fill(testAccount.password());
+  await page.getByLabel("Email").fill(credentials.email);
+  await page.getByLabel("Password").fill(credentials.password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await page.getByPlaceholder("Invite code").fill(testInviteCode());
+  await page.getByPlaceholder("Invite code").fill(credentials.inviteCode);
   await page.getByRole("button", { name: "Restore an existing Identity from Key Backup" }).click();
 
-  await page.getByPlaceholder("Backup passphrase").fill(testBackupPassphrase());
+  await page.getByPlaceholder("Backup passphrase").fill(credentials.backupPassphrase);
   await page.getByRole("button", { name: "Restore" }).click();
 
   await page.getByRole("button", { name: "Connect" }).click();
@@ -99,4 +118,20 @@ export async function reachAppViaRestore(page: import("@playwright/test").Page):
   await ensureChannelMembership(page.url(), pubkey);
 
   await page.getByRole("button", { name: "Finish" }).click();
+  return pubkey;
+}
+
+/** Sign in and restore the Identity from Key Backup (same steps as flow 5,
+ * restore.spec.ts) — the deterministic way for a flow to reach the app
+ * shell without depending on run order or re-running onboarding's Key
+ * Backup creation. Requires a Key Backup to already exist for this account
+ * (onboarding.spec.ts creates one). Also grants Channel membership (see
+ * `ensureChannelMembership`) since flows 2 & 3 need to publish into one. */
+export async function reachAppViaRestore(page: import("@playwright/test").Page): Promise<void> {
+  await reachAppViaRestoreWithCredentials(page, {
+    email: testAccount.email(),
+    password: testAccount.password(),
+    inviteCode: testInviteCode(),
+    backupPassphrase: testBackupPassphrase(),
+  });
 }

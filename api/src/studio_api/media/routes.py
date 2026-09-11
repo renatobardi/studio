@@ -55,7 +55,7 @@ def _resolve_get_pubkey(authorization: str | None, *, url: str, method: str, now
     return verify_nip98(event, url=url, method=method, now=now)
 
 
-@router.put("/upload")
+@router.put("/upload", responses={415: {"description": "unsupported Content-Type"}})
 async def upload_blob(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -75,8 +75,12 @@ async def upload_blob(
         raise HTTPException(403, "not a Workspace Member")
 
     content_type = request.headers.get("content-type", "")
-    if not content_type.startswith("image/"):
-        raise HTTPException(415, "only image MIME types are accepted")
+    # `application/octet-stream` covers a Direct Message photo (ticket #7):
+    # its bytes are NIP-44 ciphertext, so no real image MIME type is ever
+    # visible to the server (ADR-0003) — the true type lives only inside the
+    # encrypted rumor's own `imeta` tag.
+    if not content_type.startswith("image/") and content_type != "application/octet-stream":
+        raise HTTPException(415, "only image MIME types (or opaque encrypted bytes) are accepted")
 
     content_length = request.headers.get("content-length")
     if content_length is not None and int(content_length) > MAX_UPLOAD_BYTES:
@@ -123,6 +127,8 @@ async def get_blob(
             if await repo.is_channel_member(channel_id, pubkey):
                 allowed = True
                 break
+    if blob is not None and not allowed:
+        allowed = pubkey in await media_repo.dm_recipients(sha256)
     if not allowed:
         raise HTTPException(403, "forbidden")
 

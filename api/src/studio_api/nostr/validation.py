@@ -13,6 +13,7 @@ PAST_TOLERANCE_SECONDS = 30 * 24 * 60 * 60
 MESSAGE = 9
 REACTION = 7
 THREAD_REPLY = 1111
+GIFT_WRAP = 1059
 
 # The tag naming a Thread Reply's root / a Reaction's target event — the single source of truth
 # for which tag `relay.py` must look up to check that root/target is in the same Channel.
@@ -65,6 +66,10 @@ def _validate_reaction_tags(event: NostrEvent) -> EventRejection | None:
     return _require_tags(event, ("h", "e", "k", "p"), kind_label="Reaction")
 
 
+def _validate_gift_wrap_tags(event: NostrEvent) -> EventRejection | None:
+    return _require_tags(event, ("p",), kind_label="Gift Wrap")
+
+
 def _validate_thread_reply_tags(event: NostrEvent) -> EventRejection | None:
     rejection = _require_tags(event, ("h", "E", "K", "P", "e", "k", "p"), kind_label="Thread Reply")
     if rejection is not None:
@@ -79,6 +84,7 @@ _CONTENT_KIND_VALIDATORS = {
     MESSAGE: _validate_message_tags,
     THREAD_REPLY: _validate_thread_reply_tags,
     REACTION: _validate_reaction_tags,
+    GIFT_WRAP: _validate_gift_wrap_tags,
 }
 
 

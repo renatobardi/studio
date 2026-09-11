@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
-from studio_api.nostr.model import Filter, NostrEvent, first_tag_value
+from studio_api.nostr.model import Filter, NostrEvent, all_tag_values, first_tag_value
 from studio_api.nostr.store import EventStore, LiveFanout, PublishResult
 from studio_api.nostr.validation import ROOT_TAG_BY_KIND, validate_event
 
@@ -27,6 +27,8 @@ class MediaReferenceRecorder(Protocol):
 
     async def record_references(self, event: NostrEvent, *, channel_id: str) -> None: ...
 
+    async def record_dm_references(self, event: NostrEvent, *, recipients: list[str]) -> None: ...
+
 
 _SINGLE_LETTER_TAG_FILTER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -37,6 +39,11 @@ MODERATION_KINDS = frozenset({8000, 8001, 9000, 9001, 13534, 33534, 39000, 39001
 
 # Readable by any Workspace Member regardless of Channel membership.
 WORKSPACE_WIDE_KINDS = frozenset({0, 10002, 10050, 10063, *MODERATION_KINDS})
+
+# NIP-59 gift wraps (ticket #7): unlike every other kind, readable *only* by
+# the pubkey named in the event's own `p` tag — never by Channel/Workspace
+# membership alone, and never omitted just because there's no `h` tag.
+GIFT_WRAP_KINDS = frozenset({1059})
 
 
 class RelayAuthorizer(Protocol):
@@ -184,6 +191,8 @@ class RelayConnection:
         everything else (profiles, relay lists, the Workspace's own
         announcements) is readable by any Workspace Member — re-checked for
         every event, not just once at REQ time (ticket #3)."""
+        if event["kind"] in GIFT_WRAP_KINDS:
+            return first_tag_value(event, "p") == self._authed_pubkey
         if event["kind"] in WORKSPACE_WIDE_KINDS:
             return True
         channel_id = first_tag_value(event, "h")
@@ -243,8 +252,8 @@ class RelayConnection:
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
-        if result is PublishResult.OK and self._media_repo is not None and channel_id is not None:
-            await self._media_repo.record_references(event, channel_id=channel_id)
+        if result is PublishResult.OK:
+            await self._record_media_references(event, channel_id)
         if result is PublishResult.DUPLICATE:
             await self._send(["OK", event_id, False, "duplicate: already have this event"])
         elif result is PublishResult.SUPERSEDED:
@@ -258,6 +267,19 @@ class RelayConnection:
             )
         else:
             await self._send(["OK", event_id, True, ""])
+
+    async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
+        """Ticket #6/#7: after an event is accepted, record which blobs it references — by
+        Channel for ordinary content, or by DM recipient for a gift wrap (a gift wrap has no
+        `h` tag, so the two cases are mutually exclusive)."""
+        if self._media_repo is None:
+            return
+        if channel_id is not None:
+            await self._media_repo.record_references(event, channel_id=channel_id)
+        elif event["kind"] in GIFT_WRAP_KINDS:
+            assert self._authed_pubkey is not None
+            recipients = all_tag_values(event, "p") + [self._authed_pubkey]
+            await self._media_repo.record_dm_references(event, recipients=recipients)
 
     async def _root_in_channel(self, event: NostrEvent, channel_id: str | None) -> bool:
         """Ticket #5: a Thread Reply's root (its `E` tag) or a Reaction's target (its `e` tag)

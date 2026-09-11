@@ -4,7 +4,7 @@ from typing import Any
 
 from studio_api.nostr.validation import LIMITATION
 
-SUPPORTED_NIPS = [1, 11, 29, 42, 43]
+SUPPORTED_NIPS = [1, 11, 17, 29, 42, 43, 44, 59]
 
 
 def build_info_document(*, name: str, self_pubkey: str | None = None) -> dict[str, Any]:

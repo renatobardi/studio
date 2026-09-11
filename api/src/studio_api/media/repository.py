@@ -54,3 +54,26 @@ class MediaRepository:
                 RecordID("blob_channel_ref", ref_id),
                 {"sha256": sha256, "channel_id": channel_id},
             )
+
+    async def dm_recipients(self, sha256: str) -> list[str]:
+        rows = await query_or_empty(
+            self._db, "SELECT * FROM blob_dm_ref WHERE sha256 = $sha256", {"sha256": sha256}
+        )
+        return [r["pubkey"] for r in rows]
+
+    async def record_dm_references(self, event: NostrEvent, *, recipients: list[str]) -> None:
+        """Records that each of `recipients` may fetch each blob named by
+        one of a gift wrap's `x` tags (ticket #7) — the DM equivalent of
+        `record_references`, since a gift wrap has no Channel and its
+        `imeta` is inside the encrypted rumor, invisible to the relay.
+        A reference to an unknown blob is silently skipped."""
+        sha256s = [tag[1] for tag in event["tags"] if len(tag) >= 2 and tag[0] == "x"]
+        for sha256 in sha256s:
+            if await self.get_blob(sha256) is None:
+                continue
+            for pubkey in recipients:
+                ref_id = f"{sha256}:{pubkey}"
+                await self._db.upsert(
+                    RecordID("blob_dm_ref", ref_id),
+                    {"sha256": sha256, "pubkey": pubkey},
+                )

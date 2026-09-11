@@ -1,5 +1,5 @@
 import { del, get, set } from "idb-keyval";
-import { finalizeEvent, getPublicKey, type EventTemplate, type VerifiedEvent } from "nostr-tools";
+import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import { secretKeyFromNsec } from "./identity";
 
 const STORE_KEY = "studio.identity.nsec";
@@ -10,9 +10,19 @@ export function hasNip07(): boolean {
   return typeof window !== "undefined" && "nostr" in window;
 }
 
+/** A NIP-07 extension's `window.nostr` shape for the NIP-44 methods, when it supports them. */
+interface Nip07Nostr extends Signer {
+  nip44?: { encrypt(pubkey: string, plaintext: string): Promise<string>; decrypt(pubkey: string, ciphertext: string): Promise<string> };
+}
+
 export interface Signer {
   getPublicKey(): Promise<string>;
   signEvent(template: EventTemplate): Promise<VerifiedEvent>;
+  /** NIP-44 encrypt/decrypt with `pubkey` as the other party — required for Direct Messages
+   * (NIP-17). Never exposes the raw secret key: a NIP-07 extension keeps it, and local
+   * custody derives the conversation key internally. */
+  nip44Encrypt(pubkey: string, plaintext: string): Promise<string>;
+  nip44Decrypt(pubkey: string, ciphertext: string): Promise<string>;
 }
 
 /** Stores the nsec in IndexedDB. No-op (and should not be called) when a NIP-07 extension exists. */
@@ -49,8 +59,19 @@ async function loadStoredNsec(): Promise<string | undefined> {
  */
 export async function getSigner(): Promise<Signer | null> {
   if (hasNip07()) {
-    const nostr = (window as unknown as { nostr: Signer }).nostr;
-    return nostr;
+    const nostr = (window as unknown as { nostr: Nip07Nostr }).nostr;
+    return {
+      getPublicKey: () => nostr.getPublicKey(),
+      signEvent: (template) => nostr.signEvent(template),
+      nip44Encrypt(pubkey, plaintext) {
+        if (!nostr.nip44) throw new Error("this NIP-07 extension does not support NIP-44 encryption");
+        return nostr.nip44.encrypt(pubkey, plaintext);
+      },
+      nip44Decrypt(pubkey, ciphertext) {
+        if (!nostr.nip44) throw new Error("this NIP-07 extension does not support NIP-44 encryption");
+        return nostr.nip44.decrypt(pubkey, ciphertext);
+      },
+    };
   }
   const nsec = await loadStoredNsec();
   if (!nsec) return null;
@@ -61,6 +82,12 @@ export async function getSigner(): Promise<Signer | null> {
     },
     async signEvent(template: EventTemplate) {
       return finalizeEvent(template, secretKey);
+    },
+    async nip44Encrypt(pubkey: string, plaintext: string) {
+      return nip44.encrypt(plaintext, nip44.getConversationKey(secretKey, pubkey));
+    },
+    async nip44Decrypt(pubkey: string, ciphertext: string) {
+      return nip44.decrypt(ciphertext, nip44.getConversationKey(secretKey, pubkey));
     },
   };
 }

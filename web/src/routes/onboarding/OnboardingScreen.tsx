@@ -1,4 +1,4 @@
-import { finalizeEvent, getPublicKey, nip98 } from "nostr-tools";
+import { finalizeEvent, getPublicKey, nip44, nip98 } from "nostr-tools";
 import { useState } from "react";
 import type { User } from "firebase/auth";
 import * as api from "../../lib/api";
@@ -174,6 +174,12 @@ export function OnboardingScreen({
         },
         async signEvent(template) {
           return finalizeEvent(template, identity.secretKey);
+        },
+        async nip44Encrypt(pubkey, plaintext) {
+          return nip44.encrypt(plaintext, nip44.getConversationKey(identity.secretKey, pubkey));
+        },
+        async nip44Decrypt(pubkey, ciphertext) {
+          return nip44.decrypt(ciphertext, nip44.getConversationKey(identity.secretKey, pubkey));
         },
       };
       const proof = await nip98.getToken(

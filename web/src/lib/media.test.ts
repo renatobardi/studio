@@ -20,6 +20,12 @@ function signerFor(secretKey: Uint8Array) {
     async signEvent(template: { kind: number; tags: string[][]; content: string; created_at: number }) {
       return finalizeEvent(template, secretKey);
     },
+    async nip44Encrypt() {
+      throw new Error("not used in these tests");
+    },
+    async nip44Decrypt() {
+      throw new Error("not used in these tests");
+    },
   };
 }
 
