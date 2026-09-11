@@ -13,6 +13,7 @@ from studio_api.control.errors import (
     NotAWorkspaceMemberError,
     WorkspaceSlugTakenError,
 )
+from studio_api.control.models import Channel
 from studio_api.control.repository import ControlPlaneRepository
 from studio_api.nostr.model import Filter
 from studio_api.nostr.store import EventStore
@@ -456,20 +457,35 @@ class TestChannel:
         with pytest.raises(NotAWorkspaceMemberError):
             await repo.add_channel_member(channel_id=channel.id, pubkey="not-a-member", role="member")
 
-    async def test_adding_then_removing_a_channel_member(
-        self, repo: ControlPlaneRepository
-    ) -> None:
+    async def _workspace_with_a_prospective_member(self, repo: ControlPlaneRepository) -> Channel:
+        """A Workspace with "member1" already a Workspace Member (via Invite) and one Channel,
+        neither yet a Channel Member of — the shared setup for the add-Channel-member tests."""
         await self._workspace(repo)
         invite = await repo.create_invite(
             workspace_slug="family", role="member", expires_at=None, max_uses=None,
             created_by="owner1",
         )
         await repo.redeem_invite(code=invite.code, pubkey="member1", now=NOW)
-        channel = await repo.create_channel(
+        return await repo.create_channel(
             workspace_slug="family", name="general", about="", private=False, created_by="owner1"
         )
 
+    async def test_adding_then_removing_a_channel_member(
+        self, repo: ControlPlaneRepository
+    ) -> None:
+        channel = await self._workspace_with_a_prospective_member(repo)
+
         await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
+        assert await repo.is_channel_member(channel.id, "member1") is True
+
+    async def test_adding_an_existing_channel_member_again_is_a_no_op(
+        self, repo: ControlPlaneRepository
+    ) -> None:
+        channel = await self._workspace_with_a_prospective_member(repo)
+        await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
+
+        await repo.add_channel_member(channel_id=channel.id, pubkey="member1", role="member")
+
         assert await repo.is_channel_member(channel.id, "member1") is True
 
         await repo.remove_channel_member(channel_id=channel.id, pubkey="member1")

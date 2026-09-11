@@ -478,11 +478,13 @@ class ControlPlaneRepository:
             )
         workspace_sk = await self._workspace_signing_key(channel.workspace_slug)
         members = [
-            *(await self.list_channel_members(channel_id)),
+            *(m for m in await self.list_channel_members(channel_id) if m.pubkey != pubkey),
             ChannelMember(channel_id=channel_id, pubkey=pubkey, role=role),
         ]
 
-        statements = ["CREATE type::thing('channel_member', $cm_id) CONTENT $cm_row;"]
+        # UPSERT, not CREATE: re-adding an existing member (e.g. a retried
+        # request) updates their role instead of failing on the duplicate id.
+        statements = ["UPSERT type::thing('channel_member', $cm_id) CONTENT $cm_row;"]
         params: dict[str, Any] = {
             "cm_id": f"{channel_id}:{pubkey}",
             "cm_row": {"channel_id": channel_id, "pubkey": pubkey, "role": role},
