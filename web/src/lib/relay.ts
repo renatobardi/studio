@@ -220,9 +220,27 @@ export class RelayClient {
     };
   }
 
+  /** Publishes once the connection is open — waiting out a brief reconnect rather than failing,
+   * since `this.ws` may be a stale reference to a socket that just dropped. */
   publish(event: VerifiedEvent): Promise<void> {
-    if (this.ws === null) return Promise.reject(new Error("not connected"));
-    return publishEvent(this.ws, event);
+    return this.whenOpen().then((ws) => publishEvent(ws, event));
+  }
+
+  private whenOpen(timeoutMs = 15_000): Promise<WebSocket> {
+    if (this._state === "open" && this.ws !== null) return Promise.resolve(this.ws);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsubscribe();
+        reject(new Error("timed out waiting for the connection to open"));
+      }, timeoutMs);
+      const unsubscribe = this.onStateChange((state) => {
+        if (state === "open" && this.ws !== null) {
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(this.ws);
+        }
+      });
+    });
   }
 
   close(): void {
