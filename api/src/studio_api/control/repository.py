@@ -12,7 +12,6 @@ from typing import Any
 
 from coincurve import PrivateKey
 from surrealdb.data.types.record_id import RecordID
-from surrealdb.errors import NotFoundError
 
 from studio_api.control.errors import (
     AlreadyLinkedError,
@@ -30,6 +29,8 @@ from studio_api.control.models import (
     WorkspaceMember,
 )
 from studio_api.crypto_secrets import decrypt_secret, encrypt_secret
+from studio_api.db import query_or_empty as _query_or_empty
+from studio_api.db import select_or_none as _select_or_none
 from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.model import NostrEvent
 from studio_api.nostr.projection import (
@@ -46,27 +47,6 @@ from studio_api.nostr.projection import (
     build_workspace_role_definition,
 )
 from studio_api.nostr.store import EventStore, replace_key, to_event_row
-
-
-async def _select_or_none(db: Any, record_id: RecordID) -> dict[str, Any] | None:
-    """A table that has never been written to raises NotFoundError on
-    select, rather than returning an empty list — that's just "nothing
-    there yet" for our purposes."""
-    try:
-        rows = await db.select(record_id)
-    except NotFoundError:
-        return None
-    return rows[0] if rows else None
-
-
-async def _query_or_empty(db: Any, surql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    """Same idea as `_select_or_none`, for a WHERE query against a table
-    that may not have been written to yet."""
-    try:
-        rows: list[dict[str, Any]] = await db.query(surql, params)
-    except NotFoundError:
-        return []
-    return rows
 
 
 def _event_statement(statements: list[str], params: dict[str, Any], var: str, event: NostrEvent) -> None:

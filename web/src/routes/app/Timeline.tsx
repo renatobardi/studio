@@ -18,8 +18,18 @@ import { displayName, type useProfiles } from "./useProfiles";
 
 type Attachment =
   | { status: "uploading"; previewUrl: string; loaded: number; total: number }
-  | { status: "ready"; previewUrl: string; descriptor: BlobDescriptor }
+  | { status: "ready"; previewUrl: string; descriptor: BlobDescriptor; dim?: string }
   | { status: "error"; previewUrl: string; message: string };
+
+/** "WxH" for the imeta `dim` item — best-effort, an image that fails to decode just has no dim. */
+function imageDimensions(url: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(`${image.naturalWidth}x${image.naturalHeight}`);
+    image.onerror = () => resolve(undefined);
+    image.src = url;
+  });
+}
 
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
@@ -73,10 +83,13 @@ export function Timeline({
     }
     setAttachment({ status: "uploading", previewUrl, loaded: 0, total: file.size });
     try {
-      const descriptor = await uploadBlob(mediaUrl, file, signer, (loaded, total) =>
-        setAttachment((prev) => (prev?.status === "uploading" ? { ...prev, loaded, total } : prev)),
-      );
-      setAttachment({ status: "ready", previewUrl, descriptor });
+      const [descriptor, dim] = await Promise.all([
+        uploadBlob(mediaUrl, file, signer, (loaded, total) =>
+          setAttachment((prev) => (prev?.status === "uploading" ? { ...prev, loaded, total } : prev)),
+        ),
+        imageDimensions(previewUrl),
+      ]);
+      setAttachment({ status: "ready", previewUrl, descriptor, dim });
     } catch (err) {
       setAttachment({ status: "error", previewUrl, message: err instanceof Error ? err.message : "Upload failed." });
     }
@@ -95,7 +108,8 @@ export function Timeline({
     if (!canSend || attachment?.status === "uploading") return;
     setSendError(null);
     try {
-      const imetaTags = attachment?.status === "ready" ? [buildImetaTag(attachment.descriptor)] : [];
+      const imetaTags =
+        attachment?.status === "ready" ? [buildImetaTag(attachment.descriptor, attachment.dim)] : [];
       const template = buildMessage(channelId, content, imetaTags);
       const signed = await signer.signEvent(template);
       await client.publish(signed);

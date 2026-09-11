@@ -6,27 +6,11 @@ blob — shares its SurrealDB connection with the EventStore/ControlPlaneReposit
 from typing import Any
 
 from surrealdb.data.types.record_id import RecordID
-from surrealdb.errors import NotFoundError
 
+from studio_api.db import query_or_empty, select_or_none
 from studio_api.media.imeta import imeta_sha256s
 from studio_api.media.models import Blob
 from studio_api.nostr.model import NostrEvent
-
-
-async def _select_or_none(db: Any, record_id: RecordID) -> dict[str, Any] | None:
-    try:
-        rows = await db.select(record_id)
-    except NotFoundError:
-        return None
-    return rows[0] if rows else None
-
-
-async def _query_or_empty(db: Any, surql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-    try:
-        rows: list[dict[str, Any]] = await db.query(surql, params)
-    except NotFoundError:
-        return []
-    return rows
 
 
 class MediaRepository:
@@ -41,7 +25,7 @@ class MediaRepository:
         return Blob(sha256=sha256, pubkey=pubkey, mime=mime, size=size, storage_key=storage_key)
 
     async def get_blob(self, sha256: str) -> Blob | None:
-        row = await _select_or_none(self._db, RecordID("blob", sha256))
+        row = await select_or_none(self._db, RecordID("blob", sha256))
         if row is None:
             return None
         return Blob(
@@ -53,7 +37,7 @@ class MediaRepository:
         )
 
     async def channels_referencing(self, sha256: str) -> list[str]:
-        rows = await _query_or_empty(
+        rows = await query_or_empty(
             self._db, "SELECT * FROM blob_channel_ref WHERE sha256 = $sha256", {"sha256": sha256}
         )
         return [r["channel_id"] for r in rows]

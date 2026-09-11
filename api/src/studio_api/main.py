@@ -61,8 +61,7 @@ def create_app(
     app.state.authorizer = authorizer
 
     app.include_router(control_router)
-    if media_repo is not None and storage is not None:
-        app.include_router(media_router)
+    app.include_router(media_router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -165,7 +164,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.media_repo = MediaRepository(app.state.store.raw)
     app.state.storage = await _build_storage()
-    app.include_router(media_router)
     app.state.authorizer = WorkspaceMembershipAuthorizer(
         app.state.repo, workspace_slug=app.state.workspace_slug
     )

@@ -78,6 +78,10 @@ async def upload_blob(
     if not content_type.startswith("image/"):
         raise HTTPException(415, "only image MIME types are accepted")
 
+    content_length = request.headers.get("content-length")
+    if content_length is not None and int(content_length) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "file exceeds the 10 MB limit")
+
     body = await request.body()
     if len(body) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "file exceeds the 10 MB limit")
