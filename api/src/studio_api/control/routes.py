@@ -70,6 +70,16 @@ async def _require_channel_manager(
     raise HTTPException(403, "requires a Channel admin or a Workspace admin")
 
 
+async def _require_channel_member(
+    repo: ControlPlaneRepository, slug: str, channel_id: str, pubkey: str
+) -> None:
+    if await repo.get_workspace_role(slug, pubkey) in _MANAGE_ROLES:
+        return
+    if await repo.get_channel_role(channel_id, pubkey) is not None:
+        return
+    raise HTTPException(403, "not a Channel Member")
+
+
 _ERROR_STATUS: dict[type[ControlPlaneError], int] = {
     AlreadyLinkedError: 409,
     WorkspaceSlugTakenError: 409,
@@ -425,6 +435,11 @@ class AddChannelMemberBody(BaseModel):
     role: str = "member"
 
 
+class ChannelMemberOut(BaseModel):
+    pubkey: str
+    role: str
+
+
 @router.post("/workspaces/{slug}/channels")
 async def create_channel(
     slug: str,
@@ -468,6 +483,19 @@ async def add_channel_member(
     except ControlPlaneError as error:
         raise _control_error_to_http(error) from error
     return {"status": "ok"}
+
+
+@router.get("/workspaces/{slug}/channels/{channel_id}/members")
+async def list_channel_members(
+    slug: str,
+    channel_id: str,
+    caller: CallerIdentity = Depends(require_caller),
+    repo: ControlPlaneRepository = Depends(get_repo),
+) -> list[ChannelMemberOut]:
+    pubkey = await _caller_pubkey(caller, repo)
+    await _require_channel_member(repo, slug, channel_id, pubkey)
+    members = await repo.list_channel_members(channel_id)
+    return [ChannelMemberOut(pubkey=m.pubkey, role=m.role) for m in members]
 
 
 @router.delete("/workspaces/{slug}/channels/{channel_id}/members/{member_pubkey}")

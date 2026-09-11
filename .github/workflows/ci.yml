@@ -57,6 +57,28 @@ jobs:
           bun install
           RELAY_URL=ws://localhost/relay/family bun run smoke.mjs
 
+      - name: Install nak
+        run: |
+          go install github.com/fiatjaf/nak@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Interop smoke (nak authenticates, publishes, reads back)
+        # nak (github.com/fiatjaf/nak) is the reference Go client named in
+        # ADR 0001 — a second, independently-implemented client catches wire
+        # deviations nostr-tools wouldn't. Reuses the "family" workspace and
+        # test key the nostr-tools step above already created and authorized.
+        run: |
+          sec=0000000000000000000000000000000000000000000000000000000000000003
+          note=$(nak event --sec "$sec" --auth -c "hello from nak interop smoke" -k 1 ws://localhost/relay/family)
+          id=$(echo "$note" | jq -r .id)
+          echo "published $id"
+          readback=$(nak req --sec "$sec" --auth -i "$id" ws://localhost/relay/family)
+          echo "$readback" | jq -e --arg id "$id" 'select(.id == $id)' >/dev/null || {
+            echo "::error::did not read the event back"
+            exit 1
+          }
+          echo "nak interop smoke OK"
+
       - name: Tear down
         if: always()
         run: docker compose down -v

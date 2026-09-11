@@ -6,6 +6,7 @@ import {
   buildServerListEvent,
   generateIdentity,
   nsecFromSecretKey,
+  profileEventTemplate,
   secretKeyFromNsec,
 } from "./identity";
 
@@ -42,6 +43,16 @@ describe("buildProfileEvent", () => {
     expect(event.pubkey).toBe(identity.publicKey);
     expect(JSON.parse(event.content)).toEqual({ name: "Renato", picture: "🌸" });
     expect(verifyEvent(event)).toBe(true);
+  });
+});
+
+describe("profileEventTemplate", () => {
+  test("builds an unsigned kind:0 template with the profile as JSON content — usable with any Signer, not just a raw secret key", () => {
+    const template = profileEventTemplate({ name: "Renato", about: "hi" });
+
+    expect(template.kind).toBe(0);
+    expect(template.tags).toEqual([]);
+    expect(JSON.parse(template.content)).toEqual({ name: "Renato", about: "hi" });
   });
 });
 

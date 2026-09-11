@@ -401,3 +401,65 @@ class TestChannels:
             headers=nostr_header(owner_sk, owner_pubkey, url=remove_url, method="DELETE"),
         )
         assert remove.status_code == 200
+
+    async def test_a_channel_member_lists_channel_members(self, client: AsyncClient) -> None:
+        owner_sk, owner_pubkey = await self._create_workspace(client)
+        create = await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/channels", method="POST"
+            ),
+            json={"name": "general"},
+        )
+        channel_id = create.json()["id"]
+        invite = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+            ),
+            json={},
+        )
+        code = invite.json()["code"]
+        member_sk, member_pubkey = new_keypair()
+        await client.post(
+            f"/api/invites/{code}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey, url=f"http://test/api/invites/{code}/redeem", method="POST"
+            ),
+        )
+        add_url = f"http://test/api/workspaces/family/channels/{channel_id}/members"
+        await client.post(
+            f"/api/workspaces/family/channels/{channel_id}/members",
+            headers=nostr_header(owner_sk, owner_pubkey, url=add_url, method="POST"),
+            json={"pubkey": member_pubkey},
+        )
+
+        list_url = f"http://test/api/workspaces/family/channels/{channel_id}/members"
+        response = await client.get(
+            f"/api/workspaces/family/channels/{channel_id}/members",
+            headers=nostr_header(member_sk, member_pubkey, url=list_url, method="GET"),
+        )
+
+        assert response.status_code == 200
+        by_pubkey = {m["pubkey"]: m["role"] for m in response.json()}
+        assert by_pubkey == {owner_pubkey: "admin", member_pubkey: "member"}
+
+    async def test_a_non_member_cannot_list_channel_members(self, client: AsyncClient) -> None:
+        owner_sk, owner_pubkey = await self._create_workspace(client)
+        create = await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/channels", method="POST"
+            ),
+            json={"name": "general"},
+        )
+        channel_id = create.json()["id"]
+        stranger_sk, stranger_pubkey = new_keypair()
+
+        list_url = f"http://test/api/workspaces/family/channels/{channel_id}/members"
+        response = await client.get(
+            f"/api/workspaces/family/channels/{channel_id}/members",
+            headers=nostr_header(stranger_sk, stranger_pubkey, url=list_url, method="GET"),
+        )
+
+        assert response.status_code == 403

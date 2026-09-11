@@ -26,6 +26,25 @@ export interface ChannelOut {
   private: boolean;
 }
 
+export interface ChannelMemberOut {
+  pubkey: string;
+  role: string;
+}
+
+export interface WorkspaceMemberOut {
+  pubkey: string;
+  role: string;
+}
+
+export interface InviteOut {
+  code: string;
+  role: string;
+  expires_at: number | null;
+  max_uses: number | null;
+  use_count: number;
+  revoked: boolean;
+}
+
 class ApiError extends Error {
   status: number;
 
@@ -99,4 +118,117 @@ export function listChannels(slug: string, nip98Token: string): Promise<ChannelO
   return request(`/workspaces/${encodeURIComponent(slug)}/channels`, {
     headers: { Authorization: nip98Token },
   });
+}
+
+// --- Admin: Invites --------------------------------------------------------
+
+export function createInvite(
+  slug: string,
+  nip98Token: string,
+  body: { role?: string; expires_at?: number | null; max_uses?: number | null } = {},
+): Promise<InviteOut> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invites`, {
+    method: "POST",
+    headers: { Authorization: nip98Token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function listInvites(slug: string, nip98Token: string): Promise<InviteOut[]> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invites`, {
+    headers: { Authorization: nip98Token },
+  });
+}
+
+export function revokeInvite(slug: string, code: string, nip98Token: string): Promise<{ status: string }> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/invites/${encodeURIComponent(code)}`, {
+    method: "DELETE",
+    headers: { Authorization: nip98Token },
+  });
+}
+
+// --- Admin: Workspace Members -----------------------------------------------
+
+export function listWorkspaceMembers(slug: string, nip98Token: string): Promise<WorkspaceMemberOut[]> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members`, {
+    headers: { Authorization: nip98Token },
+  });
+}
+
+export function setWorkspaceMemberRole(
+  slug: string,
+  pubkey: string,
+  role: string,
+  nip98Token: string,
+): Promise<WorkspaceMemberOut> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${encodeURIComponent(pubkey)}`, {
+    method: "PATCH",
+    headers: { Authorization: nip98Token, "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeWorkspaceMember(
+  slug: string,
+  pubkey: string,
+  nip98Token: string,
+): Promise<{ status: string }> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/members/${encodeURIComponent(pubkey)}`, {
+    method: "DELETE",
+    headers: { Authorization: nip98Token },
+  });
+}
+
+// --- Admin: Channels ---------------------------------------------------------
+
+export function createChannel(
+  slug: string,
+  nip98Token: string,
+  body: { name: string; about: string; private: boolean },
+): Promise<ChannelOut> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/channels`, {
+    method: "POST",
+    headers: { Authorization: nip98Token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function listChannelMembers(
+  slug: string,
+  channelId: string,
+  nip98Token: string,
+): Promise<ChannelMemberOut[]> {
+  return request(
+    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members`,
+    { headers: { Authorization: nip98Token } },
+  );
+}
+
+export function addChannelMember(
+  slug: string,
+  channelId: string,
+  pubkey: string,
+  role: string,
+  nip98Token: string,
+): Promise<{ status: string }> {
+  return request(
+    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members`,
+    {
+      method: "POST",
+      headers: { Authorization: nip98Token, "Content-Type": "application/json" },
+      body: JSON.stringify({ pubkey, role }),
+    },
+  );
+}
+
+export function removeChannelMember(
+  slug: string,
+  channelId: string,
+  pubkey: string,
+  nip98Token: string,
+): Promise<{ status: string }> {
+  return request(
+    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(pubkey)}`,
+    { method: "DELETE", headers: { Authorization: nip98Token } },
+  );
 }

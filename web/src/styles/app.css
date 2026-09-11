@@ -26,17 +26,29 @@ body {
   background: color-mix(in oklab, var(--muted) 40%, transparent);
 }
 
+/* Density (Settings > Appearance): scales the two spacing primitives every screen is built from.
+   [data-density] lives on <html>, set by src/lib/appearance.ts. */
+:root {
+  --density-scale: 1;
+}
+[data-density="compact"] {
+  --density-scale: 0.75;
+}
+[data-density="spacious"] {
+  --density-scale: 1.25;
+}
+
 .card {
   background: var(--card);
   border-radius: var(--radius-2xl);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
-  padding: 20px;
+  padding: calc(20px * var(--density-scale));
 }
 
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--density-scale));
 }
 
 .field {
@@ -141,6 +153,14 @@ body {
   font-family: monospace;
   font-size: 10px;
   margin-top: 4px;
+}
+
+.hint-banner {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-radius: var(--radius-lg);
+  padding: 8px 10px;
+  font-size: 11px;
 }
 
 .onboarding-shell {
@@ -553,6 +573,15 @@ body {
 }
 
 .app-shell-mode-switch .btn.active {
+  background: var(--muted);
+}
+
+.button-group {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-outline.active {
   background: var(--muted);
 }
 

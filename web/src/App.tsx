@@ -1,6 +1,7 @@
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { nip98 } from "nostr-tools";
 import { useEffect, useState } from "react";
+import { applyAppearance, loadAppearance } from "./lib/appearance";
 import * as api from "./lib/api";
 import type { WorkspaceOut } from "./lib/api";
 import { auth } from "./lib/firebase";
@@ -17,6 +18,10 @@ export function App() {
   const [accountPassword, setAccountPassword] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
   const [signer, setSigner] = useState<Signer | null>(null);
+
+  useEffect(() => {
+    loadAppearance().then(applyAppearance);
+  }, []);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (firebaseUser) => {
