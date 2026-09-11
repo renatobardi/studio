@@ -65,3 +65,39 @@ async def test_recording_a_reference_to_an_unknown_blob_does_not_raise(store: Ev
     await repo.record_references(_message_event(sha256=OTHER_SHA), channel_id="chan1")
 
     assert await repo.channels_referencing(OTHER_SHA) == []
+
+
+def _gift_wrap_event(*, sha256: str) -> NostrEvent:
+    return {
+        "id": "wrap1",
+        "pubkey": "sender",
+        "created_at": 0,
+        "kind": 1059,
+        "tags": [["p", "recipient"], ["x", sha256]],
+        "content": "ciphertext",
+        "sig": "sig",
+    }
+
+
+async def test_dm_recipients_of_an_unreferenced_blob_is_empty(store: EventStore) -> None:
+    repo = MediaRepository(store.raw)
+    await repo.create_blob(sha256=SHA, pubkey="uploader", mime="application/octet-stream", size=1, storage_key=SHA)
+
+    assert await repo.dm_recipients(SHA) == []
+
+
+async def test_recording_a_dm_reference_to_a_known_blob_makes_it_show_up(store: EventStore) -> None:
+    repo = MediaRepository(store.raw)
+    await repo.create_blob(sha256=SHA, pubkey="sender", mime="application/octet-stream", size=1, storage_key=SHA)
+
+    await repo.record_dm_references(_gift_wrap_event(sha256=SHA), recipients=["recipient", "sender"])
+
+    assert sorted(await repo.dm_recipients(SHA)) == ["recipient", "sender"]
+
+
+async def test_recording_a_dm_reference_to_an_unknown_blob_does_not_raise(store: EventStore) -> None:
+    repo = MediaRepository(store.raw)
+
+    await repo.record_dm_references(_gift_wrap_event(sha256=OTHER_SHA), recipients=["recipient"])
+
+    assert await repo.dm_recipients(OTHER_SHA) == []

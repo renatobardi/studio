@@ -208,6 +208,26 @@ class TestUpload:
 
         assert response.status_code == 400
 
+    async def test_encrypted_dm_photo_bytes_are_accepted_as_octet_stream(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        sk, pubkey = new_keypair()
+        await _make_workspace_member(control_repo, pubkey)
+        ciphertext = b"nip44-ciphertext-not-a-real-image"
+        sha256 = hashlib.sha256(ciphertext).hexdigest()
+
+        response = await client.put(
+            "/media/upload",
+            headers={
+                **blossom_header(sk, pubkey, action="upload", sha256=sha256),
+                "content-type": "application/octet-stream",
+            },
+            content=ciphertext,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["type"] == "application/octet-stream"
+
     async def test_an_expired_auth_event_is_rejected(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
     ) -> None:
@@ -340,6 +360,53 @@ class TestGet:
         )
 
         assert response.status_code == 302
+
+    async def test_a_dm_recipient_can_fetch_a_blob_referenced_only_by_a_gift_wrap(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository, media_repo: MediaRepository
+    ) -> None:
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+
+        recipient_sk, recipient_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, recipient_pubkey)
+        await media_repo.record_dm_references(
+            {
+                "id": "wrap1",
+                "pubkey": uploader_pubkey,
+                "created_at": 0,
+                "kind": 1059,
+                "tags": [["p", recipient_pubkey], ["x", sha256]],
+                "content": "ciphertext",
+                "sig": "s",
+            },
+            recipients=[recipient_pubkey, uploader_pubkey],
+        )
+
+        response = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(recipient_sk, recipient_pubkey, action="get"),
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+
+    async def test_a_workspace_member_not_recorded_as_a_dm_recipient_cannot_fetch_it(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+
+        other_sk, other_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, other_pubkey)
+
+        response = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(other_sk, other_pubkey, action="get"),
+        )
+
+        assert response.status_code == 403
 
     async def test_an_unknown_blob_is_403(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
