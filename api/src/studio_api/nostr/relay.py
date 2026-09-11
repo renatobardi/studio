@@ -224,7 +224,9 @@ class RelayConnection:
         if not self._is_member:
             await self._send(["OK", event_id, False, "restricted: not a member of this workspace"])
             return
-        if event.get("pubkey") != self._authed_pubkey:
+        # A gift wrap's pubkey is a one-time throwaway key (NIP-59) — never the sender's real
+        # Identity, by design, so it can't be checked against the authenticated session.
+        if event.get("kind") not in GIFT_WRAP_KINDS and event.get("pubkey") != self._authed_pubkey:
             await self._send(
                 ["OK", event_id, False, "invalid: pubkey does not match the authenticated session"]
             )
