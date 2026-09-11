@@ -15,11 +15,13 @@ export function ChannelView({
   channelId,
   pubkey,
   signer,
+  mediaUrl,
 }: Readonly<{
   client: RelayClient;
   channelId: string;
   pubkey: string;
   signer: Signer;
+  mediaUrl: string;
 }>) {
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
@@ -46,6 +48,7 @@ export function ChannelView({
           channelId={channelId}
           pubkey={pubkey}
           signer={signer}
+          mediaUrl={mediaUrl}
           messages={feed.messages}
           replies={feed.replies}
           reactions={feed.reactions}

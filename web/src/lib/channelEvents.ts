@@ -11,9 +11,10 @@ function unsigned(kind: number, tags: string[][], content: string): EventTemplat
   return { kind, tags, content, created_at: Math.floor(Date.now() / 1000) };
 }
 
-/** kind 9: a Message in a Channel's timeline. */
-export function buildMessage(channelId: string, content: string): EventTemplate {
-  return unsigned(9, [["h", channelId]], content);
+/** kind 9: a Message in a Channel's timeline. `imetaTags` (NIP-92), one per attached image,
+ * come from `buildImetaTag` in `./media`. */
+export function buildMessage(channelId: string, content: string, imetaTags: string[][] = []): EventTemplate {
+  return unsigned(9, [["h", channelId], ...imetaTags], content);
 }
 
 /** kind 1111 (NIP-22): a Thread Reply. This app only ever replies to the Thread's root Message,

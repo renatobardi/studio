@@ -436,6 +436,60 @@ body {
   font-family: var(--font-sans);
 }
 
+.composer-attach-input {
+  display: none;
+}
+
+.attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.attachment-preview-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.attachment-thumb {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+}
+
+.attachment-loading {
+  width: 240px;
+  height: 120px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.attachment-error {
+  color: var(--destructive, red);
+  font-size: 12px;
+}
+
+.attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  z-index: 100;
+}
+
+.attachment-full {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+}
+
 .side-pane {
   width: 240px;
   border-left: 1px solid var(--border);

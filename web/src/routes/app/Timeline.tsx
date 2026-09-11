@@ -1,5 +1,5 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import {
   buildMessage,
@@ -9,10 +9,17 @@ import {
   groupReactions,
   type TargetRef,
 } from "../../lib/channelEvents";
+import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
+import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
+
+type Attachment =
+  | { status: "uploading"; previewUrl: string; loaded: number; total: number }
+  | { status: "ready"; previewUrl: string; descriptor: BlobDescriptor }
+  | { status: "error"; previewUrl: string; message: string };
 
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
@@ -25,6 +32,7 @@ export function Timeline({
   channelId,
   pubkey,
   signer,
+  mediaUrl,
   messages,
   replies,
   reactions,
@@ -39,6 +47,7 @@ export function Timeline({
   channelId: string;
   pubkey: string;
   signer: Signer;
+  mediaUrl: string;
   messages: VerifiedEvent[];
   replies: VerifiedEvent[];
   reactions: VerifiedEvent[];
@@ -51,16 +60,47 @@ export function Timeline({
 }>) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const pickAttachment = async (file: File) => {
+    const previewUrl = URL.createObjectURL(file);
+    try {
+      validateAttachment(file);
+    } catch (err) {
+      setAttachment({ status: "error", previewUrl, message: err instanceof Error ? err.message : "Couldn't attach that file." });
+      return;
+    }
+    setAttachment({ status: "uploading", previewUrl, loaded: 0, total: file.size });
+    try {
+      const descriptor = await uploadBlob(mediaUrl, file, signer, (loaded, total) =>
+        setAttachment((prev) => (prev?.status === "uploading" ? { ...prev, loaded, total } : prev)),
+      );
+      setAttachment({ status: "ready", previewUrl, descriptor });
+    } catch (err) {
+      setAttachment({ status: "error", previewUrl, message: err instanceof Error ? err.message : "Upload failed." });
+    }
+  };
+
+  const clearAttachment = () => {
+    if (attachment) URL.revokeObjectURL(attachment.previewUrl);
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const canSend = draft.trim().length > 0 || attachment?.status === "ready";
 
   const send = async () => {
     const content = draft.trim();
-    if (!content) return;
+    if (!canSend || attachment?.status === "uploading") return;
     setSendError(null);
     try {
-      const template = buildMessage(channelId, content);
+      const imetaTags = attachment?.status === "ready" ? [buildImetaTag(attachment.descriptor)] : [];
+      const template = buildMessage(channelId, content, imetaTags);
       const signed = await signer.signEvent(template);
       await client.publish(signed);
       setDraft("");
+      clearAttachment();
     } catch {
       setSendError("Couldn't send — check your connection and try again.");
     }
@@ -109,7 +149,10 @@ export function Timeline({
                 <span className="message-author">{displayName(profiles, message.pubkey)}</span>
                 <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
               </div>
-              <div className="message-content">{message.content}</div>
+              {message.content && <div className="message-content">{message.content}</div>}
+              {parseImetaTags(message.tags).map((descriptor) => (
+                <AttachmentImage key={descriptor.sha256} descriptor={descriptor} signer={signer} />
+              ))}
               <ReactionBar
                 groups={groupReactions(reactionsForMessage, deletionsForMessage)}
                 ownPubkey={pubkey}
@@ -128,6 +171,24 @@ export function Timeline({
         })}
       </ul>
       {sendError && <div className="error-banner">{sendError}</div>}
+      {attachment && (
+        <div className="attachment-preview" data-testid="attachment-preview">
+          <img src={attachment.previewUrl} alt="" className="attachment-preview-thumb" />
+          {attachment.status === "uploading" && (
+            <span className="meta" data-testid="attachment-progress">
+              Uploading… {Math.round((attachment.loaded / Math.max(attachment.total, 1)) * 100)}%
+            </span>
+          )}
+          {attachment.status === "error" && (
+            <span className="error-banner" data-testid="attachment-error">
+              {attachment.message}
+            </span>
+          )}
+          <button type="button" className="link" onClick={clearAttachment}>
+            Remove
+          </button>
+        </div>
+      )}
       <form
         className="composer"
         onSubmit={(e) => {
@@ -136,13 +197,32 @@ export function Timeline({
         }}
       >
         <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="composer-attach-input"
+          data-testid="attach-input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void pickAttachment(file);
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn-outline"
+          data-testid="attach-button"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          📎
+        </button>
+        <input
           className="composer-input"
           value={draft}
           placeholder="Message the channel…"
           onChange={(e) => setDraft(e.target.value)}
           data-testid="message-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
+        <button className="btn btn-primary" type="submit" disabled={!canSend || attachment?.status === "uploading"}>
           Send
         </button>
       </form>

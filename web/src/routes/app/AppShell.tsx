@@ -104,7 +104,14 @@ export function AppShell({
           />
         )}
         {selectedChannelId && pubkey && (
-          <ChannelView key={selectedChannelId} client={client} channelId={selectedChannelId} pubkey={pubkey} signer={signer} />
+          <ChannelView
+            key={selectedChannelId}
+            client={client}
+            channelId={selectedChannelId}
+            pubkey={pubkey}
+            signer={signer}
+            mediaUrl={workspace.media_url}
+          />
         )}
         {channels?.length === 0 && <p className="meta">No Channels yet.</p>}
       </div>
