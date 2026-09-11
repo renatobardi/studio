@@ -110,3 +110,11 @@ jobs:
           STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
           STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
         run: bun run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: web/test-results/
+          retention-days: 7
