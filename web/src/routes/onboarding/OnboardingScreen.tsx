@@ -390,6 +390,11 @@ export function OnboardingScreen({
         {step === "config" && workspace && (
           <>
             <h1 className="onboarding-title">You're in {workspace.name}</h1>
+            {/* Test-only hook (not sensitive — a Nostr pubkey is a public identifier): lets
+                Playwright grant this run's freshly-restored Identity Channel membership before
+                it needs to publish anything (flows 2 & 3, e2e/helpers.ts's
+                ensureChannelMembership). */}
+            {identity && <span data-testid="own-pubkey" hidden>{identity.publicKey}</span>}
             <div className="onboarding-actions">
               <button className="btn btn-primary btn-block" onClick={handleFinish}>
                 Finish
