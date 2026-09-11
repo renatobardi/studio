@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import * as api from "./lib/api";
 import type { WorkspaceOut } from "./lib/api";
 import { auth } from "./lib/firebase";
-import { clearIdentity, getSigner, loadWorkspaceSlug } from "./lib/custody";
+import { clearIdentity, getSigner, loadWorkspaceSlug, type Signer } from "./lib/custody";
 import { resolveInitialView, type AppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
@@ -16,6 +16,7 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [accountPassword, setAccountPassword] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
+  const [signer, setSigner] = useState<Signer | null>(null);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (firebaseUser) => {
@@ -43,6 +44,7 @@ export function App() {
       }
 
       setWorkspace(resumedWorkspace);
+      setSigner(signer);
       setView(
         resolveInitialView({
           account: verified && firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email } : null,
@@ -73,8 +75,9 @@ export function App() {
       <OnboardingScreen
         user={user}
         accountPassword={accountPassword}
-        onComplete={(ws) => {
+        onComplete={async (ws) => {
           setWorkspace(ws);
+          setSigner(await getSigner());
           setView("app");
         }}
       />
@@ -82,10 +85,11 @@ export function App() {
   }
 
   if (view === "app") {
-    if (workspace) {
+    if (workspace && signer) {
       return (
         <AppShell
           workspace={workspace}
+          signer={signer}
           onSignOut={async () => {
             await clearIdentity();
             await signOut(auth);

@@ -1,3 +1,11 @@
+import { nip98 } from "nostr-tools";
+import type { Signer } from "./custody";
+
+/** A fresh NIP-98 proof for one request — these are signed per-call, never reused. */
+export function authProof(url: string, method: string, signer: Signer): Promise<string> {
+  return nip98.getToken(url, method, (event) => signer.signEvent(event), true);
+}
+
 export interface WorkspaceOut {
   slug: string;
   name: string;
@@ -9,6 +17,13 @@ export interface WorkspaceOut {
 export interface InvitePreview {
   workspace_name: string;
   valid: boolean;
+}
+
+export interface ChannelOut {
+  id: string;
+  name: string;
+  about: string;
+  private: boolean;
 }
 
 class ApiError extends Error {
@@ -75,6 +90,13 @@ export function getKeyBackup(firebaseIdToken: string): Promise<{ blob_base64: st
 /** Re-fetches a previously-joined Workspace, e.g. on app resume. Member-only. */
 export function getWorkspace(slug: string, nip98Token: string): Promise<WorkspaceOut> {
   return request(`/workspaces/${encodeURIComponent(slug)}`, {
+    headers: { Authorization: nip98Token },
+  });
+}
+
+/** The caller's Channels in this Workspace. */
+export function listChannels(slug: string, nip98Token: string): Promise<ChannelOut[]> {
+  return request(`/workspaces/${encodeURIComponent(slug)}/channels`, {
     headers: { Authorization: nip98Token },
   });
 }
