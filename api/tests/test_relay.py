@@ -744,6 +744,31 @@ class TestGiftWrapAuthorization:
         ok = recorder.of_type("OK")[-1]
         assert ok == ["OK", wrap["id"], True, ""]
 
+    async def test_a_gift_wrap_signed_by_a_throwaway_ephemeral_key_is_accepted(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """NIP-59: a gift wrap's `pubkey` is a one-time ephemeral key, never the sender's real
+        Identity — the whole point is that the relay (and any onlooker) never learns who sent
+        it. This is what every real client actually publishes (see web/src/lib/nip17.ts's
+        wrapSeal); the sibling test above uses the authenticated key itself only for brevity,
+        which happened to mask this exact check rejecting real traffic."""
+        sender_sk, sender_pubkey = new_keypair()
+        _ephemeral_sk, ephemeral_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey,), channel_members={}, now=lambda: now,
+        )
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            _ephemeral_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]]
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok == ["OK", wrap["id"], True, ""]
+
     async def test_a_gift_wrap_without_a_p_tag_is_rejected(
         self, store: EventStore, fanout: LiveFanout
     ) -> None:
