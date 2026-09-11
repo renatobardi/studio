@@ -94,7 +94,10 @@ async def client(
     app.state.workspace_slug = WORKSPACE_SLUG
     app.include_router(router)
     transport = ASGITransport(app=app)
-    return AsyncClient(transport=transport, base_url="http://test")
+    # Matches MINIO_ENDPOINT so the app's own base_url (used to presign GET
+    # redirects, see routes.py) is a real, directly-fetchable MinIO host —
+    # exercising the same public-endpoint presigning the Caddyfile relies on.
+    return AsyncClient(transport=transport, base_url=MINIO_ENDPOINT)
 
 
 async def _make_workspace_member(control_repo: ControlPlaneRepository, pubkey: str) -> None:
@@ -269,7 +272,7 @@ class TestGet:
 
         response = await client.get(
             f"/media/{sha256}",
-            headers=nip98_header(sk, pubkey, url=f"http://test/media/{sha256}", method="GET"),
+            headers=nip98_header(sk, pubkey, url=f"{MINIO_ENDPOINT}/media/{sha256}", method="GET"),
             follow_redirects=False,
         )
 

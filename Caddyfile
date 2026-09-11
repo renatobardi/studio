@@ -19,6 +19,13 @@
 		reverse_proxy api:8000
 	}
 
+	# The media API's presigned GET redirects here (ticket #6): the bucket name
+	# is the S3 path-style prefix, so this must forward the path as-is — no
+	# rewriting — or the signature boto3 computed for it won't validate.
+	handle /studio-media/* {
+		reverse_proxy minio:9000
+	}
+
 	handle {
 		# nginx-unprivileged (non-root) listens on 8080, not 80 — see web/Dockerfile.
 		reverse_proxy web:8080
