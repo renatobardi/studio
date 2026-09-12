@@ -12,14 +12,16 @@ import pytest
 from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
+from studio_api.nostr.limits import MAX_FILTERS_PER_REQ, MAX_LIMIT, MAX_SUBSCRIPTIONS
 from studio_api.nostr.model import Filter, NostrEvent
 from studio_api.nostr.relay import (
     ConnectionRegistry,
     MediaReferenceRecorder,
     RelayConnection,
     SeededRelayAuthorizer,
+    parse_filter,
 )
-from studio_api.nostr.store import EventStore, LiveFanout
+from studio_api.nostr.store import MAX_PENDING_EVENTS, EventStore, LiveFanout
 
 RELAY_URL = "wss://relay.example.com/relay/family"
 
@@ -1239,4 +1241,297 @@ class TestSubscriptionLifecycle:
         await connection.handle_message(["EVENT", live_note])
         await wait_until(lambda: len(recorder.of_type("EVENT")) == 3)
 
+        await connection.close()
+
+
+async def authenticated_connection(
+    store: EventStore, fanout: LiveFanout
+) -> tuple[RelayConnection, Recorder, PrivateKey, str, int]:
+    """A connection that has already completed the NIP-42 handshake as a
+    Workspace Member — the starting point for everything a client can then
+    get wrong."""
+    sk, pubkey = new_keypair()
+    now = int(time.time())
+    connection, recorder = make_connection(
+        store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now
+    )
+    await authenticate(connection, recorder, sk, pubkey, now=now)
+    return connection, recorder, sk, pubkey, now
+
+
+class TestMalformedClientMessages:
+    """Ticket #52: whatever a client puts on the wire, the answer is a
+    controlled relay message. Nothing a single client sends may raise out of
+    `handle_message` — that would end its connection on the transport's error
+    path instead of NIP-01's, and leave its subscriptions to be cleaned up by
+    luck."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            pytest.param("not-a-list", id="a bare string"),
+            pytest.param({"0": "EVENT"}, id="an object"),
+            pytest.param([], id="an empty array"),
+            pytest.param(["EVENT"], id="EVENT with no event"),
+            pytest.param(["REQ"], id="REQ with no subscription id"),
+            pytest.param(["CLOSE"], id="CLOSE with no subscription id"),
+            pytest.param(["AUTH"], id="AUTH with no event"),
+            pytest.param(["REQ", 7, {}], id="REQ with a non-string subscription id"),
+            pytest.param(["CLOSE", None], id="CLOSE with a non-string subscription id"),
+        ],
+    )
+    async def test_a_malformed_envelope_is_answered_with_a_notice(
+        self, store: EventStore, fanout: LiveFanout, message: Any
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+
+        await connection.handle_message(message)
+
+        notice = recorder.of_type("NOTICE")[-1]
+        assert str(notice[1]).startswith("invalid:")
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param("not-an-object", id="a bare string"),
+            pytest.param([], id="an array"),
+            pytest.param({"id": "a" * 64}, id="only an id"),
+            pytest.param({"kind": "1"}, id="a kind that is a string"),
+            pytest.param({"created_at": True}, id="a created_at that is a boolean"),
+            pytest.param({"tags": "nope"}, id="tags that are not an array"),
+            pytest.param({"tags": [["e", 7]]}, id="a tag value that is not a string"),
+        ],
+    )
+    async def test_a_malformed_event_is_rejected_without_raising(
+        self, store: EventStore, fanout: LiveFanout, payload: Any
+    ) -> None:
+        connection, recorder, sk, pubkey, now = await authenticated_connection(store, fanout)
+        valid = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="hi")
+        # A dict payload names the fields to corrupt on an otherwise valid
+        # event; anything else stands in for the whole payload.
+        event = {**valid, **payload} if isinstance(payload, dict) else payload
+
+        await connection.handle_message(["EVENT", event])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    async def test_an_event_with_no_fields_at_all_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+
+        await connection.handle_message(["EVENT", {}])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param("not-an-object", id="a bare string"),
+            pytest.param({}, id="no fields at all"),
+            pytest.param({"kind": 22242}, id="only a kind"),
+        ],
+    )
+    async def test_a_malformed_auth_event_is_rejected_without_raising(
+        self, store: EventStore, fanout: LiveFanout, payload: Any
+    ) -> None:
+        connection, recorder = make_connection(store, fanout)
+        await connection.start()
+
+        await connection.handle_message(["AUTH", payload])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    @pytest.mark.parametrize(
+        "raw_filter",
+        [
+            pytest.param("not-an-object", id="a bare string"),
+            pytest.param([], id="an array"),
+            pytest.param({"kinds": "nope"}, id="kinds that are not a list"),
+            pytest.param({"ids": [7]}, id="an id that is not a string"),
+            pytest.param({"since": "yesterday"}, id="a since that is not a number"),
+            pytest.param({"#e": "nope"}, id="a tag filter that is not a list"),
+            pytest.param({"limit": -1}, id="a negative limit"),
+        ],
+    )
+    async def test_a_malformed_filter_closes_that_subscription(
+        self, store: EventStore, fanout: LiveFanout, raw_filter: Any
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+
+        await connection.handle_message(["REQ", "sub1", raw_filter])
+
+        closed = recorder.of_type("CLOSED")[-1]
+        assert closed[1] == "sub1"
+        assert str(closed[2]).startswith("invalid:")
+
+    async def test_a_connection_still_works_after_a_stream_of_garbage(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, recorder, sk, pubkey, now = await authenticated_connection(store, fanout)
+
+        for message in ([], ["EVENT"], ["EVENT", None], ["REQ", "s", "nope"], ["CLOSE"], "junk"):
+            await connection.handle_message(message)
+
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="still here")
+        await connection.handle_message(["EVENT", event])
+        assert recorder.of_type("OK")[-1] == ["OK", event["id"], True, ""]
+
+    async def test_garbage_from_one_client_does_not_disturb_another(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        noisy, _noisy_recorder, _noisy_sk, _noisy_pubkey, _noisy_now = (
+            await authenticated_connection(store, fanout)
+        )
+        quiet, quiet_recorder, sk, pubkey, now = await authenticated_connection(store, fanout)
+        await quiet.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        for message in ([], ["EVENT", "nope"], ["REQ", "s", {"kinds": "nope"}], {"a": 1}):
+            await noisy.handle_message(message)
+
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="live one")
+        await quiet.handle_message(["EVENT", event])
+        await wait_until(lambda: bool(quiet_recorder.of_type("EVENT")))
+        assert quiet_recorder.of_type("EVENT")[-1] == ["EVENT", "sub1", event]
+        await quiet.close()
+        await noisy.close()
+
+
+class TestConnectionCaps:
+    """Ticket #52: one connection may not open unbounded work. The caps are
+    the ones published in the NIP-11 `limitation` object."""
+
+    async def test_more_subscriptions_than_the_cap_are_refused(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+        for i in range(MAX_SUBSCRIPTIONS):
+            await connection.handle_message(["REQ", f"sub{i}", {"kinds": [1]}])
+        assert len(recorder.of_type("EOSE")) == MAX_SUBSCRIPTIONS
+
+        await connection.handle_message(["REQ", "one-too-many", {"kinds": [1]}])
+
+        closed = recorder.of_type("CLOSED")[-1]
+        assert closed[1] == "one-too-many"
+        assert str(closed[2]).startswith("rate-limited:")
+        assert len(recorder.of_type("EOSE")) == MAX_SUBSCRIPTIONS  # the open ones are untouched
+        await connection.close()
+
+    async def test_closing_a_subscription_frees_a_slot(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+        for i in range(MAX_SUBSCRIPTIONS):
+            await connection.handle_message(["REQ", f"sub{i}", {"kinds": [1]}])
+
+        await connection.handle_message(["CLOSE", "sub0"])
+        await connection.handle_message(["REQ", "replacement", {"kinds": [1]}])
+
+        assert len(recorder.of_type("EOSE")) == MAX_SUBSCRIPTIONS + 1
+        assert not recorder.of_type("CLOSED")
+        await connection.close()
+
+    async def test_a_req_with_more_filters_than_the_cap_is_refused(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+        filters = [{"kinds": [kind]} for kind in range(MAX_FILTERS_PER_REQ + 1)]
+
+        await connection.handle_message(["REQ", "sub1", *filters])
+
+        closed = recorder.of_type("CLOSED")[-1]
+        assert closed[1] == "sub1"
+        assert str(closed[2]).startswith("invalid:")
+
+    def test_a_filter_limit_above_the_cap_is_clamped(self) -> None:
+        assert parse_filter({"limit": MAX_LIMIT * 10}).limit == MAX_LIMIT
+
+    def test_a_filter_limit_within_the_cap_is_left_alone(self) -> None:
+        assert parse_filter({"limit": 5}).limit == 5
+
+
+class _StalledSender:
+    """A client that stopped reading: every EVENT frame blocks until the test
+    releases it. Control frames go straight through, so the test can see how
+    the relay ends a subscription that fell too far behind."""
+
+    def __init__(self) -> None:
+        self.sent: list[list[Any]] = []
+        self.released = asyncio.Event()
+
+    async def __call__(self, message: list[Any]) -> None:
+        self.sent.append(message)
+        if message[0] == "EVENT":
+            await self.released.wait()
+
+    def of_type(self, message_type: str) -> list[list[Any]]:
+        return [m for m in self.sent if m[0] == message_type]
+
+
+class TestSlowSubscriber:
+    async def test_a_subscriber_that_never_reads_is_dropped_instead_of_buffered_forever(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        sender = _StalledSender()
+        connection = RelayConnection(
+            store=store,
+            fanout=fanout,
+            authorizer=SeededRelayAuthorizer({pubkey}),
+            relay_url=RELAY_URL,
+            send=sender,
+            now=lambda: now,
+        )
+        await connection.start()
+        auth_event = make_auth_event(
+            sk, pubkey, relay_url=RELAY_URL, challenge=connection.challenge, created_at=now
+        )
+        await connection.handle_message(["AUTH", auth_event])
+        await connection.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        for i in range(MAX_PENDING_EVENTS + 5):
+            backlogged = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content=str(i))
+            await fanout.deliver(backlogged, workspace_slug=store.workspace_slug)
+
+        sender.released.set()
+        await wait_until(lambda: bool(sender.of_type("CLOSED")))
+        closed = sender.of_type("CLOSED")[-1]
+        assert closed[1] == "sub1"
+        assert str(closed[2]).startswith("error:")
+        await connection.close()
+
+
+class TestHistoryCeiling:
+    """Ticket #52: `max_limit` is a ceiling on what one REQ may cost, so it
+    also applies to the client that names no limit at all — otherwise the
+    published cap describes nothing."""
+
+    def test_a_filter_with_no_limit_gets_the_relays_own(self) -> None:
+        assert parse_filter({"kinds": [1]}).limit == MAX_LIMIT
+
+    async def test_a_req_with_no_limit_asks_the_store_for_a_bounded_page(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, _recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+        asked: list[Filter] = []
+        original_query = store.query
+
+        async def recording_query(filters: Any) -> list[NostrEvent]:
+            asked.extend(filters)
+            return await original_query(filters)
+
+        store.query = recording_query  # type: ignore[method-assign]
+        try:
+            await connection.handle_message(["REQ", "sub1", {"kinds": [1]}])
+        finally:
+            store.query = original_query  # type: ignore[method-assign]
+
+        assert [flt.limit for flt in asked] == [MAX_LIMIT]
         await connection.close()

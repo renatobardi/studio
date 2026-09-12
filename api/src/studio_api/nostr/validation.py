@@ -3,6 +3,7 @@ limits — the checks that gate every incoming EVENT before it reaches the
 store (ticket #2)."""
 
 from dataclasses import dataclass
+from typing import Any
 
 from studio_api.nostr.crypto import has_valid_integrity
 from studio_api.nostr.model import NostrEvent, first_tag_value
@@ -33,6 +34,37 @@ LIMITATION = {
 class EventRejection:
     prefix: str
     message: str
+
+
+_EVENT_FIELD_TYPES: dict[str, type] = {
+    "id": str,
+    "pubkey": str,
+    "created_at": int,
+    "kind": int,
+    "tags": list,
+    "content": str,
+    "sig": str,
+}
+
+
+def malformed_event_rejection(payload: Any) -> EventRejection | None:
+    """Whether an EVENT/AUTH payload is a Nostr event at all — it arrives as
+    arbitrary JSON, so every field has to be proven present and of the right
+    type before any other check may index into it (ticket #52)."""
+    if not isinstance(payload, dict):
+        return EventRejection("invalid", "an event must be a JSON object")
+    for name, expected in _EVENT_FIELD_TYPES.items():
+        value = payload.get(name)
+        # `bool` is a subclass of `int`, so `True` would otherwise pass as a
+        # `kind` or a `created_at`.
+        if not isinstance(value, expected) or isinstance(value, bool):
+            return EventRejection("invalid", f"an event's {name} is missing or of the wrong type")
+    if not all(
+        isinstance(tag, list) and all(isinstance(value, str) for value in tag)
+        for tag in payload["tags"]
+    ):
+        return EventRejection("invalid", "an event's tags must be arrays of strings")
+    return None
 
 
 def validate_event(event: NostrEvent, *, now: int) -> EventRejection | None:
