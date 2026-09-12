@@ -651,3 +651,61 @@ class TestChannels:
         )
 
         assert response.status_code == 403
+
+    async def _redeem_a_member(self, client: AsyncClient, owner_sk: PrivateKey, owner_pubkey: str) -> tuple[PrivateKey, str]:
+        invite = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+            ),
+            json={},
+        )
+        code = invite.json()["code"]
+        member_sk, member_pubkey = new_keypair()
+        await client.post(
+            f"/api/invites/{code}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey, url=f"http://test/api/invites/{code}/redeem", method="POST"
+            ),
+        )
+        return member_sk, member_pubkey
+
+    async def test_listing_channels_reports_the_callers_own_channel_role(
+        self, client: AsyncClient
+    ) -> None:
+        """The client needs the caller's Channel role to know whether to offer
+        Channel management to someone who is not a Workspace admin (#42)."""
+        owner_sk, owner_pubkey = await self._create_workspace(client)
+        create_url = "http://test/api/workspaces/family/channels"
+        managed = await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(owner_sk, owner_pubkey, url=create_url, method="POST"),
+            json={"name": "managed"},
+        )
+        plain = await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(owner_sk, owner_pubkey, url=create_url, method="POST"),
+            json={"name": "plain"},
+        )
+        await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(owner_sk, owner_pubkey, url=create_url, method="POST"),
+            json={"name": "outsider"},
+        )
+        member_sk, member_pubkey = await self._redeem_a_member(client, owner_sk, owner_pubkey)
+        for channel_id, role in ((managed.json()["id"], "admin"), (plain.json()["id"], "member")):
+            add_url = f"http://test/api/workspaces/family/channels/{channel_id}/members"
+            await client.post(
+                f"/api/workspaces/family/channels/{channel_id}/members",
+                headers=nostr_header(owner_sk, owner_pubkey, url=add_url, method="POST"),
+                json={"pubkey": member_pubkey, "role": role},
+            )
+
+        response = await client.get(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(member_sk, member_pubkey, url=create_url, method="GET"),
+        )
+
+        assert response.status_code == 200
+        by_name = {c["name"]: c["role"] for c in response.json()}
+        assert by_name == {"managed": "admin", "plain": "member", "outsider": None}

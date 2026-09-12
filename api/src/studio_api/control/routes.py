@@ -451,6 +451,11 @@ class ChannelOut(BaseModel):
     name: str
     about: str
     private: bool
+    role: str | None = None
+    """The caller's own role in this Channel, or null when they are not a
+    Channel Member — a public Channel is listed either way. It is what lets
+    the client offer Channel management to a Channel admin who holds no
+    Workspace admin role (#42)."""
 
 
 class AddChannelMemberBody(BaseModel):
@@ -488,7 +493,13 @@ async def list_channels(
     pubkey = await _caller_pubkey(caller, repo)
     await _require_workspace_member(repo, slug, pubkey)
     channels = await repo.list_channels_for(workspace_slug=slug, pubkey=pubkey)
-    return [ChannelOut(id=c.id, name=c.name, about=c.about, private=c.private) for c in channels]
+    return [
+        ChannelOut(
+            id=c.id, name=c.name, about=c.about, private=c.private,
+            role=await repo.get_channel_role(c.id, pubkey),
+        )
+        for c in channels
+    ]
 
 
 @router.post("/workspaces/{slug}/channels/{channel_id}/members")
