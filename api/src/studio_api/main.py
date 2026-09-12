@@ -171,6 +171,11 @@ async def _build_storage() -> ObjectStorage:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.store = await build_default_store()
     app.state.fanout = await app.state.store.start_live_fanout()
+    # One store and one repository for the whole process. That is not just
+    # frugality: both serialise their read-sign-write cycles on in-process
+    # locks, so a Workspace's invariants hold only while a single process
+    # owns them (ticket #44). Running the `api` service with more than one
+    # worker or replica would need real optimistic concurrency instead.
     app.state.repo = ControlPlaneRepository(
         app.state.store.raw,
         event_store=app.state.store,

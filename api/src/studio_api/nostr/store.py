@@ -190,7 +190,10 @@ class EventStore:
         # Python, then written back. Concurrent publishes to the same slot
         # would either lose the winner or collide inside SurrealDB, so they
         # take turns here. Shared with every store derived by for_workspace()
-        # — one API process owns the connection (ticket #44).
+        # — one API process owns the connection (ticket #44). One lock for
+        # every slot rather than one per slot: it is held for two round trips
+        # and replaceable events are a small minority of what a relay takes,
+        # so a dict of per-slot locks would cost more than it saves.
         self._replace_lock = replace_lock if replace_lock is not None else asyncio.Lock()
 
     @property

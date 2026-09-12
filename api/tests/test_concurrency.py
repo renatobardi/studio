@@ -66,6 +66,28 @@ class TestSingleUseInvite:
         assert stored is not None
         assert stored.use_count == 1
 
+    async def test_the_use_count_matches_the_identities_actually_admitted(
+        self, repo: ControlPlaneRepository
+    ) -> None:
+        await repo.create_workspace(slug="test-ws", name="Test", owner_pubkey="owner")
+        invite = await repo.create_invite(
+            workspace_slug="test-ws", role="member", expires_at=None, max_uses=3,
+            created_by="owner",
+        )
+
+        results = await asyncio.gather(
+            *(repo.redeem_invite(code=invite.code, pubkey=f"pub{i}", now=0) for i in range(8)),
+            return_exceptions=True,
+        )
+
+        admitted = [r for r in results if not isinstance(r, BaseException)]
+        assert len(admitted) == 3, f"{len(admitted)} admitted through an invite good for 3"
+
+        stored = await repo.get_invite(invite.code)
+        assert stored is not None
+        assert stored.use_count == len(admitted)
+        assert len(await repo.list_workspace_members("test-ws")) == len(admitted) + 1
+
 
 class TestConcurrentMembershipChanges:
     async def test_simultaneous_redemptions_all_reach_the_projected_member_list(
@@ -105,6 +127,28 @@ class TestConcurrentMembershipChanges:
         )
 
         expected = {("owner", "owner")} | {(p, "admin") for p in promoted}
+        assert {(m.pubkey, m.role) for m in await repo.list_workspace_members("test-ws")} == expected
+        assert await _projected_members(store) == expected
+
+    async def test_a_removal_racing_a_role_change_still_projects_the_final_state(
+        self, repo: ControlPlaneRepository, store: EventStore
+    ) -> None:
+        """Different kinds of membership change, not just several of a kind:
+        each rebuilds the member list from what it read."""
+        await repo.create_workspace(slug="test-ws", name="Test", owner_pubkey="owner")
+        invite = await repo.create_invite(
+            workspace_slug="test-ws", role="member", expires_at=None, max_uses=None,
+            created_by="owner",
+        )
+        for pubkey in ("leaver", "promoted", "stayer"):
+            await repo.redeem_invite(code=invite.code, pubkey=pubkey, now=0)
+
+        await asyncio.gather(
+            repo.remove_workspace_member(slug="test-ws", pubkey="leaver"),
+            repo.set_workspace_member_role(slug="test-ws", pubkey="promoted", role="admin"),
+        )
+
+        expected = {("owner", "owner"), ("promoted", "admin"), ("stayer", "member")}
         assert {(m.pubkey, m.role) for m in await repo.list_workspace_members("test-ws")} == expected
         assert await _projected_members(store) == expected
 

@@ -81,7 +81,9 @@ class ControlPlaneRepository:
         reader's view and silently drop the other's member (ticket #44). The
         signing happens in Python, so the database cannot arbitrate this on
         its own — a single API process owns the connection, and these are the
-        turns it takes."""
+        turns it takes. One lock per Workspace, held for the life of the
+        process: Workspaces are few and long-lived, so nothing here needs
+        evicting."""
         return self._workspace_locks.setdefault(workspace_slug, asyncio.Lock())
 
     # --- Account ----------------------------------------------------------
