@@ -171,17 +171,37 @@ class ControlPlaneRepository:
         """Every Workspace this Identity belongs to, with its role. Restoring
         on a new browser has no invite and no local state, so the Identity is
         the only thing left to resolve a Workspace from (#36)."""
-        rows = await _query_or_empty(
+        memberships = await _query_or_empty(
             self._db,
             "SELECT workspace_slug, role FROM workspace_member WHERE pubkey = $pubkey "
             "ORDER BY workspace_slug;",
             {"pubkey": pubkey},
         )
+        if not memberships:
+            return []
+        # Two queries, not one per membership: the role lives on the
+        # membership row and the name on the Workspace, so they are read
+        # together here rather than a Workspace at a time.
+        rows = await _query_or_empty(
+            self._db,
+            "SELECT *, meta::id(id) AS slug FROM workspace WHERE meta::id(id) IN $slugs;",
+            {"slugs": [row["workspace_slug"] for row in memberships]},
+        )
+        by_slug = {row["slug"]: row for row in rows}
         found: list[tuple[Workspace, str]] = []
-        for row in rows:
-            workspace = await self.get_workspace(row["workspace_slug"])
-            if workspace is not None:
-                found.append((workspace, row["role"]))
+        for membership in memberships:
+            row = by_slug.get(membership["workspace_slug"])
+            if row is None:
+                continue
+            found.append(
+                (
+                    Workspace(
+                        slug=row["slug"], name=row["name"],
+                        owner_pubkey=row["owner_pubkey"], key_pubkey=row["key_pubkey"],
+                    ),
+                    membership["role"],
+                )
+            )
         return found
 
     async def is_workspace_member_anywhere(self, pubkey: str) -> bool:
