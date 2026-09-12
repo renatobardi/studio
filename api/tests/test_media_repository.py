@@ -102,7 +102,7 @@ async def test_a_stranger_referencing_someone_elses_blob_records_nothing(
     )
 
     assert await repo.channels_referencing(SHA) == []
-    assert await repo.can_read(SHA, "stranger") is False
+    assert await repo.readable_blob(SHA, "stranger") is None
 
 
 async def test_a_member_of_a_channel_that_already_has_the_blob_may_forward_it(
@@ -174,5 +174,5 @@ async def test_recipients_declared_at_upload_can_read_the_blob(store: EventStore
     await repo.record_dm_recipients(sha256=SHA, pubkeys=["recipient", "sender"])
 
     assert sorted(await repo.dm_recipients(SHA)) == ["recipient", "sender"]
-    assert await repo.can_read(SHA, "recipient") is True
-    assert await repo.can_read(SHA, "outsider") is False
+    assert await repo.readable_blob(SHA, "recipient") is not None
+    assert await repo.readable_blob(SHA, "outsider") is None

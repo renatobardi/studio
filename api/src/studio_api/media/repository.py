@@ -45,23 +45,25 @@ class MediaRepository:
             storage_key=row["storage_key"],
         )
 
-    async def can_read(self, sha256: str, pubkey: str) -> bool:
-        """Whether this pubkey has a right to the blob's bytes: it uploaded
-        it, it was named as a recipient when it was uploaded, or it belongs
-        to a Channel that already references it. The single answer to that
-        question (ticket #38) — a GET is authorized by it, and so is every
-        new reference, which is why naming a hash cannot widen an ACL."""
+    async def readable_blob(self, sha256: str, pubkey: str) -> Blob | None:
+        """The blob, if this pubkey has a right to its bytes: it uploaded it,
+        it was named as a recipient when it was uploaded, or it belongs to a
+        Channel that already references it. `None` covers both an unknown
+        blob and a forbidden one — the caller owes the same answer either
+        way. The single answer to that question (ticket #38): a GET is
+        authorized by it, and so is every new reference, which is why naming
+        a hash cannot widen an ACL."""
         blob = await self.get_blob(sha256)
         if blob is None:
-            return False
+            return None
         if blob.pubkey == pubkey:
-            return True
+            return blob
         if pubkey in await self.dm_recipients(sha256):
-            return True
+            return blob
         for channel_id in await self.channels_referencing(sha256):
             if await self._authorizer.is_channel_member(channel_id, pubkey):
-                return True
-        return False
+                return blob
+        return None
 
     async def channels_referencing(self, sha256: str) -> list[str]:
         rows = await query_or_empty(
@@ -77,7 +79,7 @@ class MediaRepository:
         was already accepted, and each blob is decided on its own, so a
         rejected reference leaves no partial ACL behind."""
         for sha256 in imeta_sha256s(event):
-            if not await self.can_read(sha256, event["pubkey"]):
+            if await self.readable_blob(sha256, event["pubkey"]) is None:
                 continue
             ref_id = f"{sha256}:{channel_id}"
             await self._db.upsert(

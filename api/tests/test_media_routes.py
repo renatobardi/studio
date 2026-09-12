@@ -454,6 +454,15 @@ class TestGet:
 
         assert response.status_code == 403
         assert await media_repo.channels_referencing(sha256) == []
+        accomplice_sk, accomplice_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, accomplice_pubkey)
+        await control_repo.add_channel_member(channel_id=channel.id, pubkey=accomplice_pubkey)
+        assert (
+            await client.get(
+                f"/media/{sha256}",
+                headers=blossom_header(accomplice_sk, accomplice_pubkey, action="get"),
+            )
+        ).status_code == 403
 
     async def test_removal_from_the_workspace_blocks_the_uploaders_own_get(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
@@ -494,6 +503,58 @@ class TestGet:
         )
 
         assert response.status_code == 403
+
+    async def test_re_uploading_the_same_bytes_does_not_take_the_blob_over(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository, media_repo: MediaRepository
+    ) -> None:
+        """Ticket #38: holding a copy of the bytes proves the second uploader
+        may read them, never that they now decide who else may."""
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+
+        second_sk, second_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, second_pubkey)
+        await self._upload(client, second_sk, second_pubkey)
+
+        blob = await media_repo.get_blob(sha256)
+        assert blob is not None and blob.pubkey == uploader_pubkey
+        for sk, pubkey in ((uploader_sk, uploader_pubkey), (second_sk, second_pubkey)):
+            response = await client.get(
+                f"/media/{sha256}",
+                headers=blossom_header(sk, pubkey, action="get"),
+                follow_redirects=False,
+            )
+            assert response.status_code == 302
+
+    async def test_a_url_already_handed_out_outlives_the_removal_that_stops_new_ones(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        """Ticket #38: revoking access stops new redirects; it cannot reach
+        back into the presigned URLs (or the copies) already delivered."""
+        _owner_sk, owner_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, owner_pubkey)
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+        redirect = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(uploader_sk, uploader_pubkey, action="get"),
+            follow_redirects=False,
+        )
+        presigned_url = redirect.headers["location"]
+
+        await control_repo.remove_workspace_member(slug=WORKSPACE_SLUG, pubkey=uploader_pubkey)
+
+        assert (
+            await client.get(
+                f"/media/{sha256}",
+                headers=blossom_header(uploader_sk, uploader_pubkey, action="get"),
+            )
+        ).status_code == 403
+        async with httpx.AsyncClient() as raw:
+            still_valid = await raw.get(presigned_url)
+        assert still_valid.content == JPEG_BYTES
 
     async def test_a_workspace_member_not_named_as_a_recipient_cannot_fetch_it(
         self, client: AsyncClient, control_repo: ControlPlaneRepository

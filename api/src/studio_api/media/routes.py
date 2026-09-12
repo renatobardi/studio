@@ -105,10 +105,17 @@ async def upload_blob(
     if any(not _is_pubkey(recipient) for recipient in recipients):
         raise HTTPException(400, "p tags must be 32-byte hex pubkeys")
 
-    await storage.put_object(sha256, body, content_type=content_type)
-    await media_repo.create_blob(
-        sha256=sha256, pubkey=pubkey, mime=content_type, size=len(body), storage_key=sha256
-    )
+    blob = await media_repo.get_blob(sha256)
+    if blob is None:
+        await storage.put_object(sha256, body, content_type=content_type)
+        await media_repo.create_blob(
+            sha256=sha256, pubkey=pubkey, mime=content_type, size=len(body), storage_key=sha256
+        )
+    elif blob.pubkey != pubkey:
+        # Ticket #38: the same bytes offered again are the same blob. Holding
+        # a copy proves this uploader may read it — it never hands them the
+        # blob, which keeps the uploader it already has.
+        recipients = [pubkey, *recipients]
     if recipients:
         await media_repo.record_dm_recipients(sha256=sha256, pubkeys=recipients)
     url = f"{str(request.base_url).rstrip('/')}/media/{sha256}"
@@ -139,8 +146,8 @@ async def get_blob(
     if not await repo.is_workspace_member_anywhere(pubkey):
         raise HTTPException(403, "forbidden")
 
-    blob = await media_repo.get_blob(sha256)
-    if blob is None or not await media_repo.can_read(sha256, pubkey):
+    blob = await media_repo.readable_blob(sha256, pubkey)
+    if blob is None:
         raise HTTPException(403, "forbidden")
 
     public_endpoint_url = str(request.base_url).rstrip("/")
