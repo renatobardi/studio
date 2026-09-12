@@ -21,6 +21,7 @@ function invite(overrides: Partial<InviteOut> = {}): InviteOut {
     max_uses: null,
     use_count: 0,
     revoked: false,
+    state: "active",
     ...overrides,
   };
 }
@@ -103,33 +104,28 @@ describe("inviteLimits", () => {
 
 describe("describeInvite", () => {
   test("an unlimited invite says so rather than showing empty limits", () => {
-    expect(describeInvite(invite(), NOW)).toBe("active · 0 uses · never expires");
+    expect(describeInvite(invite())).toBe("active · 0 uses · never expires");
   });
 
   test("counts uses against the limit", () => {
-    expect(describeInvite(invite({ max_uses: 5, use_count: 2 }), NOW)).toBe(
+    expect(describeInvite(invite({ max_uses: 5, use_count: 2 }))).toBe(
       "active · 2/5 uses · never expires",
     );
   });
 
-  test("a revoked invite reads as revoked, whatever its limits say", () => {
-    expect(describeInvite(invite({ revoked: true, max_uses: 5 }), NOW)).toBe(
+  test("reports the server's state rather than re-deciding it here", () => {
+    // The rule for what "exhausted" means lives in the API (invite_state);
+    // a second copy here would be free to drift from the one redemption uses.
+    expect(describeInvite(invite({ state: "revoked", max_uses: 5 }))).toBe(
       "revoked · 0/5 uses · never expires",
     );
-  });
-
-  test("an invite past its expiry is expired, not active", () => {
-    expect(describeInvite(invite({ expires_at: NOW - 1 }), NOW)).toContain("expired");
-  });
-
-  test("an invite that spent its last use is exhausted", () => {
-    expect(describeInvite(invite({ max_uses: 2, use_count: 2 }), NOW)).toBe(
+    expect(describeInvite(invite({ state: "exhausted", max_uses: 2, use_count: 2 }))).toBe(
       "exhausted · 2/2 uses · never expires",
     );
   });
 
-  test("an expiry still ahead is shown as a date, so an admin can see which link to resend", () => {
-    const description = describeInvite(invite({ expires_at: NOW + 86400 }), NOW);
+  test("an expiry is shown as a date, so an admin can see which link to resend", () => {
+    const description = describeInvite(invite({ expires_at: NOW + 86400 }));
     expect(description).toStartWith("active · 0 uses · expires ");
     expect(description).not.toContain("never expires");
   });

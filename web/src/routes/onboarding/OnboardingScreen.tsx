@@ -79,10 +79,10 @@ export function OnboardingScreen({
   const [inviteCode, setInviteCode] = useState(() => pendingInviteCode() ?? "");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
 
-  // Whether this Identity is joining somebody's Workspace or founding one.
-  // Founding one from the interface is what the first Workspace on a server
-  // has instead of a curl (#46).
-  const [joinBy, setJoinBy] = useState<"invite" | "create">("invite");
+  // Where this Identity's Workspace comes from: somebody's invite, or one it
+  // founds. Founding one from the interface is what the first Workspace on a
+  // server has instead of a curl (#46).
+  const [workspaceSource, setWorkspaceSource] = useState<"invite" | "create">("invite");
   const [newWorkspace, setNewWorkspace] = useState({ name: "", slug: "" });
   const [slugEdited, setSlugEdited] = useState(false);
 
@@ -170,8 +170,14 @@ export function OnboardingScreen({
       try {
         const preview = await api.previewInvite(code);
         if (cancelled) return;
-        if (preview.valid) setWorkspaceName(preview.workspace_name);
-        else setError(invitePreviewMessage(preview.reason));
+        if (preview.valid) {
+          setWorkspaceName(preview.workspace_name);
+        } else {
+          // A dead code is worth nothing on the next visit either, and keeping
+          // it would re-fire this same message forever.
+          forgetInviteCode();
+          setError(invitePreviewMessage(preview.reason));
+        }
       } catch {
         if (!cancelled) setError("Couldn't check that invite link.");
       }
@@ -218,17 +224,25 @@ export function OnboardingScreen({
         setError(invitePreviewMessage(preview.reason));
         return;
       }
-      setJoinBy("invite");
+      setWorkspaceSource("invite");
       setWorkspaceName(preview.workspace_name);
       setStep("profile");
     }, "Couldn't reach the server to check that invite. Try again.");
 
   /** Founding a Workspace needs an Identity to own it, so it takes the same
    * path as joining one and only diverges at the last step. */
-  const handleCreateWorkspaceNext = () => {
+  const chooseToCreateWorkspace = () => {
     setError(null);
-    setJoinBy("create");
+    setWorkspaceSource("create");
     setWorkspaceName(null);
+    // Declining the invite is as final as spending it: leaving the code
+    // remembered would pre-fill the next onboarding with something this
+    // person already turned down.
+    forgetInviteCode();
+  };
+
+  const handleCreateWorkspaceNext = () => {
+    chooseToCreateWorkspace();
     setStep("profile");
   };
 
@@ -413,7 +427,7 @@ export function OnboardingScreen({
       }
 
       let target = joining;
-      if (!target && joinBy === "create") {
+      if (!target && workspaceSource === "create") {
         const form = workspaceForm(newWorkspace);
         if (!form.ok) {
           setError(form.error);
@@ -670,7 +684,7 @@ export function OnboardingScreen({
         {step === "setup" && (
           <>
             <h1 className="onboarding-title">
-              {joinBy === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
+              {workspaceSource === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
             </h1>
             <div className="onboarding-actions">
               {/* A restored Identity is already a Member: it reconnects through
@@ -690,7 +704,7 @@ export function OnboardingScreen({
                 ))
               ) : (
                 <>
-                  {mode === "restore" && joinBy === "invite" && (
+                  {mode === "restore" && workspaceSource === "invite" && (
                     <>
                       <p className="meta">
                         Your Identity isn't a member of any workspace yet. Enter an invite to join
@@ -702,12 +716,12 @@ export function OnboardingScreen({
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
                       />
-                      <button type="button" className="link" onClick={() => setJoinBy("create")}>
+                      <button type="button" className="link" onClick={chooseToCreateWorkspace}>
                         Create a new Workspace instead
                       </button>
                     </>
                   )}
-                  {joinBy === "create" && (
+                  {workspaceSource === "create" && (
                     <>
                       <p className="meta">
                         You'll be its owner. The address is how it appears in links — lowercase
@@ -734,13 +748,13 @@ export function OnboardingScreen({
                     className="btn btn-primary btn-block"
                     disabled={
                       busy ||
-                      (joinBy === "create"
+                      (workspaceSource === "create"
                         ? !newWorkspace.name.trim() || !newWorkspace.slug.trim()
                         : mode === "restore" && !inviteCode)
                     }
                     onClick={() => handleSetup()}
                   >
-                    {busy ? "Connecting…" : joinBy === "create" ? "Create Workspace" : "Connect"}
+                    {busy ? "Connecting…" : workspaceSource === "create" ? "Create Workspace" : "Connect"}
                   </button>
                 </>
               )}

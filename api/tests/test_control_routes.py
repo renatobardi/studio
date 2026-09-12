@@ -490,6 +490,55 @@ class TestInviteAndMembers:
         assert created.json()["expires_at"] == expires_at
         assert created.json()["max_uses"] == 2
         assert created.json()["role"] == "admin"
+        assert created.json()["state"] == "active"
+
+    async def test_the_listed_invites_say_which_of_them_still_admit_anybody(
+        self, client: AsyncClient
+    ) -> None:
+        """#46: the admin list shows each invite's state. The server decides it
+        — the same rule redemption is judged by — rather than the client
+        re-deriving it from revoked/expires_at/use_count and drifting."""
+        sk, pubkey = await self._create_workspace(client)
+
+        async def new_invite(**body: object) -> str:
+            response = await client.post(
+                "/api/workspaces/family/invites",
+                headers=nostr_header(
+                    sk, pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+                ),
+                json=body,
+            )
+            return response.json()["code"]  # type: ignore[no-any-return]
+
+        active = await new_invite()
+        spent = await new_invite(max_uses=1)
+        member_sk, member_pubkey = new_keypair()
+        await client.post(
+            f"/api/invites/{spent}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey,
+                url=f"http://test/api/invites/{spent}/redeem", method="POST",
+            ),
+        )
+        gone = await new_invite()
+        await client.delete(
+            f"/api/workspaces/family/invites/{gone}",
+            headers=nostr_header(
+                sk, pubkey,
+                url=f"http://test/api/workspaces/family/invites/{gone}", method="DELETE",
+            ),
+        )
+
+        listed = await client.get(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                sk, pubkey, url="http://test/api/workspaces/family/invites", method="GET"
+            ),
+        )
+
+        assert {i["code"]: i["state"] for i in listed.json()} == {
+            active: "active", spent: "exhausted", gone: "revoked",
+        }
 
     async def test_preview_says_why_the_invite_cannot_be_used(
         self, client: AsyncClient

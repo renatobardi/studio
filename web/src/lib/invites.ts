@@ -63,16 +63,10 @@ export function inviteLimits(fields: InviteLimitFields, nowSeconds: number): Inv
   };
 }
 
-function inviteState(invite: InviteOut, nowSeconds: number): string {
-  if (invite.revoked) return "revoked";
-  if (invite.expires_at !== null && nowSeconds > invite.expires_at) return "expired";
-  if (invite.max_uses !== null && invite.use_count >= invite.max_uses) return "exhausted";
-  return "active";
-}
-
 /** One line per invite in the admin list: whether it still admits anybody,
- * how much of it is spent, and when it stops. */
-export function describeInvite(invite: InviteOut, nowSeconds: number): string {
+ * how much of it is spent, and when it stops. The state comes from the server
+ * — deciding it here would be a second copy of a rule that can drift. */
+export function describeInvite(invite: InviteOut): string {
   const uses =
     invite.max_uses === null
       ? `${invite.use_count} uses`
@@ -81,7 +75,7 @@ export function describeInvite(invite: InviteOut, nowSeconds: number): string {
     invite.expires_at === null
       ? "never expires"
       : `expires ${new Date(invite.expires_at * 1000).toLocaleDateString()}`;
-  return `${inviteState(invite, nowSeconds)} · ${uses} · ${expiry}`;
+  return `${invite.state} · ${uses} · ${expiry}`;
 }
 
 const PREVIEW_MESSAGES: Record<string, string> = {

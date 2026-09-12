@@ -25,8 +25,8 @@ from studio_api.control.errors import (
     NotAWorkspaceMemberError,
     WorkspaceSlugTakenError,
 )
-from studio_api.control.models import Workspace
-from studio_api.control.repository import ControlPlaneRepository
+from studio_api.control.models import Invite, Workspace
+from studio_api.control.repository import ControlPlaneRepository, invite_state
 
 router = APIRouter(prefix="/api")
 
@@ -286,6 +286,19 @@ class InviteOut(BaseModel):
     max_uses: int | None
     use_count: int
     revoked: bool
+    state: str
+    """"active", or why it admits nobody: "revoked", "expired", "exhausted".
+    Judged here, by the same rule redemption is judged by — a client deriving
+    it from the fields above would be a second copy of that rule, free to
+    drift from this one (#46)."""
+
+
+def _invite_out(invite: Invite, *, now: int) -> InviteOut:
+    return InviteOut(
+        code=invite.code, role=invite.role, expires_at=invite.expires_at,
+        max_uses=invite.max_uses, use_count=invite.use_count, revoked=invite.revoked,
+        state=invite_state(invite, now=now),
+    )
 
 
 class InvitePreviewOut(BaseModel):
@@ -323,10 +336,7 @@ async def create_invite(
         workspace_slug=slug, role=body.role, expires_at=body.expires_at,
         max_uses=body.max_uses, created_by=pubkey,
     )
-    return InviteOut(
-        code=invite.code, role=invite.role, expires_at=invite.expires_at,
-        max_uses=invite.max_uses, use_count=invite.use_count, revoked=invite.revoked,
-    )
+    return _invite_out(invite, now=int(time.time()))
 
 
 @router.get("/workspaces/{slug}/invites")
@@ -338,13 +348,8 @@ async def list_invites(
     pubkey = await _caller_pubkey(caller, repo)
     await _require_workspace_manager(repo, slug, pubkey)
     invites = await repo.list_invites(slug)
-    return [
-        InviteOut(
-            code=i.code, role=i.role, expires_at=i.expires_at, max_uses=i.max_uses,
-            use_count=i.use_count, revoked=i.revoked,
-        )
-        for i in invites
-    ]
+    now = int(time.time())
+    return [_invite_out(i, now=now) for i in invites]
 
 
 @router.delete("/workspaces/{slug}/invites/{code}")

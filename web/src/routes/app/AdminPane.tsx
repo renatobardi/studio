@@ -60,9 +60,6 @@ async function proofFor(slug: string, path: string, method: string, signer: Sign
 
 function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>) {
   const [invites, setInvites] = useState<InviteOut[] | null>(null);
-  // Read when the list is fetched, not during render: "expired" is judged
-  // against the same instant the list describes.
-  const [listedAt, setListedAt] = useState(() => Math.floor(Date.now() / 1000));
   const [role, setRole] = useState("member");
   const [expiresInDays, setExpiresInDays] = useState("");
   const [maxUses, setMaxUses] = useState("");
@@ -72,7 +69,7 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
   const reload = useCallback(async () => {
     const proof = await proofFor(slug, "/invites", "GET", signer);
     setInvites(await api.listInvites(slug, proof));
-    setListedAt(Math.floor(Date.now() / 1000));
+    setCopied(null);
   }, [slug, signer]);
 
   useEffect(() => {
@@ -121,8 +118,16 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
   };
 
   const copyLink = async (code: string) => {
-    await navigator.clipboard.writeText(inviteLink(window.location.origin, code));
-    setCopied(code);
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(inviteLink(window.location.origin, code));
+      setCopied(code);
+    } catch {
+      // An insecure context or a denied permission rejects here. Saying so
+      // beats a button that claims a copy nobody made.
+      setCopied(null);
+      setError("Couldn't copy the link. Copy the code and share it instead.");
+    }
   };
 
   return (
@@ -153,7 +158,7 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
         {invites?.map((invite) => (
           <li key={invite.code} className="conversation-list-item-row">
             <span>
-              {invite.code} · {invite.role} · {describeInvite(invite, listedAt)}
+              {invite.code} · {invite.role} · {describeInvite(invite)}
             </span>
             <button className="btn btn-outline" onClick={() => void copyLink(invite.code)}>
               {copied === invite.code ? "Link copied" : "Copy link"}

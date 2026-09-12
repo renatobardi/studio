@@ -56,6 +56,9 @@ export interface InviteOut {
   max_uses: number | null;
   use_count: number;
   revoked: boolean;
+  /** "active", or why it admits nobody: "revoked", "expired", "exhausted".
+   * Decided by the server, by the same rule redemption is judged by (#46). */
+  state: string;
 }
 
 export class ApiError extends Error {
