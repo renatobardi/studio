@@ -130,6 +130,47 @@ describe("RelayClient.subscribe", () => {
     expect(events).toEqual([]);
   });
 
+  test("update re-issues the REQ under the same subscription id", async () => {
+    const { client, ws } = await connectedClient();
+    const events: unknown[] = [];
+
+    const subscription = client.subscribe([{ kinds: [0], authors: ["a"] }], {
+      onEvent: (e) => events.push(e),
+    });
+    const subId = ws.lastSent("REQ")[1] as string;
+
+    subscription.update([{ kinds: [0], authors: ["a", "b"] }]);
+
+    // NIP-01: a REQ with an id already open replaces that subscription, so the wider
+    // filter costs no extra subscription slot and leaves no gap needing a CLOSE.
+    expect(ws.lastSent("REQ")).toEqual(["REQ", subId, { kinds: [0], authors: ["a", "b"] }]);
+    expect(ws.sent.filter((m) => (m as unknown[])[0] === "REQ")).toHaveLength(2);
+    expect(ws.sent.some((m) => (m as unknown[])[0] === "CLOSE")).toBe(false);
+
+    ws.emitMessage(["EVENT", subId, { id: "e1", kind: 0 }]);
+    expect(events).toEqual([{ id: "e1", kind: 0 }]);
+  });
+
+  test("a CLOSED frame reaches the subscription's handlers instead of being dropped", async () => {
+    const { client, ws } = await connectedClient();
+    const events: unknown[] = [];
+    const closed: string[] = [];
+
+    client.subscribe([{ kinds: [9] }], {
+      onEvent: (e) => events.push(e),
+      onClosed: (reason) => closed.push(reason),
+    });
+    const subId = ws.lastSent("REQ")[1] as string;
+
+    ws.emitMessage(["CLOSED", subId, "restricted: not a member of this workspace"]);
+
+    expect(closed).toEqual(["restricted: not a member of this workspace"]);
+
+    // The relay ended it: nothing more belongs to this id.
+    ws.emitMessage(["EVENT", subId, { id: "e1", kind: 9 }]);
+    expect(events).toEqual([]);
+  });
+
   test("unsubscribing before the connection ever opens does not throw", () => {
     // Regression: two React state updates that used to land in the same batch (and so ran this
     // effect's subscribe/unsubscribe/resubscribe only once, after the socket was already open)
