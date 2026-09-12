@@ -138,8 +138,9 @@ def create_app(
         )
         await connection.start()
         try:
-            while await _pump_one_message(websocket, connection):
-                pass
+            while True:
+                if not await _pump_one_message(websocket, connection):
+                    break
         except WebSocketDisconnect:
             pass
         finally:
