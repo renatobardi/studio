@@ -284,3 +284,66 @@ describe("RelayClient reconnection", () => {
     }
   });
 });
+
+describe("RelayClient.onProblem", () => {
+  test("a refused subscription is reported to the app, not only to its own handlers", async () => {
+    const { client, ws } = await connectedClient();
+    const problems: string[] = [];
+    client.onProblem((problem) => problems.push(problem.reason));
+
+    client.subscribe([{ kinds: [9] }], { onEvent: () => {} });
+    const subId = ws.lastSent("REQ")[1] as string;
+    ws.emitMessage(["CLOSED", subId, "restricted: not a member of this workspace"]);
+
+    // Without this the pane shows "Connected" over an empty timeline (#47).
+    expect(problems).toEqual(["restricted: not a member of this workspace"]);
+  });
+
+  test("a NOTICE reaches the app instead of being dropped on the floor", async () => {
+    const { client, ws } = await connectedClient();
+    const problems: { kind: string; reason: string }[] = [];
+    client.onProblem((problem) => problems.push(problem));
+
+    ws.emitMessage(["NOTICE", "invalid: malformed frame"]);
+
+    expect(problems).toEqual([{ kind: "notice", reason: "invalid: malformed frame" }]);
+  });
+
+  test("a rejected AUTH says why, rather than looping through silent reconnects", async () => {
+    const client = newClient();
+    const problems: { kind: string; reason: string }[] = [];
+    client.onProblem((problem) => problems.push(problem));
+    client.connect().catch(() => {});
+    const ws = FakeWebSocket.instances[0]!;
+
+    ws.emitMessage(["AUTH", "challenge1"]);
+    await Promise.resolve();
+    await Promise.resolve();
+    const authEvent = ws.lastSent("AUTH")[1] as { id: string };
+    ws.emitMessage(["OK", authEvent.id, false, "restricted: not a member of this workspace"]);
+    await Promise.resolve();
+
+    expect(problems).toEqual([
+      { kind: "auth", reason: "restricted: not a member of this workspace" },
+    ]);
+  });
+
+  test("a successful (re)connection clears the problem it reported", async () => {
+    const { client, ws } = await connectedClient();
+    const problems: ({ kind: string; reason: string } | null)[] = [];
+    client.onProblem((problem) => problems.push(problem));
+
+    client.subscribe([{ kinds: [9] }], { onEvent: () => {} });
+    const subId = ws.lastSent("REQ")[1] as string;
+    ws.emitMessage(["CLOSED", subId, "error: this subscription fell too far behind"]);
+    expect(problems).toHaveLength(1);
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 0));
+    const reconnected = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+    await authenticate(reconnected, "challenge2");
+    await Promise.resolve();
+
+    expect(problems[problems.length - 1]).toBeNull();
+  });
+});

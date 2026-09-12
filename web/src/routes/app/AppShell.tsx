@@ -15,7 +15,8 @@ import {
   storeChannelReadAt,
   type Signer,
 } from "../../lib/custody";
-import { RelayClient, type ConnectionState } from "../../lib/relay";
+import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
+import { humanRelayReason } from "../../lib/relayReasons";
 import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
 import { AdminPane } from "./AdminPane";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -44,6 +45,9 @@ export function AppShell({
    * until the next administrative change (#42). */
   const [mountedAt] = useState(nowSeconds);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  /** What the relay refused and why. Without it a rejected subscription reads
+   * as "Connected" over an empty timeline (#47). */
+  const [relayProblem, setRelayProblem] = useState<RelayProblem | null>(null);
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -58,10 +62,12 @@ export function AppShell({
   const readAtRef = useRef<ReadState>({});
 
   useEffect(() => {
-    const unsubscribe = client.onStateChange(setConnectionState);
+    const unsubscribeState = client.onStateChange(setConnectionState);
+    const unsubscribeProblem = client.onProblem(setRelayProblem);
     client.connect().catch(() => {});
     return () => {
-      unsubscribe();
+      unsubscribeState();
+      unsubscribeProblem();
       client.close();
     };
   }, [client]);
@@ -218,6 +224,11 @@ export function AppShell({
           </button>
         </div>
       </header>
+      {relayProblem && (
+        <div className="error-banner" data-testid="relay-problem">
+          {humanRelayReason(relayProblem.reason)}
+        </div>
+      )}
       <div className="app-shell-body">
         {mode === "channels" && (
           <>
