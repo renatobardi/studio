@@ -30,12 +30,17 @@ bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see
   handshake + publish, and `RelayClient` — a reconnecting connection with REQ subscriptions),
   `channelEvents.ts` (Message/Thread Reply/Reaction/deletion event builders, reaction grouping,
   reply counting), `api.ts` (control-plane REST client), `routing.ts` (auth/onboarding/app
-  routing rule), `authErrors.ts` (Firebase error code → copy).
+  routing rule), `authErrors.ts` (Firebase error code → copy), `emailVerification.ts` (the one
+  email-gate rule `App` and `AuthScreen` share), `relayReasons.ts` (a relay's NIP-01 refusal →
+  copy, for the `CLOSED`/`NOTICE`/auth banner and for failed publishes), `memberDirectory.ts`
+  (who a Direct Message may be started with).
 - `src/routes/auth/` — sign in/up/verify/reset screens.
 - `src/routes/onboarding/` — the 8-step flow plus the restore-from-backup path.
 - `src/routes/app/` — the Channel experience (ticket #5): `AppShell` (connection + Channel list),
   `ChannelView` (owns the one subscription per Channel, shared by `Timeline` and the side panes),
-  `Timeline`, `ThreadPane`, `MembersPane`, `ReactionBar`, `ConnectionBadge`.
+  `Timeline`, `ThreadPane`, `MembersPane` (every row opens that Member's profile),
+  `ReactionBar`, `ConnectionBadge`. Direct Messages start from `MemberPicker`, over the
+  Workspace's member list — there is no pubkey field (#47).
 
 ## Known gaps
 

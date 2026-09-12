@@ -11,6 +11,7 @@ import {
 } from "../../lib/channelEvents";
 import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
+import { publishFailureMessage } from "../../lib/relayReasons";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
@@ -135,8 +136,8 @@ export function Timeline({
       await client.publish(signed);
       setDraft("");
       clearAttachment();
-    } catch {
-      setSendError("Couldn't send — check your connection and try again.");
+    } catch (error) {
+      setSendError(publishFailureMessage(error));
     }
   };
 

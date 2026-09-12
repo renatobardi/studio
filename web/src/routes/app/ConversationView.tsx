@@ -10,6 +10,7 @@ import {
 } from "../../lib/dmMedia";
 import { buildDmRumor, giftWrapForAll, type Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
+import { publishFailureMessage } from "../../lib/relayReasons";
 import { Avatar } from "./Avatar";
 import { DmAttachmentImage } from "./DmAttachmentImage";
 import { displayName, type useProfiles } from "./useProfiles";
@@ -104,8 +105,8 @@ export function ConversationView({
       await Promise.all(wraps.map((wrap) => client.publish(wrap)));
       setDraft("");
       clearAttachment();
-    } catch {
-      setSendError("Couldn't send — check your connection and try again.");
+    } catch (error) {
+      setSendError(publishFailureMessage(error));
     }
   };
 

@@ -227,6 +227,14 @@ export function AppShell({
       {relayProblem && (
         <div className="error-banner" data-testid="relay-problem">
           {humanRelayReason(relayProblem.reason)}
+          {/* A refused AUTH keeps being true until the connection is re-made, so
+              only the one-off refusals (a lagging subscription, a NOTICE) can be
+              put away by hand. */}
+          {relayProblem.kind !== "auth" && (
+            <button className="link" onClick={() => setRelayProblem(null)} data-testid="relay-problem-dismiss">
+              Dismiss
+            </button>
+          )}
         </div>
       )}
       <div className="app-shell-body">

@@ -57,9 +57,10 @@ export function AuthScreen({
       // an unverified password Account signing in lands on the verify step
       // instead of walking into onboarding.
       if (!isEmailVerified(user)) {
-        await sendEmailVerification(user);
+        // No resend here: signup already sent the link, and the verify step
+        // offers "Resend" on demand — resending on every attempt is what runs
+        // the Account into auth/too-many-requests.
         setPendingUser(user);
-        setResent(false);
         setStep("verify");
         return;
       }

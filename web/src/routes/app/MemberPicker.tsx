@@ -1,6 +1,6 @@
 import type { WorkspaceMemberOut } from "../../lib/api";
-import { Avatar } from "./Avatar";
-import { displayName, type useProfiles } from "./useProfiles";
+import { MemberRow } from "./MemberRow";
+import type { useProfiles } from "./useProfiles";
 
 /** Picks the Workspace Member to start a Direct Message with — name and avatar, never a
  * pubkey to paste. The MVP flow has no alternative path on purpose (#47): the server is
@@ -26,18 +26,13 @@ export function MemberPicker({
     <ul className="member-list" data-testid="dm-member-picker">
       {members.map((member) => (
         <li key={member.pubkey}>
-          <button
-            className="channel-list-item"
+          <MemberRow
+            pubkey={member.pubkey}
+            profiles={profiles}
             onClick={() => onPick(member.pubkey)}
-            data-testid="dm-member-option"
-            data-pubkey={member.pubkey}
-          >
-            <span className="member-row">
-              <Avatar profile={profiles.get(member.pubkey)} name={displayName(profiles, member.pubkey)} />
-              <span className="channel-list-name">{displayName(profiles, member.pubkey)}</span>
-            </span>
-            <span className="meta">{member.role}</span>
-          </button>
+            testId="dm-member-option"
+            trailing={member.role}
+          />
         </li>
       ))}
     </ul>

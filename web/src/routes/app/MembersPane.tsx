@@ -1,9 +1,9 @@
 import type { VerifiedEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
 import type { RelayClient } from "../../lib/relay";
-import { Avatar } from "./Avatar";
 import { MemberProfile } from "./MemberProfile";
-import { displayName, useProfiles } from "./useProfiles";
+import { MemberRow } from "./MemberRow";
+import { useProfiles } from "./useProfiles";
 
 /** Channel Members from the kind 39002 projection (ADR-0002) — a `d`-addressable event the
  * control plane re-publishes on every membership change, so the latest one is the roster.
@@ -35,17 +35,12 @@ export function MembersPane({ client, channelId }: Readonly<{ client: RelayClien
         <ul className="member-list">
           {memberPubkeys.map((pubkey) => (
             <li key={pubkey}>
-              <button
-                className="channel-list-item"
+              <MemberRow
+                pubkey={pubkey}
+                profiles={profiles}
                 onClick={() => setViewing(pubkey)}
-                data-testid="member-list-item"
-                data-pubkey={pubkey}
-              >
-                <span className="member-row">
-                  <Avatar profile={profiles.get(pubkey)} name={displayName(profiles, pubkey)} />
-                  <span className="channel-list-name">{displayName(profiles, pubkey)}</span>
-                </span>
-              </button>
+                testId="member-list-item"
+              />
             </li>
           ))}
         </ul>

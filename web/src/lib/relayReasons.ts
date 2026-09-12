@@ -17,6 +17,27 @@ const LEAD: Record<string, string> = {
 
 const FALLBACK_LEAD = "The Workspace refused this request";
 
+/**
+ * Why a publish failed, as the person who pressed Send needs to read it.
+ *
+ * `publishEvent` rejects with whatever the relay put in its `OK … false`
+ * frame, so a refusal ("restricted: not a member of this channel") and a dead
+ * socket arrive the same way. Blaming the connection for a refusal is the
+ * wrong advice: retrying will not help, and the real reason was already on
+ * the wire (#47).
+ */
+export function publishFailureMessage(error: unknown): string {
+  return relayRejection(error) ?? "Couldn't send — check your connection and try again.";
+}
+
+/** The relay's own refusal behind a failed publish, or null when the publish
+ * failed for any other reason (a dead socket, a signer that said no). */
+export function relayRejection(error: unknown): string | null {
+  const message = error instanceof Error ? error.message.trim() : "";
+  const prefix = message.slice(0, Math.max(message.indexOf(":"), 0));
+  return Object.hasOwn(LEAD, prefix) ? humanRelayReason(message) : null;
+}
+
 export function humanRelayReason(reason: string): string {
   const trimmed = reason.trim();
   if (trimmed === "") return `${FALLBACK_LEAD}, without saying why.`;

@@ -26,7 +26,7 @@ export function DirectMessagesPane({
 }>) {
   const rumors = useDirectMessages(client, signer, myPubkey);
   const { profiles, ensure } = useProfiles(client);
-  const { members, error: membersError } = useWorkspaceMembers(workspaceSlug, signer);
+  const { members, error: membersError } = useWorkspaceMembers(client, workspaceSlug, signer);
   const [selectedPeerPubkeys, setSelectedPeerPubkeys] = useState<string[] | null>(null);
 
   const conversations = groupConversations(rumors, myPubkey);
