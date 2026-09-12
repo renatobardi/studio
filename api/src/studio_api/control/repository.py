@@ -7,6 +7,7 @@ Shares its SurrealDB connection with the EventStore (same namespace/
 database, different tables) rather than connecting twice.
 """
 
+import asyncio
 import secrets
 from typing import Any
 
@@ -71,6 +72,17 @@ class ControlPlaneRepository:
         self._db = db
         self._events = event_store
         self._server_secret = server_secret
+        self._workspace_locks: dict[str, asyncio.Lock] = {}
+
+    def _lock_for(self, workspace_slug: str) -> asyncio.Lock:
+        """Serialises the membership mutations of one Workspace. Each of them
+        reads the current members, signs a member-list event from what it read
+        and writes both back; two of them at once would project only the last
+        reader's view and silently drop the other's member (ticket #44). The
+        signing happens in Python, so the database cannot arbitrate this on
+        its own — a single API process owns the connection, and these are the
+        turns it takes."""
+        return self._workspace_locks.setdefault(workspace_slug, asyncio.Lock())
 
     # --- Account ----------------------------------------------------------
 
@@ -109,6 +121,10 @@ class ControlPlaneRepository:
     # --- Workspace ----------------------------------------------------------
 
     async def create_workspace(self, *, slug: str, name: str, owner_pubkey: str) -> Workspace:
+        async with self._lock_for(slug):
+            return await self._create_workspace(slug=slug, name=name, owner_pubkey=owner_pubkey)
+
+    async def _create_workspace(self, *, slug: str, name: str, owner_pubkey: str) -> Workspace:
         if await self.get_workspace(slug) is not None:
             raise WorkspaceSlugTakenError(f"workspace slug {slug!r} is already taken")
 
@@ -297,6 +313,15 @@ class ControlPlaneRepository:
         return name, self._invite_is_valid(invite, now=now)
 
     async def redeem_invite(self, *, code: str, pubkey: str, now: int) -> WorkspaceMember:
+        peek = await self.get_invite(code)
+        if peek is None:
+            raise InviteInvalidError(f"invite code {code!r} is not valid")
+        async with self._lock_for(peek.workspace_slug):
+            return await self._redeem_invite(code=code, pubkey=pubkey, now=now)
+
+    async def _redeem_invite(self, *, code: str, pubkey: str, now: int) -> WorkspaceMember:
+        # Re-read under the lock: the use count a concurrent redemption just
+        # spent is only visible now.
         invite = await self.get_invite(code)
         if invite is None or not self._invite_is_valid(invite, now=now):
             raise InviteInvalidError(f"invite code {code!r} is not valid")
@@ -336,6 +361,10 @@ class ControlPlaneRepository:
         return WorkspaceMember(workspace_slug=invite.workspace_slug, pubkey=pubkey, role=invite.role)
 
     async def set_workspace_member_role(self, *, slug: str, pubkey: str, role: str) -> WorkspaceMember:
+        async with self._lock_for(slug):
+            return await self._set_workspace_member_role(slug=slug, pubkey=pubkey, role=role)
+
+    async def _set_workspace_member_role(self, *, slug: str, pubkey: str, role: str) -> WorkspaceMember:
         workspace = await self.get_workspace(slug)
         assert workspace is not None
         if pubkey == workspace.owner_pubkey:
@@ -361,6 +390,10 @@ class ControlPlaneRepository:
         belonged to. Returns the ids of the Channels they were removed
         from, so the caller can force-disconnect any of their open relay
         connections scoped to those channels (and the workspace itself)."""
+        async with self._lock_for(slug):
+            return await self._remove_workspace_member(slug=slug, pubkey=pubkey)
+
+    async def _remove_workspace_member(self, *, slug: str, pubkey: str) -> list[str]:
         workspace = await self.get_workspace(slug)
         assert workspace is not None
         if pubkey == workspace.owner_pubkey:
@@ -524,6 +557,11 @@ class ControlPlaneRepository:
     async def add_channel_member(self, *, channel_id: str, pubkey: str, role: str = "member") -> None:
         channel = await self.get_channel(channel_id)
         assert channel is not None
+        async with self._lock_for(channel.workspace_slug):
+            await self._add_channel_member(channel=channel, pubkey=pubkey, role=role)
+
+    async def _add_channel_member(self, *, channel: Channel, pubkey: str, role: str) -> None:
+        channel_id = channel.id
         if await self.get_workspace_role(channel.workspace_slug, pubkey) is None:
             raise NotAWorkspaceMemberError(
                 f"{pubkey} must be a Workspace Member before joining a Channel"
@@ -566,6 +604,11 @@ class ControlPlaneRepository:
     async def remove_channel_member(self, *, channel_id: str, pubkey: str) -> None:
         channel = await self.get_channel(channel_id)
         assert channel is not None
+        async with self._lock_for(channel.workspace_slug):
+            await self._remove_channel_member(channel=channel, pubkey=pubkey)
+
+    async def _remove_channel_member(self, *, channel: Channel, pubkey: str) -> None:
+        channel_id = channel.id
         workspace_sk = await self._workspace_signing_key(channel.workspace_slug)
         remaining = [m for m in await self.list_channel_members(channel_id) if m.pubkey != pubkey]
 
