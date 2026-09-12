@@ -53,7 +53,7 @@ export class ProfileStore {
     this.handle = null;
   };
 
-  private onEvent = (event: VerifiedEvent): void => {
+  private readonly onEvent = (event: VerifiedEvent): void => {
     let parsed: Profile;
     try {
       parsed = JSON.parse(event.content) as Profile;
