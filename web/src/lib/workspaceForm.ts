@@ -27,10 +27,12 @@ export function slugFromName(name: string): string {
     // An apostrophe inside a word joins it, so it goes before the rest becomes
     // a separator: "Ada's Lab" is `adas-lab`, not `ada-s-lab`.
     .replace(/['\u2019]/g, "")
+    // Runs are already collapsed above, so a single hyphen is all these can
+    // ever meet — and `-` beats `-+` on a pathological name, which backtracks.
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/^-|-$/g, "")
     .slice(0, SLUG_MAX_LENGTH)
-    .replace(/-+$/, "");
+    .replace(/-$/, "");
 }
 
 export function workspaceForm(fields: WorkspaceFormFields): WorkspaceFormResult {

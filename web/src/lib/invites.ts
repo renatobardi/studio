@@ -10,7 +10,7 @@ import type { InviteOut } from "./api";
 /** The code an invite link carries, or null when this URL is not one. */
 export function inviteCodeFromUrl(search: string): string | null {
   const code = new URLSearchParams(search).get("invite")?.trim();
-  return code ? code : null;
+  return code || null;
 }
 
 /** The link an admin copies. Reaching the app this way is the whole point:

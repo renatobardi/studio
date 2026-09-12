@@ -399,8 +399,74 @@ export function OnboardingScreen({
     },
   });
 
+  /** Whether this signer may go on. Under an extension there is no Key Backup
+   * step to link from, so this is where the Account learns which Identity is
+   * its own — and where an extension holding a different one is turned away
+   * rather than quietly onboarded as a substitute (#36). */
+  const confirmExtensionIdentity = async (signer: Signer): Promise<boolean> => {
+    const extensionPubkey = await signer.getPublicKey();
+    if (linkedPubkey === null) {
+      const linked = await linkAccountIdentity(await idToken(), signer);
+      setLinkedPubkey(linked.pubkey);
+      return true;
+    }
+    if (extensionPubkey !== linkedPubkey) {
+      setError("Your Nostr extension holds a different Identity than this account's.");
+      return false;
+    }
+    return true;
+  };
+
+  /** The Workspace this Identity founds, or null when the form or the server
+   * turned it down — the reason is on screen by then (#46). */
+  const foundWorkspace = async (signer: Signer): Promise<WorkspaceOut | null> => {
+    const form = workspaceForm(newWorkspace);
+    if (!form.ok) {
+      setError(form.error);
+      return null;
+    }
+    try {
+      return await api.createWorkspace(
+        await api.authProof(`${window.location.origin}/api/workspaces`, "POST", signer),
+        form.body,
+      );
+    } catch (caught) {
+      if (caught instanceof api.ApiError && caught.status === 409) {
+        setError("That address is already taken. Pick another.");
+        return null;
+      }
+      if (caught instanceof api.ApiError && caught.status === 422) {
+        setError("The address may only use lowercase letters, numbers and single hyphens.");
+        return null;
+      }
+      throw caught;
+    }
+  };
+
+  /** The Workspace the invite admits this Identity to, or null when it admits
+   * nobody any more — the reason is on screen by then (#46). */
+  const redeemPendingInvite = async (signer: Signer): Promise<WorkspaceOut | null> => {
+    const code = inviteCode.trim();
+    const url = `${window.location.origin}/api/invites/${code}/redeem`;
+    try {
+      const joined = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
+      forgetInviteCode();
+      return joined;
+    } catch (caught) {
+      // The invite was fine when it was previewed; between then and now it
+      // can have been revoked or spent its last use. Asking why turns
+      // "couldn't connect" into something the person can act on (#46).
+      if (caught instanceof api.ApiError && [404, 410].includes(caught.status)) {
+        const preview = await api.previewInvite(code).catch(() => null);
+        setError(invitePreviewMessage(preview?.reason ?? null));
+        return null;
+      }
+      throw caught;
+    }
+  };
+
   /** `joining` is a Workspace this Identity is already a Member of (restore);
-   * without one, the invite is redeemed to become a Member. */
+   * without one it either founds a Workspace or redeems an invite into one. */
   const handleSetup = (joining?: WorkspaceOut) => {
     return runStep(async () => {
       // Under an extension this is the extension's own signer: the key never
@@ -411,63 +477,15 @@ export function OnboardingScreen({
           : await getSigner();
       if (!signer) throw new Error("no signer available");
 
-      if (custody === "extension") {
-        // Under an extension there is no Key Backup step to link from, so
-        // this is where the Account learns which Identity is its own — and
-        // where an extension holding a different one is turned away rather
-        // than quietly onboarded as a substitute (#36).
-        const extensionPubkey = await signer.getPublicKey();
-        if (linkedPubkey === null) {
-          const linked = await linkAccountIdentity(await idToken(), signer);
-          setLinkedPubkey(linked.pubkey);
-        } else if (extensionPubkey !== linkedPubkey) {
-          setError("Your Nostr extension holds a different Identity than this account's.");
-          return;
-        }
-      }
+      if (custody === "extension" && !(await confirmExtensionIdentity(signer))) return;
 
-      let target = joining;
-      if (!target && workspaceSource === "create") {
-        const form = workspaceForm(newWorkspace);
-        if (!form.ok) {
-          setError(form.error);
-          return;
-        }
-        try {
-          target = await api.createWorkspace(
-            await api.authProof(`${window.location.origin}/api/workspaces`, "POST", signer),
-            form.body,
-          );
-        } catch (caught) {
-          if (caught instanceof api.ApiError && caught.status === 409) {
-            setError("That address is already taken. Pick another.");
-            return;
-          }
-          if (caught instanceof api.ApiError && caught.status === 422) {
-            setError("The address may only use lowercase letters, numbers and single hyphens.");
-            return;
-          }
-          throw caught;
-        }
-      }
-      if (!target) {
-        const code = inviteCode.trim();
-        const url = `${window.location.origin}/api/invites/${code}/redeem`;
-        try {
-          target = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
-        } catch (caught) {
-          // The invite was fine when it was previewed; between then and now it
-          // can have been revoked or spent its last use. Asking why turns
-          // "couldn't connect" into something the person can act on (#46).
-          if (caught instanceof api.ApiError && [404, 410].includes(caught.status)) {
-            const preview = await api.previewInvite(code).catch(() => null);
-            setError(invitePreviewMessage(preview?.reason ?? null));
-            return;
-          }
-          throw caught;
-        }
-        forgetInviteCode();
-      }
+      const target =
+        joining ??
+        (workspaceSource === "create"
+          ? await foundWorkspace(signer)
+          : await redeemPendingInvite(signer));
+      if (!target) return;
+
       setWorkspace(target);
 
       const ws = await connectAndAuthenticate(target.relay_url, signer);
@@ -490,6 +508,8 @@ export function OnboardingScreen({
     await storeWorkspaceSlug(workspace.slug);
     onComplete(workspace);
   };
+
+  const setupActionLabel = workspaceSource === "create" ? "Create Workspace" : "Connect";
 
   const mustConfirmAccountPassword = needsAccountPassword(
     user.providerData.map((p) => p.providerId),
@@ -754,7 +774,7 @@ export function OnboardingScreen({
                     }
                     onClick={() => handleSetup()}
                   >
-                    {busy ? "Connecting…" : workspaceSource === "create" ? "Create Workspace" : "Connect"}
+                    {busy ? "Connecting…" : setupActionLabel}
                   </button>
                 </>
               )}
