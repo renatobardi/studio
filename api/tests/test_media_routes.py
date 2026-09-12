@@ -518,7 +518,8 @@ class TestGet:
         await self._upload(client, second_sk, second_pubkey)
 
         blob = await media_repo.get_blob(sha256)
-        assert blob is not None and blob.pubkey == uploader_pubkey
+        assert blob is not None
+        assert blob.pubkey == uploader_pubkey
         for sk, pubkey in ((uploader_sk, uploader_pubkey), (second_sk, second_pubkey)):
             response = await client.get(
                 f"/media/{sha256}",
