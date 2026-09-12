@@ -1,5 +1,8 @@
 """RED: the NIP-11 relay information document."""
 
+import json
+
+from studio_api.nostr.limits import CONNECTION_LIMITATION
 from studio_api.nostr.nip11 import SUPPORTED_NIPS, build_info_document
 from studio_api.nostr.validation import LIMITATION
 
@@ -40,3 +43,31 @@ def test_document_publishes_the_enforced_limits() -> None:
     assert limitation["created_at_lower_limit"] == LIMITATION["created_at_lower_limit"]
     assert limitation["created_at_upper_limit"] == LIMITATION["created_at_upper_limit"]
     assert limitation["auth_required"] is True
+
+
+def test_document_publishes_the_connection_caps() -> None:
+    document = build_info_document(name="Studio")
+
+    limitation = document["limitation"]
+    assert limitation["max_subscriptions"] == CONNECTION_LIMITATION["max_subscriptions"]
+    assert limitation["max_filters"] == CONNECTION_LIMITATION["max_filters"]
+    assert limitation["max_limit"] == CONNECTION_LIMITATION["max_limit"]
+    assert limitation["max_message_length"] == CONNECTION_LIMITATION["max_message_length"]
+
+
+def test_the_frame_limit_admits_the_largest_event_the_relay_calls_valid() -> None:
+    """The two sets of published limits have to agree: an event within the
+    event limits must be answerable with an OK, not by closing the socket for
+    being too long (ticket #52)."""
+    largest_legal_event = {
+        "id": "a" * 64,
+        "pubkey": "b" * 64,
+        "created_at": 1_800_000_000,
+        "kind": 1,
+        "tags": [["e", "c" * 64, "wss://relay.example.com"]] * LIMITATION["max_event_tags"],
+        "content": "x" * LIMITATION["max_content_length"],
+        "sig": "d" * 128,
+    }
+    frame = json.dumps(["EVENT", largest_legal_event])
+
+    assert len(frame) < CONNECTION_LIMITATION["max_message_length"]

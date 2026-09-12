@@ -6,6 +6,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import pytest
 from coincurve import PrivateKey
 from conftest import connect_test_store
 from fastapi import FastAPI
@@ -14,6 +15,7 @@ from starlette.testclient import TestClient, WebSocketTestSession
 from support import new_keypair, sign_event
 
 from studio_api.main import create_app
+from studio_api.nostr.limits import MAX_MESSAGE_LENGTH
 from studio_api.nostr.store import EventStore, LiveFanout
 
 WORKSPACE_SLUG = "family"
@@ -260,3 +262,79 @@ class TestGiftWrapOverARealWebSocket:
             # A third Workspace Member asking for exactly that `p` tag gets an empty history.
             eavesdropper_ws.send_json(["REQ", "sub1", {"kinds": [1059], "#p": [recipient_pubkey]}])
             assert eavesdropper_ws.receive_json() == ["EOSE", "sub1"]
+
+
+class TestMalformedWireTraffic:
+    """Ticket #52: the WebSocket adapter is the first thing a broken or
+    hostile client meets, before any of the relay's own parsing. None of it
+    may end the connection on an unhandled exception."""
+
+    def test_text_that_is_not_json_is_answered_with_a_notice(self) -> None:
+        _sk, pubkey = new_keypair()
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG}, allowed_pubkeys={pubkey})
+        app.router.lifespan_context = _test_lifespan
+
+        with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
+            assert ws.receive_json()[0] == "AUTH"
+
+            ws.send_text("{not json at all")
+
+            notice = ws.receive_json()
+            assert notice[0] == "NOTICE"
+            assert str(notice[1]).startswith("invalid:")
+
+    def test_a_binary_frame_is_answered_with_a_notice(self) -> None:
+        _sk, pubkey = new_keypair()
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG}, allowed_pubkeys={pubkey})
+        app.router.lifespan_context = _test_lifespan
+
+        with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
+            assert ws.receive_json()[0] == "AUTH"
+
+            ws.send_bytes(b"\x00\x01\x02")
+
+            notice = ws.receive_json()
+            assert notice[0] == "NOTICE"
+            assert str(notice[1]).startswith("invalid:")
+
+    def test_the_connection_survives_garbage_and_still_publishes(self) -> None:
+        sk, pubkey = new_keypair()
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG}, allowed_pubkeys={pubkey})
+        app.router.lifespan_context = _test_lifespan
+
+        with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
+            challenge = ws.receive_json()[1]
+            ws.send_text("{not json at all")
+            assert ws.receive_json()[0] == "NOTICE"
+
+            now = int(time.time())
+            auth_event = sign_event(
+                sk, pubkey=pubkey, created_at=now, kind=22242,
+                tags=[
+                    ["relay", f"ws://testserver/relay/{WORKSPACE_SLUG}"],
+                    ["challenge", challenge],
+                ],
+            )
+            ws.send_json(["AUTH", auth_event])
+            assert ws.receive_json() == ["OK", auth_event["id"], True, ""]
+
+            event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="after garbage")
+            ws.send_json(["EVENT", event])
+            assert ws.receive_json() == ["OK", event["id"], True, ""]
+
+    def test_a_message_beyond_the_published_length_limit_closes_the_connection(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG})
+        app.router.lifespan_context = _test_lifespan
+
+        with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
+            assert ws.receive_json()[0] == "AUTH"
+
+            ws.send_text("x" * (MAX_MESSAGE_LENGTH + 1))
+
+            notice = ws.receive_json()
+            assert notice[0] == "NOTICE"
+            assert str(notice[1]).startswith("invalid:")
+            with pytest.raises(WebSocketDisconnect):
+                ws.receive_json()

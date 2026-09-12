@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from studio_api.nostr.limits import CONNECTION_LIMITATION
 from studio_api.nostr.validation import LIMITATION
 
 SUPPORTED_NIPS = [1, 11, 17, 29, 42, 43, 44, 59]
@@ -12,6 +13,7 @@ def build_info_document(*, name: str, self_pubkey: str | None = None) -> dict[st
         "name": name,
         "supported_nips": SUPPORTED_NIPS,
         "limitation": {
+            **CONNECTION_LIMITATION,
             "max_content_length": LIMITATION["max_content_length"],
             "max_event_tags": LIMITATION["max_event_tags"],
             "created_at_lower_limit": LIMITATION["created_at_lower_limit"],

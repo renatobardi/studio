@@ -3,6 +3,8 @@ the control-plane REST API (Account, Workspace, Invite, Members, Channels —
 ticket #3). Real Workspace/Channel membership drives relay authorization;
 the ticket #2 seeded allowlist remains available for relay-only tests."""
 
+import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -19,6 +21,7 @@ from studio_api.control.routes import router as control_router
 from studio_api.media.repository import MediaRepository
 from studio_api.media.routes import router as media_router
 from studio_api.media.storage import ObjectStorage
+from studio_api.nostr.limits import MAX_MESSAGE_LENGTH
 from studio_api.nostr.nip11 import build_info_document
 from studio_api.nostr.relay import (
     ConnectionRegistry,
@@ -29,6 +32,8 @@ from studio_api.nostr.relay import (
 from studio_api.nostr.store import EventStore, LiveFanout
 
 NOSTR_JSON_MEDIA_TYPE = "application/nostr+json"
+
+logger = logging.getLogger(__name__)
 
 
 async def _relay_authorizer(app: FastAPI, slug: str) -> RelayAuthorizer | None:
@@ -92,6 +97,13 @@ def create_app(
         except Exception:  # noqa: BLE001 — any failure reaching the store means "not ready"
             response.status_code = 503
             return {"status": "unavailable"}
+        # Reaching the database is not enough: a relay whose live query has
+        # stopped answers REQs with history and then goes silent, which is not
+        # a working Workspace (ticket #52).
+        current_fanout: LiveFanout | None = app.state.fanout
+        if current_fanout is not None and current_fanout.failure is not None:
+            response.status_code = 503
+            return {"status": "unavailable"}
         return {"status": "ok"}
 
     @app.get("/relay/{slug}")
@@ -126,15 +138,46 @@ def create_app(
         )
         await connection.start()
         try:
-            while True:
-                message = await websocket.receive_json()
-                await connection.handle_message(message)
+            while await _pump_one_message(websocket, connection):
+                pass
         except WebSocketDisconnect:
             pass
         finally:
             await connection.close()
 
     return app
+
+
+async def _pump_one_message(websocket: WebSocket, connection: RelayConnection) -> bool:
+    """Reads one frame off the wire and hands it to the relay. Returns False
+    once this socket is done. Everything a client can send that is not a
+    NIP-01 message in a text frame is answered here, before the relay's own
+    parsing, and only an over-long frame ends the connection (ticket #52)."""
+    packet = await websocket.receive()
+    if packet["type"] == "websocket.disconnect":
+        return False
+    text = packet.get("text")
+    if text is None:
+        await connection.notice("a client message must be a text frame")
+        return True
+    if len(text) > MAX_MESSAGE_LENGTH:
+        await connection.notice(
+            f"a client message may not exceed {MAX_MESSAGE_LENGTH} characters"
+        )
+        # 1009 (message too big): a client that ignores the published limit is
+        # not one to keep reading from.
+        logger.warning(
+            "closing a connection over the message length limit", extra={"length": len(text)}
+        )
+        await websocket.close(code=1009)
+        return False
+    try:
+        message = json.loads(text)
+    except json.JSONDecodeError:
+        await connection.notice("a client message must be valid JSON")
+        return True
+    await connection.handle_message(message)
+    return True
 
 
 async def build_default_store() -> EventStore:
