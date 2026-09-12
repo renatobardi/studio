@@ -6,10 +6,11 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from coincurve import PrivateKey
 from conftest import connect_test_store
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from starlette.testclient import TestClient
+from starlette.testclient import TestClient, WebSocketTestSession
 from support import new_keypair, sign_event
 
 from studio_api.main import create_app
@@ -161,3 +162,64 @@ class TestManyWorkspacesOnOneServer:
                 assert (await client.get("/relay/nope", headers=headers)).status_code == 404
         finally:
             await fanout.stop()
+
+
+def _authenticate_over_websocket(ws: WebSocketTestSession, sk: PrivateKey, pubkey: str) -> None:
+    challenge = ws.receive_json()[1]
+    auth_event = sign_event(
+        sk, pubkey=pubkey, created_at=int(time.time()), kind=22242,
+        tags=[["relay", f"ws://testserver/relay/{WORKSPACE_SLUG}"], ["challenge", challenge]],
+    )
+    ws.send_json(["AUTH", auth_event])
+    ok = ws.receive_json()
+    assert ok[2] is True, ok
+
+
+class TestGiftWrapOverARealWebSocket:
+    """Ticket #7 / issue #40: what a real client actually puts on the wire. A NIP-59 gift wrap
+    is signed by a one-time throwaway key (see web/src/lib/nip17.ts's `wrapSeal`), so the
+    connection's authenticated Identity and the event's `pubkey` never match — the mismatch
+    that used to make the relay reject every Direct Message. The ciphertext is opaque here on
+    purpose: the relay must decide on the envelope alone, never on the plaintext."""
+
+    def test_an_ephemerally_signed_gift_wrap_reaches_its_recipient_and_nobody_else(self) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        ephemeral_sk, ephemeral_pubkey = new_keypair()
+        recipient_sk, recipient_pubkey = new_keypair()
+        eavesdropper_sk, eavesdropper_pubkey = new_keypair()
+        app = create_app(
+            store=None,
+            relay_workspaces={WORKSPACE_SLUG},
+            allowed_pubkeys={sender_pubkey, recipient_pubkey, eavesdropper_pubkey},
+        )
+        app.router.lifespan_context = _test_lifespan
+
+        with (
+            TestClient(app) as client,
+            client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as sender_ws,
+            client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as recipient_ws,
+            client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as eavesdropper_ws,
+        ):
+            for ws, sk, pubkey in (
+                (sender_ws, sender_sk, sender_pubkey),
+                (recipient_ws, recipient_sk, recipient_pubkey),
+                (eavesdropper_ws, eavesdropper_sk, eavesdropper_pubkey),
+            ):
+                _authenticate_over_websocket(ws, sk, pubkey)
+
+            # NIP-59 also backdates the wrap by up to two days so the relay can't correlate
+            # the real send time — well inside the relay's past tolerance.
+            wrap = sign_event(
+                ephemeral_sk, pubkey=ephemeral_pubkey, created_at=int(time.time()) - 3600,
+                kind=1059, tags=[["p", recipient_pubkey]], content="opaque-nip44-ciphertext",
+            )
+            sender_ws.send_json(["EVENT", wrap])
+            assert sender_ws.receive_json() == ["OK", wrap["id"], True, ""]
+
+            recipient_ws.send_json(["REQ", "sub1", {"kinds": [1059], "#p": [recipient_pubkey]}])
+            assert recipient_ws.receive_json() == ["EVENT", "sub1", wrap]
+            assert recipient_ws.receive_json() == ["EOSE", "sub1"]
+
+            # A third Workspace Member asking for exactly that `p` tag gets an empty history.
+            eavesdropper_ws.send_json(["REQ", "sub1", {"kinds": [1059], "#p": [recipient_pubkey]}])
+            assert eavesdropper_ws.receive_json() == ["EOSE", "sub1"]

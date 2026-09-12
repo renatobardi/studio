@@ -784,6 +784,136 @@ class TestGiftWrapAuthorization:
         assert ok[2] is False
         assert str(ok[3]).startswith("invalid:")
 
+    async def test_a_third_party_targeting_the_recipients_p_tag_still_receives_nothing(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """A `#p` filter naming someone else is the pointed version of the same leak: what a
+        gift wrap may be read by is its own `p` tag, never what the subscription asks for."""
+        sender_sk, sender_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        eavesdropper_sk, eavesdropper_pubkey = new_keypair()
+        now = int(time.time())
+        members = (sender_pubkey, eavesdropper_pubkey)
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=members, now=lambda: now, connection_id="publisher-gw-targeted",
+        )
+        await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            sender_sk, pubkey=sender_pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]]
+        )
+        await publisher.handle_message(["EVENT", wrap])
+
+        eavesdropper, eve_recorder = make_connection(
+            store, fanout, allowed_pubkeys=members, now=lambda: now, connection_id="eavesdropper-gw-targeted",
+        )
+        await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
+
+        await eavesdropper.handle_message(
+            ["REQ", "sub1", {"kinds": [1059], "#p": [recipient_pubkey]}]
+        )
+
+        assert eve_recorder.of_type("EVENT") == []
+
+    async def test_a_third_party_targeting_the_recipients_p_tag_receives_no_live_delivery(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        eavesdropper_sk, eavesdropper_pubkey = new_keypair()
+        now = int(time.time())
+        members = (sender_pubkey, eavesdropper_pubkey)
+        eavesdropper, eve_recorder = make_connection(
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id="eavesdropper-gw-targeted-live",
+        )
+        await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
+        await eavesdropper.handle_message(
+            ["REQ", "sub1", {"kinds": [1059], "#p": [recipient_pubkey]}]
+        )
+
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id="publisher-gw-targeted-live",
+        )
+        await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            sender_sk, pubkey=sender_pubkey, created_at=now, kind=1059, tags=[["p", recipient_pubkey]]
+        )
+        await publisher.handle_message(["EVENT", wrap])
+
+        await asyncio.sleep(0.2)
+        assert eve_recorder.of_type("EVENT") == []
+
+        await eavesdropper.close()
+        await publisher.close()
+
+    async def test_publishing_a_gift_wrap_before_auth_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """The ephemeral-key exemption is about *authorship*, not about authentication: a wrap
+        still only travels on a connection that proved who it belongs to."""
+        ephemeral_sk, ephemeral_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, now=lambda: now)
+        await connection.start()
+        wrap = sign_event(
+            ephemeral_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("auth-required:")
+
+    async def test_a_non_member_cannot_publish_a_gift_wrap(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        ephemeral_sk, ephemeral_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, allowed_pubkeys=(), now=lambda: now)
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            ephemeral_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("restricted:")
+
+    async def test_a_gift_wrap_whose_signature_is_not_its_own_pubkeys_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """Exempting gift wraps from the pubkey match must not exempt them from proving the
+        envelope is intact — checked on the ciphertext alone, never on the plaintext."""
+        sender_sk, sender_pubkey = new_keypair()
+        _ephemeral_sk, ephemeral_pubkey = new_keypair()
+        impostor_sk, _impostor_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey,), now=lambda: now
+        )
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        # Claims the ephemeral key's pubkey, but is signed by another key entirely.
+        wrap = sign_event(
+            impostor_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]], content="opaque-ciphertext",
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
 
 class TestDmMediaReferenceRecording:
     async def test_accepting_a_gift_wrap_with_x_tags_records_dm_references_for_sender_and_recipients(

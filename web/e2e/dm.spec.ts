@@ -64,6 +64,31 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await receivedMessage.getByTestId("dm-attachment-image").click();
   await expect(pageB.getByTestId("dm-attachment-lightbox")).toBeVisible();
 
+  // B answers, so the restore below has both directions of the conversation to recover.
+  const reply = `e2e dm reply ${Date.now()}`;
+  await pageB.getByTestId("dm-composer").fill(reply);
+  await pageB.getByRole("button", { name: "Send" }).click();
+  await expect(pageB.getByTestId("dm-message").filter({ hasText: reply })).toBeVisible({ timeout: 10_000 });
+
+  // Issue #40: gift wraps are the only history that lives nowhere but the relay and the
+  // Identity's own key. Restoring that Identity on a brand-new browser must bring both the
+  // sent copy (A's self-addressed wrap) and the received one back, decrypted.
+  const contextC = await browser.newContext();
+  const pageC = await contextC.newPage();
+  await reachAppViaRestoreWithCredentials(pageC, {
+    email: testAccount.email(),
+    password: testAccount.password(),
+    backupPassphrase: testBackupPassphrase(),
+  });
+
+  await pageC.getByTestId("mode-dms").click();
+  // Picked by its own last message rather than by position: this Account accumulates
+  // conversations across runs, and only this one is this run's.
+  await pageC.getByTestId("conversation-list-item").filter({ hasText: reply }).click();
+  await expect(pageC.getByTestId("dm-message").filter({ hasText: content })).toBeVisible({ timeout: 15_000 });
+  await expect(pageC.getByTestId("dm-message").filter({ hasText: reply })).toBeVisible({ timeout: 15_000 });
+
   await contextA.close();
   await contextB.close();
+  await contextC.close();
 });
