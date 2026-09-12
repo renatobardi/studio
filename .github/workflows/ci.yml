@@ -48,17 +48,19 @@ jobs:
           done
           echo "::error::api never became ready" && exit 1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Interop smoke (nostr-tools authenticates, publishes, reads back)
         working-directory: scripts/interop
         run: |
-          bun install
+          bun install --frozen-lockfile --ignore-scripts
           RELAY_URL=ws://localhost/relay/family bun run smoke.mjs
 
       - name: Install nak
         run: |
-          go install github.com/fiatjaf/nak@latest
+          # Pinned: `@latest` makes each CI run depend on whatever nak
+          # released since, so a red run can't be told apart from a moved target.
+          go install github.com/fiatjaf/nak@v0.20.6
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Interop smoke (nak authenticates, publishes, reads back)
@@ -107,3 +109,14 @@ jobs:
       # run as a post-deploy smoke test against what was just deployed,
       # instead of racing an independent push-triggered job against whatever
       # studio-test happened to be running at the time.
+
+  gates:
+    # The delivery-gate contract itself (issue #51): asserts cd.yml still
+    # deploys only CI-validated SHAs. No dependencies to install — the test
+    # only parses the workflow YAML.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Delivery-gate contract
+        run: bun test scripts/ci
