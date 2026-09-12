@@ -151,7 +151,8 @@ class LiveFanout:
         Fed by the live query for stored events, and directly by the relay for
         ephemeral ones — which are never written, so no live query would ever
         report them (ticket #43)."""
-        for sub_workspace, filters, queue in list(self._subs.values()):
+        # A snapshot: a subscription may come or go while this delivery runs.
+        for sub_workspace, filters, queue in tuple(self._subs.values()):
             if sub_workspace == workspace_slug and event_matches_filters(event, filters):
                 await queue.put(event)
 

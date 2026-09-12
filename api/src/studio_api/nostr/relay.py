@@ -46,6 +46,13 @@ WORKSPACE_WIDE_KINDS = frozenset({0, 10002, 10050, 10063, *MODERATION_KINDS})
 # membership alone, and never omitted just because there's no `h` tag.
 GIFT_WRAP_KINDS = frozenset({1059})
 
+_REJECTION_BY_RESULT = {
+    PublishResult.DUPLICATE: "duplicate: already have this event",
+    PublishResult.SUPERSEDED: (
+        "duplicate: a newer version of this replaceable event already exists"
+    ),
+}
+
 
 class RelayAuthorizer(Protocol):
     """Who may authenticate, and who may read/write a given Channel."""
@@ -266,25 +273,18 @@ class RelayConnection:
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
-        if result is PublishResult.OK:
-            await self._record_media_references(event, channel_id)
-            if kind_class(event["kind"]) is KindClass.EPHEMERAL:
-                # Never stored, so the live query will never report it: the
-                # relay hands it to the fan-out itself (ticket #43).
-                await self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
-        if result is PublishResult.DUPLICATE:
-            await self._send(["OK", event_id, False, "duplicate: already have this event"])
-        elif result is PublishResult.SUPERSEDED:
-            await self._send(
-                [
-                    "OK",
-                    event_id,
-                    False,
-                    "duplicate: a newer version of this replaceable event already exists",
-                ]
-            )
-        else:
-            await self._send(["OK", event_id, True, ""])
+        if result is not PublishResult.OK:
+            await self._send(["OK", event_id, False, _REJECTION_BY_RESULT[result]])
+            return
+        await self._on_accepted(event, channel_id)
+        await self._send(["OK", event_id, True, ""])
+
+    async def _on_accepted(self, event: NostrEvent, channel_id: str | None) -> None:
+        await self._record_media_references(event, channel_id)
+        if kind_class(event["kind"]) is KindClass.EPHEMERAL:
+            # Never stored, so the live query will never report it: the relay
+            # hands it to the fan-out itself (ticket #43).
+            await self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
 
     async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
         """Ticket #6/#7: after an event is accepted, record which blobs it references — by
