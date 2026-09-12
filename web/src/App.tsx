@@ -12,6 +12,7 @@ import {
   type Signer,
 } from "./lib/custody";
 import { localIdentityMatches } from "./lib/accountIdentity";
+import { isEmailVerified } from "./lib/emailVerification";
 import { inviteCodeFromUrl, rememberInviteCode } from "./lib/invites";
 import { resolveInitialView, type AppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
@@ -75,9 +76,7 @@ export function App() {
       // A freshly created email/password account is already "signed in" as
       // far as Firebase is concerned, but the auth/verify step must gate it
       // until the link is clicked — Google sign-in is verified by construction.
-      const verified =
-        !!firebaseUser &&
-        (firebaseUser.emailVerified || firebaseUser.providerData.some((p) => p.providerId !== "password"));
+      const verified = isEmailVerified(firebaseUser);
 
       // The Account is the source of truth for which Identity this person
       // has: a local key that isn't the linked one must not be signed with,
@@ -120,7 +119,7 @@ export function App() {
   if (view === "auth") {
     return (
       <AuthScreen
-        pendingUnverifiedUser={user && !user.emailVerified ? user : null}
+        pendingUnverifiedUser={user && !isEmailVerified(user) ? user : null}
         onAuthenticated={(authedUser, password) => {
           setUser(authedUser);
           setAccountPassword(password);

@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import { auth } from "../../lib/firebase";
 import { mapFirebaseErrorCode } from "../../lib/authErrors";
+import { isEmailVerified } from "../../lib/emailVerification";
 
 type AuthStep = "signin" | "signup" | "verify" | "reset" | "sent";
 
@@ -52,6 +53,16 @@ export function AuthScreen({
     setBusy(true);
     try {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
+      // The gate is the same one `App` applies on every auth state change:
+      // an unverified password Account signing in lands on the verify step
+      // instead of walking into onboarding.
+      if (!isEmailVerified(user)) {
+        await sendEmailVerification(user);
+        setPendingUser(user);
+        setResent(false);
+        setStep("verify");
+        return;
+      }
       onAuthenticated(user, password);
     } catch (err) {
       setFirebaseError(err);
@@ -88,7 +99,7 @@ export function AuthScreen({
     setBusy(true);
     try {
       await pendingUser.reload();
-      if (pendingUser.emailVerified) {
+      if (isEmailVerified(pendingUser)) {
         onAuthenticated(pendingUser, password);
       } else {
         setError({ message: "Not verified yet — check your inbox and try again.", code: null });
@@ -102,8 +113,16 @@ export function AuthScreen({
 
   const handleResend = async () => {
     if (!pendingUser) return;
-    await sendEmailVerification(pendingUser);
-    setResent(true);
+    setBusy(true);
+    setError(null);
+    try {
+      await sendEmailVerification(pendingUser);
+      setResent(true);
+    } catch (err) {
+      setFirebaseError(err);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleReset = async () => {
@@ -232,7 +251,7 @@ export function AuthScreen({
             <button className="btn btn-primary btn-block" onClick={handleVerifyContinue} disabled={busy}>
               I verified — continue
             </button>
-            <button type="button" className="link" onClick={handleResend}>
+            <button type="button" className="link" onClick={handleResend} disabled={busy}>
               Resend the link
             </button>
             <button type="button" className="link" onClick={() => goTo("signup")}>
