@@ -39,3 +39,20 @@ export function canManageChannels(workspaceRole: string, channels: ChannelOut[])
 export function isWorkspaceManager(workspaceRole: string): boolean {
   return WORKSPACE_MANAGER_ROLES.has(workspaceRole);
 }
+
+/** Whether the "you lost access" notice should be showing after the Channel
+ * list was re-read.
+ *
+ * It latches. One administrative change projects several events the app
+ * subscribes to — removing a Channel Member emits both a member list (39002)
+ * and a remove (9001) — and each of them re-reads the list. Only the first
+ * pass still has the lost Channel selected; recomputing on the second would
+ * clear the notice a moment after raising it. Choosing another Channel is
+ * what takes it back down (#42). */
+export function accessLostAfterRefresh(
+  shown: boolean,
+  selected: string | null,
+  kept: string | null,
+): boolean {
+  return shown || (selected !== null && kept === null);
+}
