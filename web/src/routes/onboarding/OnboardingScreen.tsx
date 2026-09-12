@@ -1,9 +1,18 @@
-import { finalizeEvent, getPublicKey, nip44, nip98 } from "nostr-tools";
-import { useState } from "react";
 import type { User } from "firebase/auth";
+import { finalizeEvent, getPublicKey, nip44 } from "nostr-tools";
+import { useEffect, useState } from "react";
 import * as api from "../../lib/api";
-import type { WorkspaceOut } from "../../lib/api";
-import { decryptBackup, encryptBackup, validateBackupPassphrase } from "../../lib/backup";
+import type { AccountOut, WorkspaceOut } from "../../lib/api";
+import {
+  resolveOnboardingEntry,
+  type OnboardingEntry,
+} from "../../lib/accountIdentity";
+import {
+  decryptBackup,
+  encryptBackup,
+  needsAccountPassword,
+  validateBackupPassphrase,
+} from "../../lib/backup";
 import {
   generateIdentity,
   nsecFromSecretKey,
@@ -28,6 +37,7 @@ import {
   type OnboardingStep,
 } from "../../lib/onboardingSteps";
 import { connectAndAuthenticate, publishEvent } from "../../lib/relay";
+import { AccountPasswordGate } from "./AccountPasswordGate";
 
 type Step = OnboardingStep | "restore";
 
@@ -35,12 +45,16 @@ const EMOJIS = ["🌸", "🦊", "🐙", "🌊", "🔥", "🌙", "🍄", "🐝"];
 
 export function OnboardingScreen({
   user,
+  account,
   accountPassword,
   onComplete,
+  onAccountChanged,
 }: {
   user: User;
+  account: AccountOut | null;
   accountPassword: string | null;
   onComplete: (workspace: WorkspaceOut) => void;
+  onAccountChanged?: (account: AccountOut) => void;
 }) {
   // A NIP-07 extension holds the key itself, so the app neither generates an
   // Identity nor takes custody of one — and the Key Backup steps fall away
@@ -74,6 +88,60 @@ export function OnboardingScreen({
 
   const [mode, setMode] = useState<"new" | "restore">("new");
   const [restorePassphrase, setRestorePassphrase] = useState("");
+
+  // What this Account's Identity allows onboarding to do (#36). Null until
+  // the server has answered: generating an Identity before knowing would be
+  // exactly the replacement this ticket is about.
+  const [entry, setEntry] = useState<OnboardingEntry | null>(null);
+  const [linkedPubkey, setLinkedPubkey] = useState<string | null>(account?.pubkey ?? null);
+  // The Workspaces this Identity already belongs to — a restore reconnects
+  // through one of these, with no invite involved.
+  const [workspaces, setWorkspaces] = useState<WorkspaceOut[]>([]);
+
+  // Held in memory for this session only, never persisted: it is what the Key
+  // Backup passphrase must differ from.
+  const [knownPassword, setKnownPassword] = useState<string | null>(accountPassword);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const current = await api.getAccount(token);
+        const hasBackup = custody === "local" ? await api.hasKeyBackup(token) : false;
+        if (cancelled) return;
+        setLinkedPubkey(current.pubkey);
+        onAccountChanged?.(current);
+        const resolved = resolveOnboardingEntry(
+          { linkedPubkey: current.pubkey, hasKeyBackup: hasBackup },
+          custody,
+        );
+        setEntry(resolved);
+        if (resolved === "restore") {
+          setMode("restore");
+          // The key may already be in this browser — an onboarding
+          // interrupted after the Identity was stored but before a Workspace
+          // was joined. Asking for the passphrase again would be theatre:
+          // only the Workspace is missing (#36).
+          const stored = await getSigner();
+          const local = stored ? await stored.getPublicKey() : null;
+          if (local !== null && local === current.pubkey) {
+            setPubkey(local);
+            setWorkspaces(await api.listWorkspaces(token));
+            setStep("setup");
+            return;
+          }
+          setStep("restore");
+        }
+      } catch {
+        if (!cancelled) setError("Couldn't reach your account. Check your connection and reload.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once: which Identity this Account has is settled before the first step
+  }, []);
 
   const goBack = () => {
     if (step === "restore") {
@@ -127,8 +195,22 @@ export function OnboardingScreen({
       const blob = Uint8Array.from(atob(blob_base64), (c) => c.charCodeAt(0));
       const nsec = await decryptBackup(blob, restorePassphrase);
       const secretKey = secretKeyFromNsec(nsec);
-      setIdentity({ secretKey, publicKey: getPublicKey(secretKey) });
-      setPubkey(getPublicKey(secretKey));
+      const restored = getPublicKey(secretKey);
+      if (linkedPubkey !== null && restored !== linkedPubkey) {
+        setError("That Key Backup isn't the Identity linked to this account.");
+        return;
+      }
+      setIdentity({ secretKey, publicKey: restored });
+      setPubkey(restored);
+      // A legacy Account holds a Key Backup but never linked its pubkey.
+      // Linking it here is what stops the next onboarding from generating a
+      // replacement — and it never touches the backup itself (#36).
+      if (linkedPubkey === null) {
+        const linked = await linkAccountIdentity(token, localSigner(secretKey, restored));
+        setLinkedPubkey(linked.pubkey);
+      }
+      await storeIdentity(nsec);
+      setWorkspaces(await api.listWorkspaces(token));
       setStep("setup");
     }, "Wrong passphrase, or no Key Backup on file for this account.");
 
@@ -147,6 +229,12 @@ export function OnboardingScreen({
         if (!signer) throw new Error("the NIP-07 extension did not answer");
         setPubkey(await signer.getPublicKey());
       } else if (!identity) {
+        if (entry !== "new-identity") {
+          // The Account already has an Identity: onboarding may only restore
+          // it. Generating one here is how the real key got lost (#36).
+          setError("This account already has an Identity. Restore it from your Key Backup.");
+          return;
+        }
         const fresh = generateIdentity();
         setIdentity(fresh);
         setPubkey(fresh.publicKey);
@@ -161,7 +249,7 @@ export function OnboardingScreen({
 
   const handleCreateBackup = () => {
     if (!identity) return;
-    const invalid = validateBackupPassphrase(passphrase, accountPassword ?? "");
+    const invalid = validateBackupPassphrase(passphrase, knownPassword ?? "");
     if (invalid) {
       setError(invalid);
       return;
@@ -178,6 +266,17 @@ export function OnboardingScreen({
     }, "Couldn't create the Key Backup. Try again.");
   };
 
+  const linkAccountIdentity = async (token: string, signer: Signer): Promise<AccountOut> => {
+    const proof = await api.identityProof(
+      `${window.location.origin}/api/account/link-identity`,
+      "POST",
+      signer,
+    );
+    const linked = await api.linkIdentity(token, proof);
+    onAccountChanged?.(linked);
+    return linked;
+  };
+
   const handleVerifyBackup = () => {
     if (!backupBlob || !identity) return;
     return runStep(async () => {
@@ -187,10 +286,18 @@ export function OnboardingScreen({
         return;
       }
       setBackupState("verified");
+      const token = await idToken();
+      // Link first: the server only takes a Key Backup for the Account's own
+      // Identity, which is what makes a second onboarding unable to overwrite
+      // it (#36). Store the key locally in the same breath, so a link that
+      // lands can never leave this browser without the key it just bound.
+      const linked = await linkAccountIdentity(token, localSigner(identity.secretKey, identity.publicKey));
+      setLinkedPubkey(linked.pubkey);
+      await storeIdentity(nsecFromSecretKey(identity.secretKey));
       const blobBase64 = btoa(String.fromCharCode(...backupBlob));
-      await api.putKeyBackup(await idToken(), blobBase64);
+      await api.putKeyBackup(token, blobBase64);
       advance("download");
-    }, "Wrong passphrase — the backup didn't decrypt.");
+    }, "Couldn't store your Key Backup. Check the passphrase and try again.");
   };
 
   const handleDownload = () => {
@@ -219,8 +326,9 @@ export function OnboardingScreen({
     },
   });
 
-  const handleSetup = () => {
-    if (custody === "local" && !identity) return;
+  /** `joining` is a Workspace this Identity is already a Member of (restore);
+   * without one, the invite is redeemed to become a Member. */
+  const handleSetup = (joining?: WorkspaceOut) => {
     return runStep(async () => {
       // Under an extension this is the extension's own signer: the key never
       // leaves it, and no parallel Identity is ever created (#45).
@@ -229,20 +337,37 @@ export function OnboardingScreen({
           ? localSigner(identity.secretKey, identity.publicKey)
           : await getSigner();
       if (!signer) throw new Error("no signer available");
-      const proof = await nip98.getToken(
-        `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`,
-        "POST",
-        (e) => signer.signEvent(e),
-        true,
-      );
-      const redeemed = await api.redeemInvite(inviteCode.trim(), proof);
-      setWorkspace(redeemed);
 
-      const ws = await connectAndAuthenticate(redeemed.relay_url, signer);
+      if (custody === "extension") {
+        // Under an extension there is no Key Backup step to link from, so
+        // this is where the Account learns which Identity is its own — and
+        // where an extension holding a different one is turned away rather
+        // than quietly onboarded as a substitute (#36).
+        const extensionPubkey = await signer.getPublicKey();
+        if (linkedPubkey === null) {
+          const linked = await linkAccountIdentity(await idToken(), signer);
+          setLinkedPubkey(linked.pubkey);
+        } else if (extensionPubkey !== linkedPubkey) {
+          setError("Your Nostr extension holds a different Identity than this account's.");
+          return;
+        }
+      }
+
+      let target = joining;
+      if (!target) {
+        const url = `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`;
+        target = await api.redeemInvite(
+          inviteCode.trim(),
+          await api.authProof(url, "POST", signer),
+        );
+      }
+      setWorkspace(target);
+
+      const ws = await connectAndAuthenticate(target.relay_url, signer);
       if (mode === "new") {
         await publishEvent(ws, await signer.signEvent(profileEventTemplate({ name, picture: emoji })));
-        await publishEvent(ws, await signer.signEvent(relayListTemplate([redeemed.relay_url])));
-        await publishEvent(ws, await signer.signEvent(serverListTemplate([redeemed.media_url])));
+        await publishEvent(ws, await signer.signEvent(relayListTemplate([target.relay_url])));
+        await publishEvent(ws, await signer.signEvent(serverListTemplate([target.media_url])));
       }
       ws.close();
 
@@ -258,6 +383,11 @@ export function OnboardingScreen({
     await storeWorkspaceSlug(workspace.slug);
     onComplete(workspace);
   };
+
+  const mustConfirmAccountPassword = needsAccountPassword(
+    user.providerData.map((p) => p.providerId),
+    knownPassword,
+  );
 
   return (
     <div className="onboarding-shell">
@@ -277,7 +407,9 @@ export function OnboardingScreen({
       <div className="onboarding-content">
         {error && <div className="error-banner">{error}</div>}
 
-        {step === "invite" && (
+        {entry === null && !error && <p className="meta">Checking your account…</p>}
+
+        {entry !== null && step === "invite" && (
           <>
             <h1 className="onboarding-title">Enter your invite</h1>
             <div className="onboarding-actions">
@@ -292,7 +424,7 @@ export function OnboardingScreen({
               </button>
               {workspaceName && <span className="meta">Joining {workspaceName}</span>}
               {custody === "local" && (
-                <button type="button" className="link" disabled={!inviteCode} onClick={handleGoRestore}>
+                <button type="button" className="link" onClick={handleGoRestore}>
                   Restore an existing Identity from Key Backup
                 </button>
               )}
@@ -381,7 +513,11 @@ export function OnboardingScreen({
           </>
         )}
 
-        {step === "backup-options" && (
+        {step === "backup-options" && mustConfirmAccountPassword && (
+          <AccountPasswordGate user={user} onConfirmed={setKnownPassword} />
+        )}
+
+        {step === "backup-options" && !mustConfirmAccountPassword && (
           <>
             <h1 className="onboarding-title">Create a Key Backup</h1>
             <p className="meta">
@@ -435,9 +571,46 @@ export function OnboardingScreen({
           <>
             <h1 className="onboarding-title">Connecting you to your workspace</h1>
             <div className="onboarding-actions">
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleSetup}>
-                {busy ? "Connecting…" : "Connect"}
-              </button>
+              {/* A restored Identity is already a Member: it reconnects through
+                  its own Workspaces, so no invite is asked for — and none of
+                  the invite's limits (expiry, revocation, single use) can
+                  stand between someone and their own account (#36). */}
+              {mode === "restore" && workspaces.length > 0 ? (
+                workspaces.map((ws) => (
+                  <button
+                    key={ws.slug}
+                    className="btn btn-primary btn-block"
+                    disabled={busy}
+                    onClick={() => handleSetup(ws)}
+                  >
+                    {busy ? "Connecting…" : `Connect to ${ws.name}`}
+                  </button>
+                ))
+              ) : (
+                <>
+                  {mode === "restore" && (
+                    <>
+                      <p className="meta">
+                        Your Identity isn't a member of any workspace yet. Enter an invite to join
+                        one.
+                      </p>
+                      <input
+                        className="field-label"
+                        placeholder="Invite code"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                      />
+                    </>
+                  )}
+                  <button
+                    className="btn btn-primary btn-block"
+                    disabled={busy || (mode === "restore" && !inviteCode)}
+                    onClick={() => handleSetup()}
+                  >
+                    {busy ? "Connecting…" : "Connect"}
+                  </button>
+                </>
+              )}
             </div>
           </>
         )}
@@ -458,7 +631,7 @@ export function OnboardingScreen({
           </>
         )}
 
-        {step !== "invite" && (
+        {step !== "invite" && !(step === "restore" && entry === "restore") && (
           <button type="button" className="link" onClick={goBack}>
             Back
           </button>

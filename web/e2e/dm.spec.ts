@@ -7,8 +7,6 @@ import {
   testAccountTwo,
   testBackupPassphrase,
   testBackupPassphraseTwo,
-  testInviteCode,
-  testInviteCodeTwo,
 } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
@@ -28,13 +26,11 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await reachAppViaRestoreWithCredentials(pageA, {
     email: testAccount.email(),
     password: testAccount.password(),
-    inviteCode: testInviteCode(),
     backupPassphrase: testBackupPassphrase(),
   });
   const pubkeyB = await reachAppViaRestoreWithCredentials(pageB, {
     email: testAccountTwo.email(),
     password: testAccountTwo.password(),
-    inviteCode: testInviteCodeTwo(),
     backupPassphrase: testBackupPassphraseTwo(),
   });
 

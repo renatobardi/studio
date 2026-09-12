@@ -25,6 +25,7 @@ from studio_api.control.errors import (
     NotAWorkspaceMemberError,
     WorkspaceSlugTakenError,
 )
+from studio_api.control.models import Workspace
 from studio_api.control.repository import ControlPlaneRepository
 
 router = APIRouter(prefix="/api")
@@ -164,6 +165,13 @@ async def put_key_backup(
 ) -> dict[str, str]:
     if not isinstance(caller, FirebaseCaller):
         raise HTTPException(403, "only a Firebase-authenticated caller has a Key Backup")
+    # A Key Backup belongs to the Account's Identity, and that link is
+    # immutable (link_identity refuses a second pubkey). Requiring it here is
+    # what stops a second onboarding from storing a backup of a fresh key over
+    # the one that recovers the real Identity (#36).
+    account = await repo.get_account(caller.uid)
+    if account is None or account.pubkey is None:
+        raise HTTPException(400, "link an Identity to this Account before storing a Key Backup")
     blob = base64.b64decode(body.blob_base64)
     await repo.put_key_backup(uid=caller.uid, blob=blob)
     return {"status": "ok"}
@@ -203,12 +211,31 @@ class WorkspaceOut(BaseModel):
     role: str
 
 
-def _workspace_urls(request: Request, slug: str) -> tuple[str, str]:
+def _workspace_out(request: Request, workspace: Workspace, role: str) -> WorkspaceOut:
+    """One Workspace as this caller sees it: its own relay URL, the server's
+    media URL, and the caller's role in it."""
     base = str(request.base_url).rstrip("/")
     ws_scheme = "wss" if base.startswith("https") else "ws"
-    relay_url = f"{ws_scheme}://{request.url.netloc}/relay/{slug}"
-    media_url = f"{base}/media"
-    return relay_url, media_url
+    return WorkspaceOut(
+        slug=workspace.slug,
+        name=workspace.name,
+        relay_url=f"{ws_scheme}://{request.url.netloc}/relay/{workspace.slug}",
+        media_url=f"{base}/media",
+        role=role,
+    )
+
+
+@router.get("/workspaces")
+async def list_workspaces(
+    request: Request,
+    caller: CallerIdentity = Depends(require_caller),
+    repo: ControlPlaneRepository = Depends(get_repo),
+) -> list[WorkspaceOut]:
+    """The caller's own Workspaces. A restore on a new browser has neither an
+    invite nor local state, so this is how it finds where to reconnect (#36)."""
+    pubkey = await _caller_pubkey(caller, repo)
+    found = await repo.list_workspaces_for(pubkey)
+    return [_workspace_out(request, workspace, role) for workspace, role in found]
 
 
 @router.post("/workspaces")
@@ -225,11 +252,7 @@ async def create_workspace(
         )
     except ControlPlaneError as error:
         raise _control_error_to_http(error) from error
-    relay_url, media_url = _workspace_urls(request, workspace.slug)
-    return WorkspaceOut(
-        slug=workspace.slug, name=workspace.name, relay_url=relay_url, media_url=media_url,
-        role="owner",
-    )
+    return _workspace_out(request, workspace, "owner")
 
 
 @router.get("/workspaces/{slug}")
@@ -244,10 +267,7 @@ async def get_workspace(
         raise HTTPException(404, "no such Workspace")
     pubkey = await _caller_pubkey(caller, repo)
     role = await _require_workspace_member(repo, slug, pubkey)
-    relay_url, media_url = _workspace_urls(request, slug)
-    return WorkspaceOut(
-        slug=workspace.slug, name=workspace.name, relay_url=relay_url, media_url=media_url, role=role
-    )
+    return _workspace_out(request, workspace, role)
 
 
 # --- Invite ---------------------------------------------------------------------
@@ -354,11 +374,7 @@ async def redeem_invite(
         raise _control_error_to_http(error) from error
     workspace = await repo.get_workspace(member.workspace_slug)
     assert workspace is not None
-    relay_url, media_url = _workspace_urls(request, workspace.slug)
-    return WorkspaceOut(
-        slug=workspace.slug, name=workspace.name, relay_url=relay_url, media_url=media_url,
-        role=member.role,
-    )
+    return _workspace_out(request, workspace, member.role)
 
 
 # --- Workspace Members ---------------------------------------------------------

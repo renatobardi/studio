@@ -30,3 +30,17 @@ export function validateBackupPassphrase(
   }
   return null;
 }
+
+/**
+ * Whether the person must re-enter their Account password before a Key Backup
+ * can be created. The password is never persisted, so after a reload the
+ * "passphrase must differ from the password" rule has nothing to compare
+ * against — asking again is what keeps it enforced instead of silently
+ * skipped (#36). A Google account has no password to differ from.
+ */
+export function needsAccountPassword(
+  providerIds: readonly string[],
+  knownPassword: string | null,
+): boolean {
+  return knownPassword === null && providerIds.includes("password");
+}

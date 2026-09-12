@@ -61,6 +61,23 @@ async def client(store: EventStore) -> AsyncIterator[AsyncClient]:
         yield c
 
 
+@pytest.fixture
+def repo(store: EventStore) -> ControlPlaneRepository:
+    """The same store the `client` fixture serves, reached directly — for
+    arranging rows no endpoint is willing to write (a legacy Key Backup on an
+    Account with no linked Identity)."""
+    return ControlPlaneRepository(store.raw, event_store=store, server_secret=SERVER_SECRET)
+
+
+async def link_identity(client: AsyncClient, uid: str, sk: PrivateKey, pubkey: str) -> None:
+    headers = nostr_header(sk, pubkey, url="http://test/api/account/link-identity", method="POST")
+    proof = json.loads(base64.b64decode(headers["Authorization"].removeprefix("Nostr ")))
+    response = await client.post(
+        "/api/account/link-identity", headers=firebase_header(uid), json={"proof": proof}
+    )
+    assert response.status_code == 200
+
+
 class TestAccount:
     async def test_getting_the_account_creates_it_lazily(self, client: AsyncClient) -> None:
         response = await client.get("/api/account", headers=firebase_header("uid1"))
@@ -107,6 +124,8 @@ class TestAccount:
 
 class TestKeyBackup:
     async def test_upload_then_download_round_trips(self, client: AsyncClient) -> None:
+        sk, pubkey = new_keypair()
+        await link_identity(client, "uid1", sk, pubkey)
         blob_b64 = base64.b64encode(b"opaque-age-bytes").decode("ascii")
         await client.put(
             "/api/account/key-backup", headers=firebase_header("uid1"),
@@ -119,6 +138,8 @@ class TestKeyBackup:
         assert base64.b64decode(response.json()["blob_base64"]) == b"opaque-age-bytes"
 
     async def test_a_different_account_has_no_access_to_it(self, client: AsyncClient) -> None:
+        sk, pubkey = new_keypair()
+        await link_identity(client, "owner-uid", sk, pubkey)
         blob_b64 = base64.b64encode(b"owner-only").decode("ascii")
         await client.put(
             "/api/account/key-backup", headers=firebase_header("owner-uid"),
@@ -130,6 +151,157 @@ class TestKeyBackup:
         )
 
         assert response.status_code == 404
+
+    async def test_uploading_without_a_linked_identity_is_refused(
+        self, client: AsyncClient
+    ) -> None:
+        """A Key Backup belongs to the Account's Identity. Accepting one
+        before the link exists is what lets a second onboarding upload a
+        backup of a brand-new key over the one that recovers the real
+        Identity (#36)."""
+        response = await client.put(
+            "/api/account/key-backup", headers=firebase_header("uid1"),
+            json={"blob_base64": base64.b64encode(b"stranger-key").decode("ascii")},
+        )
+
+        assert response.status_code == 400
+        stored = await client.get("/api/account/key-backup", headers=firebase_header("uid1"))
+        assert stored.status_code == 404
+
+    async def test_a_refused_upload_leaves_a_legacy_backup_intact(
+        self, client: AsyncClient, repo: ControlPlaneRepository
+    ) -> None:
+        """A legacy Account has a Key Backup but no linked pubkey yet. The
+        refusal must not cost it the only copy of its key."""
+        await repo.create_account(uid="legacy", email="legacy@example.com", provider="firebase")
+        await repo.put_key_backup(uid="legacy", blob=b"the-real-key")
+
+        refused = await client.put(
+            "/api/account/key-backup", headers=firebase_header("legacy"),
+            json={"blob_base64": base64.b64encode(b"a-brand-new-key").decode("ascii")},
+        )
+
+        assert refused.status_code == 400
+        kept = await client.get("/api/account/key-backup", headers=firebase_header("legacy"))
+        assert base64.b64decode(kept.json()["blob_base64"]) == b"the-real-key"
+
+    async def test_a_second_identity_cannot_take_over_the_account(
+        self, client: AsyncClient
+    ) -> None:
+        first_sk, first_pubkey = new_keypair()
+        await link_identity(client, "uid1", first_sk, first_pubkey)
+        second_sk, second_pubkey = new_keypair()
+        headers = nostr_header(
+            second_sk, second_pubkey, url="http://test/api/account/link-identity", method="POST"
+        )
+        proof = json.loads(base64.b64decode(headers["Authorization"].removeprefix("Nostr ")))
+
+        response = await client.post(
+            "/api/account/link-identity", headers=firebase_header("uid1"), json={"proof": proof}
+        )
+
+        assert response.status_code == 409
+        account = await client.get("/api/account", headers=firebase_header("uid1"))
+        assert account.json()["pubkey"] == first_pubkey
+
+
+class TestListingTheCallersWorkspaces:
+    """Restoring on a new browser has no invite and no local state: the
+    Account's Identity is the only thing to go on (#36)."""
+
+    async def test_lists_every_workspace_the_identity_belongs_to(
+        self, client: AsyncClient
+    ) -> None:
+        sk, pubkey = new_keypair()
+        await link_identity(client, "uid1", sk, pubkey)
+        for slug, name in (("family", "Family"), ("studio", "Studio")):
+            await client.post(
+                "/api/workspaces",
+                headers=nostr_header(sk, pubkey, url="http://test/api/workspaces", method="POST"),
+                json={"slug": slug, "name": name},
+            )
+
+        response = await client.get("/api/workspaces", headers=firebase_header("uid1"))
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {w["slug"]: w["role"] for w in body} == {"family": "owner", "studio": "owner"}
+        assert body[0]["relay_url"].startswith("ws://test/relay/")
+
+    async def test_a_workspace_someone_else_owns_is_not_listed(
+        self, client: AsyncClient
+    ) -> None:
+        owner_sk, owner_pubkey = new_keypair()
+        await client.post(
+            "/api/workspaces",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces", method="POST"
+            ),
+            json={"slug": "family", "name": "Family"},
+        )
+        stranger_sk, stranger_pubkey = new_keypair()
+        await link_identity(client, "stranger-uid", stranger_sk, stranger_pubkey)
+
+        response = await client.get("/api/workspaces", headers=firebase_header("stranger-uid"))
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    async def test_an_account_with_no_linked_identity_is_rejected(
+        self, client: AsyncClient
+    ) -> None:
+        response = await client.get("/api/workspaces", headers=firebase_header("uid1"))
+
+        assert response.status_code == 400
+
+    async def test_recovery_outlives_the_invite_that_let_them_in(
+        self, client: AsyncClient
+    ) -> None:
+        """An Invite is how someone becomes a Member, not how they get back
+        in. Once spent — and revoked on top — it must stand between nobody
+        and their own Workspaces (#36)."""
+        owner_sk, owner_pubkey = new_keypair()
+        await client.post(
+            "/api/workspaces",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces", method="POST"
+            ),
+            json={"slug": "family", "name": "Family"},
+        )
+        created = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/invites",
+                method="POST",
+            ),
+            json={"max_uses": 1},
+        )
+        code = created.json()["code"]
+
+        member_sk, member_pubkey = new_keypair()
+        await link_identity(client, "member-uid", member_sk, member_pubkey)
+        redeemed = await client.post(
+            f"/api/invites/{code}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey,
+                url=f"http://test/api/invites/{code}/redeem", method="POST",
+            ),
+        )
+        assert redeemed.status_code == 200
+
+        # Spent by that single use, and revoked on top of it.
+        await client.delete(
+            f"/api/workspaces/family/invites/{code}",
+            headers=nostr_header(
+                owner_sk, owner_pubkey,
+                url=f"http://test/api/workspaces/family/invites/{code}", method="DELETE",
+            ),
+        )
+        assert (await client.get(f"/api/invites/{code}")).json()["valid"] is False
+
+        listed = await client.get("/api/workspaces", headers=firebase_header("member-uid"))
+
+        assert [w["slug"] for w in listed.json()] == ["family"]
 
 
 class TestWorkspace:

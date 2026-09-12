@@ -32,7 +32,6 @@ export const testAccountTwo = {
   email: () => requiredEnv("STUDIO_TEST_EMAIL_2"),
   password: () => requiredEnv("STUDIO_TEST_PASSWORD_2"),
 };
-export const testInviteCodeTwo = () => requiredEnv("STUDIO_TEST_INVITE_CODE_2");
 export const testBackupPassphraseTwo = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE_2");
 
 /** A Workspace owner/admin identity used only to grant the just-onboarded test Identity Channel
@@ -85,7 +84,6 @@ export async function ensureChannelMembership(pageURL: string, pubkey: string): 
 interface RestoreCredentials {
   email: string;
   password: string;
-  inviteCode: string;
   backupPassphrase: string;
 }
 
@@ -104,13 +102,13 @@ export async function reachAppViaRestoreWithCredentials(
   await page.getByLabel("Password").fill(credentials.password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await page.getByPlaceholder("Invite code").fill(credentials.inviteCode);
-  await page.getByRole("button", { name: "Restore an existing Identity from Key Backup" }).click();
-
+  // No invite is entered: an Account that already has an Identity opens
+  // straight on the restore step, and reconnects through the Workspaces that
+  // Identity is already a Member of (#36).
   await page.getByPlaceholder("Backup passphrase").fill(credentials.backupPassphrase);
   await page.getByRole("button", { name: "Restore" }).click();
 
-  await page.getByRole("button", { name: "Connect" }).click();
+  await page.getByRole("button", { name: /^Connect/ }).first().click();
   await page.getByRole("heading", { name: /You're in/ }).waitFor({ timeout: 15_000 });
 
   const pubkey = await page.getByTestId("own-pubkey").textContent();
@@ -131,7 +129,6 @@ export async function reachAppViaRestore(page: import("@playwright/test").Page):
   await reachAppViaRestoreWithCredentials(page, {
     email: testAccount.email(),
     password: testAccount.password(),
-    inviteCode: testInviteCode(),
     backupPassphrase: testBackupPassphrase(),
   });
 }
