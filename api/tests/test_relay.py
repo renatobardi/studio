@@ -5,7 +5,7 @@ NIP-42 AUTH, against a real EventStore and the shared live fan-out
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
@@ -273,6 +273,8 @@ class _BrokenPublishStore:
 
 
 class _BrokenQueryStore:
+    workspace_slug = "test-ws"
+
     async def query(self, filters: list[object]) -> list[object]:
         raise RuntimeError("the database is on fire")
 
@@ -1005,3 +1007,176 @@ class TestForceDisconnect:
 
         assert here_recorder.of_type("CLOSED")
         assert there_recorder.of_type("CLOSED") == []
+
+
+class _HookedQueryStore:
+    """The real store with a hook running inside the snapshot query — the
+    snapshot→live transition a client has no other way to hit deterministically.
+    `before` runs before the rows are read, `after` once they are."""
+
+    def __init__(
+        self,
+        store: EventStore,
+        *,
+        before: Callable[[], Awaitable[None]] | None = None,
+        after: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        self._store = store
+        self._before = before
+        self._after = after
+
+    @property
+    def workspace_slug(self) -> str:
+        return self._store.workspace_slug
+
+    async def publish(self, event: NostrEvent) -> object:
+        return await self._store.publish(event)
+
+    async def query(self, filters: list[object]) -> list[NostrEvent]:
+        if self._before is not None:
+            await self._before()
+        events = await self._store.query(filters)  # type: ignore[arg-type]
+        if self._after is not None:
+            await self._after()
+        return events
+
+
+class TestSnapshotToLiveTransition:
+    async def test_an_event_published_during_the_snapshot_still_reaches_the_subscriber(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="in the gap")
+
+        async def publish_after_the_rows_are_read() -> None:
+            await fanout.deliver(event, workspace_slug=store.workspace_slug)
+
+        hooked = _HookedQueryStore(store, after=publish_after_the_rows_are_read)
+        subscriber, recorder = make_connection(
+            hooked, fanout, allowed_pubkeys=(pubkey,), now=lambda: now,  # type: ignore[arg-type]
+            connection_id="gap-subscriber",
+        )
+        await authenticate(subscriber, recorder, sk, pubkey, now=now)
+
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        await wait_until(lambda: len(recorder.of_type("EVENT")) == 1)
+        assert recorder.of_type("EVENT") == [["EVENT", "sub1", event]]
+        eose = recorder.of_type("EOSE")[0]
+        assert recorder.sent.index(eose) < recorder.sent.index(["EVENT", "sub1", event])
+
+        await subscriber.close()
+
+    async def test_an_event_in_both_the_snapshot_and_the_buffer_is_sent_once(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="on the seam")
+
+        async def publish_before_the_rows_are_read() -> None:
+            await store.publish(event)
+            await fanout.deliver(event, workspace_slug=store.workspace_slug)
+
+        hooked = _HookedQueryStore(store, before=publish_before_the_rows_are_read)
+        subscriber, recorder = make_connection(
+            hooked, fanout, allowed_pubkeys=(pubkey,), now=lambda: now,  # type: ignore[arg-type]
+            connection_id="seam-subscriber",
+        )
+        await authenticate(subscriber, recorder, sk, pubkey, now=now)
+
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [1]}])
+
+        await asyncio.sleep(0.1)  # a duplicate, if any, has had its chance to arrive
+        assert recorder.of_type("EVENT") == [["EVENT", "sub1", event]]
+
+        await subscriber.close()
+
+    async def test_a_buffered_event_the_caller_may_not_read_is_not_delivered(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        blocked = sign_event(
+            sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan2"]], content="not yours"
+        )
+
+        async def publish_after_the_rows_are_read() -> None:
+            await fanout.deliver(blocked, workspace_slug=store.workspace_slug)
+
+        hooked = _HookedQueryStore(store, after=publish_after_the_rows_are_read)
+        subscriber, recorder = make_connection(
+            hooked, fanout, allowed_pubkeys=(pubkey,),  # type: ignore[arg-type]
+            channel_members={"chan1": {pubkey}, "chan2": set()},
+            now=lambda: now, connection_id="gap-outsider",
+        )
+        await authenticate(subscriber, recorder, sk, pubkey, now=now)
+
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [9]}])
+
+        await asyncio.sleep(0.1)
+        assert recorder.of_type("EVENT") == []
+
+        await subscriber.close()
+
+
+class TestEphemeralEvents:
+    async def test_an_ephemeral_event_is_delivered_live_and_never_stored(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        subscriber, sub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="eph-subscriber"
+        )
+        await authenticate(subscriber, sub_recorder, sk, pubkey, now=now)
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [20001]}])
+
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="eph-publisher"
+        )
+        await authenticate(publisher, pub_recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=20001, content="typing")
+        await publisher.handle_message(["EVENT", event])
+
+        assert pub_recorder.of_type("OK")[-1] == ["OK", event["id"], True, ""]
+        await wait_until(lambda: len(sub_recorder.of_type("EVENT")) == 1)
+        assert sub_recorder.of_type("EVENT") == [["EVENT", "sub1", event]]
+
+        later, later_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="eph-history"
+        )
+        await authenticate(later, later_recorder, sk, pubkey, now=now)
+        await later.handle_message(["REQ", "sub2", {"kinds": [20001]}])
+        assert later_recorder.of_type("EVENT") == []
+
+        await subscriber.close()
+        await publisher.close()
+        await later.close()
+
+    async def test_an_ephemeral_channel_event_reaches_only_that_channels_members(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        outsider, outsider_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": set()}, now=lambda: now, connection_id="eph-outsider",
+        )
+        await authenticate(outsider, outsider_recorder, sk, pubkey, now=now)
+        await outsider.handle_message(["REQ", "sub1", {"kinds": [20001]}])
+
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,),
+            channel_members={"chan1": {pubkey}}, now=lambda: now, connection_id="eph-insider",
+        )
+        await authenticate(publisher, pub_recorder, sk, pubkey, now=now)
+        event = sign_event(sk, pubkey=pubkey, created_at=now, kind=20001, tags=[["h", "chan1"]])
+        await publisher.handle_message(["EVENT", event])
+
+        await asyncio.sleep(0.1)
+        assert outsider_recorder.of_type("EVENT") == []
+
+        await outsider.close()
+        await publisher.close()

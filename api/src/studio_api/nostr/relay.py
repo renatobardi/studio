@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
+from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.model import Filter, NostrEvent, all_tag_values, first_tag_value
 from studio_api.nostr.store import EventStore, LiveFanout, PublishResult
 from studio_api.nostr.validation import ROOT_TAG_BY_KIND, validate_event
@@ -267,6 +268,10 @@ class RelayConnection:
             return
         if result is PublishResult.OK:
             await self._record_media_references(event, channel_id)
+            if kind_class(event["kind"]) is KindClass.EPHEMERAL:
+                # Never stored, so the live query will never report it: the
+                # relay hands it to the fan-out itself (ticket #43).
+                await self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
         if result is PublishResult.DUPLICATE:
             await self._send(["OK", event_id, False, "duplicate: already have this event"])
         elif result is PublishResult.SUPERSEDED:
@@ -317,29 +322,40 @@ class RelayConnection:
             self._cancel_subscription(sub_id)
 
         filters = [parse_filter(raw) for raw in raw_filters]
-        try:
-            events = await self._store.query(filters)
-        except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
-            await self._send(["CLOSED", sub_id, f"error: {error}"])
-            return
-        for event in events:
-            if await self._may_read(event):
-                await self._send(["EVENT", sub_id, event])
-        await self._send(["EOSE", sub_id])
-
+        # Subscribe *before* reading the snapshot: anything published while the
+        # historical query runs lands in this queue instead of falling into the
+        # gap between the two (ticket #43). It is drained after EOSE, minus
+        # whatever the snapshot already carried.
         queue = await self._fanout.subscribe(
             self._full_sub_id(sub_id), filters, workspace_slug=self._store.workspace_slug
         )
+        try:
+            events = await self._store.query(filters)
+        except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
+            self._fanout.unsubscribe(self._full_sub_id(sub_id))
+            await self._send(["CLOSED", sub_id, f"error: {error}"])
+            return
+        snapshot_ids: set[str] = set()
+        for event in events:
+            if await self._may_read(event):
+                snapshot_ids.add(event["id"])
+                await self._send(["EVENT", sub_id, event])
+        await self._send(["EOSE", sub_id])
+
         self._sub_ids.add(sub_id)
-        self._tasks[sub_id] = asyncio.create_task(self._forward_live_events(sub_id, queue))
+        self._tasks[sub_id] = asyncio.create_task(
+            self._forward_live_events(sub_id, queue, snapshot_ids)
+        )
 
     def _handle_close(self, sub_id: str) -> None:
         self._cancel_subscription(sub_id)
 
     async def _forward_live_events(
-        self, sub_id: str, queue: "asyncio.Queue[NostrEvent]"
+        self, sub_id: str, queue: "asyncio.Queue[NostrEvent]", snapshot_ids: set[str]
     ) -> None:
         while True:
             event = await queue.get()
+            if event["id"] in snapshot_ids:
+                continue
             if await self._may_read(event):
                 await self._send(["EVENT", sub_id, event])

@@ -143,13 +143,20 @@ class LiveFanout:
         generator = await self._db.subscribe_live(self._live_id)
         async for row in generator:
             typed_row = cast(dict[str, Any], row)
-            event = _from_row(typed_row)
-            row_workspace = typed_row.get("workspace_slug")
-            for workspace_slug, filters, queue in list(self._subs.values()):
-                from studio_api.nostr.matching import event_matches_filters
+            await self.deliver(
+                _from_row(typed_row), workspace_slug=cast(str, typed_row.get("workspace_slug"))
+            )
 
-                if row_workspace == workspace_slug and event_matches_filters(event, filters):
-                    await queue.put(event)
+    async def deliver(self, event: NostrEvent, *, workspace_slug: str) -> None:
+        """Fan one event out to every matching subscription of that Workspace.
+        Fed by the live query for stored events, and directly by the relay for
+        ephemeral ones — which are never written, so no live query would ever
+        report them (ticket #43)."""
+        from studio_api.nostr.matching import event_matches_filters
+
+        for sub_workspace, filters, queue in list(self._subs.values()):
+            if sub_workspace == workspace_slug and event_matches_filters(event, filters):
+                await queue.put(event)
 
     async def subscribe(
         self, sub_id: str, filters: list[Filter], *, workspace_slug: str
