@@ -41,14 +41,17 @@ export function sha256Hex(data: ArrayBuffer): string {
 }
 
 /** kind 24242 (BUD-01): a Blossom authorization event — `t` names the action, `expiration`
- * is a short-lived unix timestamp, and `x` (upload only) is the content's sha256. */
+ * is a short-lived unix timestamp, and `x` (upload only) is the content's sha256. `recipients`
+ * (upload only) are the Identities allowed to fetch a Direct Message photo: signed here, with
+ * the hash, because the server grants no access from the gift wrap that carries it (#38). */
 export function buildBlossomAuthEvent(
   action: "upload" | "get",
-  opts: { sha256?: string; ttlSeconds?: number } = {},
+  opts: { sha256?: string; ttlSeconds?: number; recipients?: string[] } = {},
   signer: Signer,
 ): Promise<VerifiedEvent> {
   const tags = [["t", action], ["expiration", String(Math.floor(Date.now() / 1000) + (opts.ttlSeconds ?? 300))]];
   if (opts.sha256) tags.push(["x", opts.sha256]);
+  for (const recipient of opts.recipients ?? []) tags.push(["p", recipient]);
   return signer.signEvent({ kind: 24242, created_at: Math.floor(Date.now() / 1000), tags, content: "" });
 }
 

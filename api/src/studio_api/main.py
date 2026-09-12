@@ -225,7 +225,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_store=app.state.store,
         server_secret=os.environ["WORKSPACE_KEY_SECRET"],
     )
-    app.state.media_repo = MediaRepository(app.state.store.raw)
+    app.state.media_repo = MediaRepository(app.state.store.raw, authorizer=app.state.repo)
     app.state.storage = await _build_storage()
     app.state.firebase_verifier = _build_firebase_verifier()
     try:

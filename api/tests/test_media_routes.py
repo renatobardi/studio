@@ -40,10 +40,13 @@ def blossom_header(
     action: str,
     sha256: str | None = None,
     expiration: int | None = None,
+    recipients: list[str] | None = None,
 ) -> dict[str, str]:
     tags = [["t", action], ["expiration", str(expiration or int(time.time()) + 60)]]
     if sha256 is not None:
         tags.append(["x", sha256])
+    for recipient in recipients or []:
+        tags.append(["p", recipient])
     event = sign_event(sk, pubkey=pubkey, created_at=int(time.time()), kind=24242, tags=tags)
     encoded = base64.b64encode(json.dumps(event).encode()).decode("ascii")
     return {"Authorization": f"Nostr {encoded}"}
@@ -67,8 +70,8 @@ def control_repo(store: EventStore) -> ControlPlaneRepository:
 
 
 @pytest.fixture
-def media_repo(store: EventStore) -> MediaRepository:
-    return MediaRepository(store.raw)
+def media_repo(store: EventStore, control_repo: ControlPlaneRepository) -> MediaRepository:
+    return MediaRepository(store.raw, authorizer=control_repo)
 
 
 @pytest.fixture
@@ -273,13 +276,21 @@ class TestUpload:
 
 class TestGet:
     async def _upload(
-        self, client: AsyncClient, sk: PrivateKey, pubkey: str, *, data: bytes = JPEG_BYTES
+        self,
+        client: AsyncClient,
+        sk: PrivateKey,
+        pubkey: str,
+        *,
+        data: bytes = JPEG_BYTES,
+        recipients: list[str] | None = None,
     ) -> str:
         sha256 = hashlib.sha256(data).hexdigest()
         response = await client.put(
             "/media/upload",
             headers={
-                **blossom_header(sk, pubkey, action="upload", sha256=sha256),
+                **blossom_header(
+                    sk, pubkey, action="upload", sha256=sha256, recipients=recipients
+                ),
                 "content-type": "image/jpeg",
             },
             content=data,
@@ -383,26 +394,18 @@ class TestGet:
 
         assert response.status_code == 302
 
-    async def test_a_dm_recipient_can_fetch_a_blob_referenced_only_by_a_gift_wrap(
-        self, client: AsyncClient, control_repo: ControlPlaneRepository, media_repo: MediaRepository
+    async def test_a_recipient_named_in_the_upload_authorization_can_fetch_it(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
     ) -> None:
+        """Ticket #38: a Direct Message photo's ACL comes from the uploader's
+        own signed upload event, not from the gift wrap that carries it."""
         uploader_sk, uploader_pubkey = new_keypair()
         await _make_workspace_member(control_repo, uploader_pubkey)
-        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
-
         recipient_sk, recipient_pubkey = new_keypair()
         await _make_workspace_member(control_repo, recipient_pubkey)
-        await media_repo.record_dm_references(
-            {
-                "id": "wrap1",
-                "pubkey": uploader_pubkey,
-                "created_at": 0,
-                "kind": 1059,
-                "tags": [["p", recipient_pubkey], ["x", sha256]],
-                "content": "ciphertext",
-                "sig": "s",
-            },
-            recipients=[recipient_pubkey, uploader_pubkey],
+
+        sha256 = await self._upload(
+            client, uploader_sk, uploader_pubkey, recipients=[recipient_pubkey]
         )
 
         response = await client.get(
@@ -413,7 +416,86 @@ class TestGet:
 
         assert response.status_code == 302
 
-    async def test_a_workspace_member_not_recorded_as_a_dm_recipient_cannot_fetch_it(
+    async def test_a_reference_by_a_stranger_does_not_open_the_blob_to_their_channel(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository, media_repo: MediaRepository
+    ) -> None:
+        """Ticket #38: A uploads privately, B names the hash in a Channel of
+        their own — neither B nor B's Channel gains anything by it."""
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+
+        stranger_sk, stranger_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, stranger_pubkey)
+        channel = await control_repo.create_channel(
+            workspace_slug=WORKSPACE_SLUG,
+            name="stranger-channel",
+            about="",
+            private=False,
+            created_by=stranger_pubkey,
+        )
+        await media_repo.record_references(
+            {
+                "id": "evt1",
+                "pubkey": stranger_pubkey,
+                "created_at": 0,
+                "kind": 9,
+                "tags": [["h", channel.id], ["imeta", f"x {sha256}"]],
+                "content": "",
+                "sig": "s",
+            },
+            channel_id=channel.id,
+        )
+
+        response = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(stranger_sk, stranger_pubkey, action="get"),
+        )
+
+        assert response.status_code == 403
+        assert await media_repo.channels_referencing(sha256) == []
+
+    async def test_removal_from_the_workspace_blocks_the_uploaders_own_get(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        _owner_sk, owner_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, owner_pubkey)
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        sha256 = await self._upload(client, uploader_sk, uploader_pubkey)
+
+        await control_repo.remove_workspace_member(slug=WORKSPACE_SLUG, pubkey=uploader_pubkey)
+
+        response = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(uploader_sk, uploader_pubkey, action="get"),
+        )
+
+        assert response.status_code == 403
+
+    async def test_removal_from_the_workspace_blocks_a_registered_recipients_get(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        _owner_sk, owner_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, owner_pubkey)
+        uploader_sk, uploader_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, uploader_pubkey)
+        recipient_sk, recipient_pubkey = new_keypair()
+        await _make_workspace_member(control_repo, recipient_pubkey)
+        sha256 = await self._upload(
+            client, uploader_sk, uploader_pubkey, recipients=[recipient_pubkey]
+        )
+
+        await control_repo.remove_workspace_member(slug=WORKSPACE_SLUG, pubkey=recipient_pubkey)
+
+        response = await client.get(
+            f"/media/{sha256}",
+            headers=blossom_header(recipient_sk, recipient_pubkey, action="get"),
+        )
+
+        assert response.status_code == 403
+
+    async def test_a_workspace_member_not_named_as_a_recipient_cannot_fetch_it(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
     ) -> None:
         uploader_sk, uploader_pubkey = new_keypair()

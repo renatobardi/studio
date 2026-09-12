@@ -64,7 +64,7 @@ export function ConversationView({
       const bytes = await file.arrayBuffer();
       const encrypted = encryptFileForDm(bytes, file.type);
       const [descriptor, dim] = await Promise.all([
-        uploadEncryptedBlob(mediaUrl, encrypted, signer, (loaded, total) =>
+        uploadEncryptedBlob(mediaUrl, encrypted, peerPubkeys, signer, (loaded, total) =>
           setAttachment((prev) => (prev?.status === "uploading" ? { ...prev, loaded, total } : prev)),
         ),
         imageDimensions(previewUrl),

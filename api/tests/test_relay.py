@@ -219,13 +219,9 @@ class TestPublishing:
 class _FakeMediaRepo:
     def __init__(self) -> None:
         self.recorded: list[tuple[str, str]] = []
-        self.dm_recorded: list[tuple[str, tuple[str, ...]]] = []
 
     async def record_references(self, event: NostrEvent, *, channel_id: str) -> None:
         self.recorded.append((event["id"], channel_id))
-
-    async def record_dm_references(self, event: NostrEvent, *, recipients: list[str]) -> None:
-        self.dm_recorded.append((event["id"], tuple(recipients)))
 
 
 class TestMediaReferenceRecording:
@@ -915,9 +911,12 @@ class TestGiftWrapAuthorization:
 
 
 class TestDmMediaReferenceRecording:
-    async def test_accepting_a_gift_wrap_with_x_tags_records_dm_references_for_sender_and_recipients(
+    async def test_a_gift_wraps_x_tags_record_nothing(
         self, store: EventStore, fanout: LiveFanout
     ) -> None:
+        """Ticket #38: the envelope names a hash the relay cannot verify the sender has any
+        right to, so it grants no access — a Direct Message photo's recipients are recorded
+        by the upload endpoint, from the uploader's own signed authorization."""
         sk, pubkey = new_keypair()
         _recipient_sk, recipient_pubkey = new_keypair()
         now = int(time.time())
@@ -933,23 +932,8 @@ class TestDmMediaReferenceRecording:
 
         await connection.handle_message(["EVENT", wrap])
 
-        assert media_repo.dm_recorded == [(wrap["id"], (recipient_pubkey, pubkey))]
-
-    async def test_a_rejected_gift_wrap_records_no_dm_reference(
-        self, store: EventStore, fanout: LiveFanout
-    ) -> None:
-        sk, pubkey = new_keypair()
-        now = int(time.time())
-        media_repo = _FakeMediaRepo()
-        connection, recorder = make_connection(
-            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, media_repo=media_repo
-        )
-        await authenticate(connection, recorder, sk, pubkey, now=now)
-        wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[])
-
-        await connection.handle_message(["EVENT", wrap])
-
-        assert media_repo.dm_recorded == []
+        assert recorder.of_type("OK")[-1][2] is True
+        assert media_repo.recorded == []
 
 
 class TestForceDisconnect:

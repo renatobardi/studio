@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
 from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.limits import MAX_FILTERS_PER_REQ, MAX_LIMIT, MAX_SUBSCRIPTIONS
-from studio_api.nostr.model import Filter, NostrEvent, all_tag_values, first_tag_value
+from studio_api.nostr.model import Filter, NostrEvent, first_tag_value
 from studio_api.nostr.store import (
     Delivery,
     EventStore,
@@ -41,8 +41,6 @@ class MediaReferenceRecorder(Protocol):
     accepted event's `imeta` tags. Implemented by MediaRepository."""
 
     async def record_references(self, event: NostrEvent, *, channel_id: str) -> None: ...
-
-    async def record_dm_references(self, event: NostrEvent, *, recipients: list[str]) -> None: ...
 
 
 _SINGLE_LETTER_TAG_FILTER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -373,17 +371,13 @@ class RelayConnection:
             self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
 
     async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
-        """Ticket #6/#7: after an event is accepted, record which blobs it references — by
-        Channel for ordinary content, or by DM recipient for a gift wrap (a gift wrap has no
-        `h` tag, so the two cases are mutually exclusive)."""
-        if self._media_repo is None:
+        """Ticket #6: after an event is accepted, record which blobs its `imeta` tags say this
+        Channel references. A gift wrap grants nothing here (ticket #38): its tags are relayed
+        input, and who may read a Direct Message photo was decided by the uploader's own signed
+        upload authorization."""
+        if self._media_repo is None or channel_id is None:
             return
-        if channel_id is not None:
-            await self._media_repo.record_references(event, channel_id=channel_id)
-        elif event["kind"] in GIFT_WRAP_KINDS:
-            assert self._authed_pubkey is not None
-            recipients = all_tag_values(event, "p") + [self._authed_pubkey]
-            await self._media_repo.record_dm_references(event, recipients=recipients)
+        await self._media_repo.record_references(event, channel_id=channel_id)
 
     async def _root_in_channel(self, event: NostrEvent, channel_id: str | None) -> bool:
         """Ticket #5: a Thread Reply's root (its `E` tag) or a Reaction's target (its `e` tag)

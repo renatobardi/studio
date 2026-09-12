@@ -19,7 +19,7 @@ from studio_api.control.repository import ControlPlaneRepository
 from studio_api.media.models import BlobDescriptor
 from studio_api.media.repository import MediaRepository
 from studio_api.media.storage import ObjectStorage
-from studio_api.nostr.model import NostrEvent, first_tag_value
+from studio_api.nostr.model import NostrEvent, all_tag_values, first_tag_value
 
 router = APIRouter(prefix="/media")
 
@@ -37,6 +37,10 @@ def get_media_repo(request: Request) -> MediaRepository:
 
 def get_storage(request: Request) -> ObjectStorage:
     return request.app.state.storage  # type: ignore[no-any-return]
+
+
+def _is_pubkey(value: str) -> bool:
+    return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
 def _decode_nostr_authorization(authorization: str | None) -> NostrEvent:
@@ -93,10 +97,20 @@ async def upload_blob(
     if first_tag_value(auth_event, "x") != sha256:
         raise HTTPException(400, "sha256 does not match the uploaded content")
 
+    # Ticket #38: who may read a Direct Message photo is declared here, in
+    # the same signed event that authorizes the upload and pins its `x` to
+    # these bytes — so the ACL cannot be tampered with apart from the
+    # authorization, the way a relayed gift wrap's tags could be.
+    recipients = all_tag_values(auth_event, "p")
+    if any(not _is_pubkey(recipient) for recipient in recipients):
+        raise HTTPException(400, "p tags must be 32-byte hex pubkeys")
+
     await storage.put_object(sha256, body, content_type=content_type)
     await media_repo.create_blob(
         sha256=sha256, pubkey=pubkey, mime=content_type, size=len(body), storage_key=sha256
     )
+    if recipients:
+        await media_repo.record_dm_recipients(sha256=sha256, pubkeys=recipients)
     url = f"{str(request.base_url).rstrip('/')}/media/{sha256}"
     return BlobDescriptor(url=url, sha256=sha256, size=len(body), type=content_type)
 
@@ -119,19 +133,16 @@ async def get_blob(
     except AuthError as error:
         raise HTTPException(401, str(error)) from error
 
-    blob = await media_repo.get_blob(sha256)
-    allowed = blob is not None and blob.pubkey == pubkey
-    if blob is not None and not allowed:
-        for channel_id in await media_repo.channels_referencing(sha256):
-            if await repo.is_channel_member(channel_id, pubkey):
-                allowed = True
-                break
-    if blob is not None and not allowed:
-        allowed = pubkey in await media_repo.dm_recipients(sha256)
-    if not allowed:
+    # Ticket #38: losing the Workspace revokes the blob, whatever the older
+    # grant was — including the uploader's own. Already-issued presigned
+    # URLs stay valid for their remaining TTL; this stops new ones.
+    if not await repo.is_workspace_member_anywhere(pubkey):
         raise HTTPException(403, "forbidden")
 
-    assert blob is not None
+    blob = await media_repo.get_blob(sha256)
+    if blob is None or not await media_repo.can_read(sha256, pubkey):
+        raise HTTPException(403, "forbidden")
+
     public_endpoint_url = str(request.base_url).rstrip("/")
     url = await storage.presigned_get_url(
         blob.storage_key, expires_in=GET_URL_TTL_SECONDS, public_endpoint_url=public_endpoint_url

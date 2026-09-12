@@ -66,6 +66,20 @@ describe("buildBlossomAuthEvent", () => {
     expect(verifyEvent(event)).toBe(true);
   });
 
+  test("an upload event names the Direct Message recipients it authorizes (#38)", async () => {
+    const identity = generateIdentity();
+    const recipient = generateIdentity();
+
+    const event = await buildBlossomAuthEvent(
+      "upload",
+      { sha256: "a".repeat(64), recipients: [recipient.publicKey] },
+      signerFor(identity.secretKey),
+    );
+
+    expect(event.tags.filter((t) => t[0] === "p")).toEqual([["p", recipient.publicKey]]);
+    expect(verifyEvent(event)).toBe(true);
+  });
+
   test("a get event carries no x tag", async () => {
     const identity = generateIdentity();
 
