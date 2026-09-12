@@ -31,6 +31,9 @@ export interface ChannelOut {
   name: string;
   about: string;
   private: boolean;
+  /** The caller's own role in this Channel, or null when they are not a
+   * Channel Member (a public Channel is listed either way). */
+  role: string | null;
 }
 
 export interface ChannelMemberOut {

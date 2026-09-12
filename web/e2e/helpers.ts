@@ -57,6 +57,50 @@ async function ownerAuthProof(url: string, method: string): Promise<string> {
   return `Nostr ${Buffer.from(JSON.stringify(event)).toString("base64")}`;
 }
 
+export interface OwnerChannel {
+  id: string;
+  name: string;
+  private: boolean;
+  role: string | null;
+}
+
+/**
+ * The second client in flow 7 (#42): a Workspace admin acting through the
+ * REST control plane while the browser under test only watches. It is the
+ * other admin whose changes must reach the running app through projections,
+ * with no reload — see channel-access.spec.ts.
+ */
+export const ownerApi = {
+  async createChannel(apiBase: string, name: string, isPrivate: boolean): Promise<OwnerChannel> {
+    return ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/channels`, "POST", {
+      name,
+      about: "",
+      private: isPrivate,
+    });
+  },
+  async addChannelMember(apiBase: string, channelId: string, pubkey: string, role: string): Promise<void> {
+    const slug = testWorkspaceSlug();
+    await ownerRequest(`${apiBase}/api/workspaces/${slug}/channels/${channelId}/members`, "POST", { pubkey, role });
+  },
+  async removeChannelMember(apiBase: string, channelId: string, pubkey: string): Promise<void> {
+    const slug = testWorkspaceSlug();
+    await ownerRequest(`${apiBase}/api/workspaces/${slug}/channels/${channelId}/members/${pubkey}`, "DELETE");
+  },
+};
+
+async function ownerRequest<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Authorization: await ownerAuthProof(url, method),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`${method} ${url} failed: ${response.status} ${await response.text()}`);
+  return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+}
+
 /** Adds `pubkey` as a member of the Workspace's first Channel, using the fixed owner/admin
  * identity above. Idempotent — adding an existing member is a no-op server-side
  * (`ControlPlaneRepository.add_channel_member`). */
@@ -125,8 +169,8 @@ export async function reachAppViaRestoreWithCredentials(
  * Backup creation. Requires a Key Backup to already exist for this account
  * (onboarding.spec.ts creates one). Also grants Channel membership (see
  * `ensureChannelMembership`) since flows 2 & 3 need to publish into one. */
-export async function reachAppViaRestore(page: import("@playwright/test").Page): Promise<void> {
-  await reachAppViaRestoreWithCredentials(page, {
+export async function reachAppViaRestore(page: import("@playwright/test").Page): Promise<string> {
+  return reachAppViaRestoreWithCredentials(page, {
     email: testAccount.email(),
     password: testAccount.password(),
     backupPassphrase: testBackupPassphrase(),

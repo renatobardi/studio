@@ -21,12 +21,15 @@ it. Issue #51.
    `studio-test` container at the exact validated SHA (`git checkout --force
    --detach`), rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails
    if it is not that SHA. The deployed SHA goes to the run's job summary.
-6. **Post-deploy Playwright smoke** (flows 2, 3, 5 & 6) runs against what was
+6. **Post-deploy Playwright smoke** (flows 2, 3, 5, 6 & 7) runs against what was
    just deployed, from the specs of that same commit. Flow 1 (first-time
    onboarding) skips itself once the seeded Account has an Identity: an
    Account is onboarded once and never again (#36), so on a fixed test
    account that flow has nothing left to assert. Flow 6 covers the repeatable
-   half — signing in on a new browser restores the same Identity.
+   half — signing in on a new browser restores the same Identity. Flow 7
+   drives a second client through the REST control plane: another admin's
+   Channel and membership changes must land in the running app with no
+   reload (#42).
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
