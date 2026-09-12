@@ -12,11 +12,9 @@ import pytest
 from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
+from studio_api.nostr.limits import MAX_FILTERS_PER_REQ, MAX_LIMIT, MAX_SUBSCRIPTIONS
 from studio_api.nostr.model import Filter, NostrEvent
 from studio_api.nostr.relay import (
-    MAX_FILTERS_PER_REQ,
-    MAX_LIMIT,
-    MAX_SUBSCRIPTIONS,
     ConnectionRegistry,
     MediaReferenceRecorder,
     RelayConnection,
@@ -1507,4 +1505,33 @@ class TestSlowSubscriber:
         closed = sender.of_type("CLOSED")[-1]
         assert closed[1] == "sub1"
         assert str(closed[2]).startswith("error:")
+        await connection.close()
+
+
+class TestHistoryCeiling:
+    """Ticket #52: `max_limit` is a ceiling on what one REQ may cost, so it
+    also applies to the client that names no limit at all — otherwise the
+    published cap describes nothing."""
+
+    def test_a_filter_with_no_limit_gets_the_relays_own(self) -> None:
+        assert parse_filter({"kinds": [1]}).limit == MAX_LIMIT
+
+    async def test_a_req_with_no_limit_asks_the_store_for_a_bounded_page(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        connection, _recorder, _sk, _pubkey, _now = await authenticated_connection(store, fanout)
+        asked: list[Filter] = []
+        original_query = store.query
+
+        async def recording_query(filters: Any) -> list[NostrEvent]:
+            asked.extend(filters)
+            return await original_query(filters)
+
+        store.query = recording_query  # type: ignore[method-assign]
+        try:
+            await connection.handle_message(["REQ", "sub1", {"kinds": [1]}])
+        finally:
+            store.query = original_query  # type: ignore[method-assign]
+
+        assert [flt.limit for flt in asked] == [MAX_LIMIT]
         await connection.close()

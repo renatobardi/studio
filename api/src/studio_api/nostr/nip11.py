@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from studio_api.nostr.relay import CONNECTION_LIMITATION
+from studio_api.nostr.limits import CONNECTION_LIMITATION
 from studio_api.nostr.validation import LIMITATION
 
 SUPPORTED_NIPS = [1, 11, 17, 29, 42, 43, 44, 59]

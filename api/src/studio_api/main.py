@@ -21,9 +21,9 @@ from studio_api.control.routes import router as control_router
 from studio_api.media.repository import MediaRepository
 from studio_api.media.routes import router as media_router
 from studio_api.media.storage import ObjectStorage
+from studio_api.nostr.limits import MAX_MESSAGE_LENGTH
 from studio_api.nostr.nip11 import build_info_document
 from studio_api.nostr.relay import (
-    MAX_MESSAGE_LENGTH,
     ConnectionRegistry,
     RelayAuthorizer,
     RelayConnection,
@@ -158,11 +158,11 @@ async def _pump_one_message(websocket: WebSocket, connection: RelayConnection) -
         return False
     text = packet.get("text")
     if text is None:
-        await websocket.send_json(["NOTICE", "invalid: a client message must be a text frame"])
+        await connection.notice("a client message must be a text frame")
         return True
     if len(text) > MAX_MESSAGE_LENGTH:
-        await websocket.send_json(
-            ["NOTICE", f"invalid: a client message may not exceed {MAX_MESSAGE_LENGTH} characters"]
+        await connection.notice(
+            f"a client message may not exceed {MAX_MESSAGE_LENGTH} characters"
         )
         # 1009 (message too big): a client that ignores the published limit is
         # not one to keep reading from.
@@ -174,7 +174,7 @@ async def _pump_one_message(websocket: WebSocket, connection: RelayConnection) -
     try:
         message = json.loads(text)
     except json.JSONDecodeError:
-        await websocket.send_json(["NOTICE", "invalid: a client message must be valid JSON"])
+        await connection.notice("a client message must be valid JSON")
         return True
     await connection.handle_message(message)
     return True

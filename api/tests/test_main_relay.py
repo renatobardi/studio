@@ -15,7 +15,7 @@ from starlette.testclient import TestClient, WebSocketTestSession
 from support import new_keypair, sign_event
 
 from studio_api.main import create_app
-from studio_api.nostr.relay import MAX_MESSAGE_LENGTH
+from studio_api.nostr.limits import MAX_MESSAGE_LENGTH
 from studio_api.nostr.store import EventStore, LiveFanout
 
 WORKSPACE_SLUG = "family"

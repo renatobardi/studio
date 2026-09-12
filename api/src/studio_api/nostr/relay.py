@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
 from studio_api.nostr.kinds import KindClass, kind_class
+from studio_api.nostr.limits import MAX_FILTERS_PER_REQ, MAX_LIMIT, MAX_SUBSCRIPTIONS
 from studio_api.nostr.model import Filter, NostrEvent, all_tag_values, first_tag_value
 from studio_api.nostr.store import (
     Delivery,
@@ -26,6 +27,7 @@ from studio_api.nostr.store import (
 )
 from studio_api.nostr.validation import (
     ROOT_TAG_BY_KIND,
+    EventRejection,
     malformed_event_rejection,
     validate_event,
 )
@@ -45,33 +47,9 @@ class MediaReferenceRecorder(Protocol):
 
 _SINGLE_LETTER_TAG_FILTER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-# Ticket #52: what one connection may ask of the relay. Deliberately plain
-# per-connection ceilings — no distributed rate limiting, no extra infra —
-# and published verbatim in the NIP-11 `limitation` object so a client can
-# read them instead of discovering them by being refused.
-#
-# The subscription ceiling is set well above what this project's own client
-# legitimately opens, not at a tidy round number: web/ keeps one subscription
-# per Channel pane and one more per batch of profiles it resolves
-# (web/src/routes/app/useProfiles.ts), so a Workspace of a household's size
-# reaches a couple of dozen on an ordinary session. The cap is here to stop a
-# connection opening subscriptions without end, not to second-guess a working
-# client — which would find out only by having a REQ silently refused.
-MAX_SUBSCRIPTIONS = 64
-MAX_FILTERS_PER_REQ = 10
-MAX_LIMIT = 500
-MAX_MESSAGE_LENGTH = 128 * 1024
-
 # The NIP-01 client messages this relay acts on. Every one of them carries a
 # payload; anything else is ignored.
 _CLIENT_MESSAGE_TYPES = frozenset({"EVENT", "REQ", "CLOSE", "AUTH"})
-
-CONNECTION_LIMITATION = {
-    "max_subscriptions": MAX_SUBSCRIPTIONS,
-    "max_filters": MAX_FILTERS_PER_REQ,
-    "max_limit": MAX_LIMIT,
-    "max_message_length": MAX_MESSAGE_LENGTH,
-}
 
 # NIP-43/NIP-29 moderation and announcement kinds: only ever written by the
 # repository's own projection (signed by the Workspace Key), never accepted
@@ -123,6 +101,11 @@ class SeededRelayAuthorizer:
         return pubkey in self._channel_members.get(channel_id, set())
 
 
+def rejection_text(rejection: EventRejection) -> str:
+    """A rejection as NIP-01 puts it on the wire: `<machine-readable>: <human>`."""
+    return f"{rejection.prefix}: {rejection.message}"
+
+
 class MalformedFilter(ValueError):
     """A REQ carried something that is not a NIP-01 filter (ticket #52)."""
 
@@ -147,7 +130,10 @@ def parse_filter(raw: Any) -> Filter:
     except ValidationError as error:
         raise MalformedFilter("a filter field has the wrong type") from error
     if flt.limit is None:
-        return flt
+        # A filter that names no limit gets the relay's, rather than the whole
+        # table: `max_limit` is a ceiling on what a REQ can cost, and a client
+        # that omits the field is not asking for an exemption from it.
+        return flt.model_copy(update={"limit": MAX_LIMIT})
     if flt.limit < 0:
         raise MalformedFilter("a filter's limit cannot be negative")
     # Clamped rather than refused: a client asking for more history than the
@@ -231,7 +217,7 @@ class RelayConnection:
         task serving it, whose failure would leave the socket to be cleaned up
         by the transport's error path (ticket #52)."""
         if not isinstance(message, list) or not message:
-            await self._notice("a client message must be a non-empty JSON array")
+            await self.notice("a client message must be a non-empty JSON array")
             return
         message_type, payload = message[0], message[1:]
         if message_type not in _CLIENT_MESSAGE_TYPES:
@@ -239,7 +225,7 @@ class RelayConnection:
             # no client-facing error for them.
             return
         if not payload:
-            await self._notice(f"a {message_type} message carries no payload")
+            await self.notice(f"a {message_type} message carries no payload")
             return
         if message_type == "EVENT":
             await self._handle_event(payload[0])
@@ -249,13 +235,16 @@ class RelayConnection:
             return
         sub_id = payload[0]  # REQ and CLOSE both name a subscription
         if not isinstance(sub_id, str):
-            await self._notice(f"a {message_type} subscription id must be a string")
+            await self.notice(f"a {message_type} subscription id must be a string")
         elif message_type == "REQ":
             await self._handle_req(sub_id, payload[1:])
         else:
             self._handle_close(sub_id)
 
-    async def _notice(self, message: str) -> None:
+    async def notice(self, message: str) -> None:
+        """A NIP-01 NOTICE about something the client got wrong. Public
+        because the WebSocket adapter refuses some frames before they ever
+        reach this state machine, and those refusals read the same."""
         await self._send(["NOTICE", f"invalid: {message}"])
 
     async def close(self) -> None:
@@ -277,14 +266,18 @@ class RelayConnection:
     def _full_sub_id(self, sub_id: str) -> str:
         return f"{self._connection_id}:{sub_id}"
 
-    def _cancel_subscription(self, sub_id: str, *, cancel_task: bool = True) -> None:
+    def _detach_subscription(self, sub_id: str) -> None:
+        """Forgets the subscription without touching its forwarding task —
+        what that task itself calls when it is the one ending things, since
+        cancelling the task you are running loses the rest of the coroutine."""
         self._sub_ids.discard(sub_id)
         self._fanout.unsubscribe(self._full_sub_id(sub_id))
-        task = self._tasks.pop(sub_id, None)
-        # `cancel_task` is False when the forwarding task itself is ending the
-        # subscription: cancelling the task you are running is a way to lose
-        # the rest of this coroutine.
-        if task is not None and cancel_task:
+        self._tasks.pop(sub_id, None)
+
+    def _cancel_subscription(self, sub_id: str) -> None:
+        task = self._tasks.get(sub_id)
+        self._detach_subscription(sub_id)
+        if task is not None:
             task.cancel()
 
     async def _may_read(self, event: NostrEvent) -> bool:
@@ -305,7 +298,7 @@ class RelayConnection:
     async def _handle_auth(self, payload: Any) -> None:
         malformed = malformed_event_rejection(payload)
         if malformed is not None:
-            await self._send(["OK", "", False, f"{malformed.prefix}: {malformed.message}"])
+            await self._send(["OK", "", False, rejection_text(malformed)])
             return
         event = cast(NostrEvent, payload)
         result = verify_auth_event(
@@ -333,7 +326,7 @@ class RelayConnection:
             return
         malformed = malformed_event_rejection(payload)
         if malformed is not None:
-            await self._send(["OK", event_id, False, f"{malformed.prefix}: {malformed.message}"])
+            await self._send(["OK", event_id, False, rejection_text(malformed)])
             return
         event = cast(NostrEvent, payload)
         # A gift wrap's pubkey is a one-time throwaway key (NIP-59) — never the sender's real
@@ -356,7 +349,7 @@ class RelayConnection:
             return
         rejection = validate_event(event, now=self._now())
         if rejection is not None:
-            await self._send(["OK", event_id, False, f"{rejection.prefix}: {rejection.message}"])
+            await self._send(["OK", event_id, False, rejection_text(rejection)])
             return
         if not await self._root_in_channel(event, channel_id):
             await self._send(["OK", event_id, False, "invalid: root is not in this channel"])
@@ -473,7 +466,7 @@ class RelayConnection:
             if isinstance(delivery, SubscriptionOverflow):
                 # The fan-out gave up on this subscription: this client was not
                 # reading fast enough to be sent the rest (ticket #52).
-                self._cancel_subscription(sub_id, cancel_task=False)
+                self._detach_subscription(sub_id)
                 await self._send(
                     ["CLOSED", sub_id, "error: this subscription fell too far behind"]
                 )
