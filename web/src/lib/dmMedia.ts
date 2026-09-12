@@ -52,16 +52,18 @@ export function decryptDmAttachmentBytes(ciphertextBytes: ArrayBuffer, keyHex: s
 
 /** Like `uploadBlob` in `./media`, but for already-encrypted bytes: no MIME/size validation
  * against the plaintext file (the caller validated that before encrypting), and the wire
- * Content-Type is always `application/octet-stream` — the server never sees the real type. */
+ * Content-Type is always `application/octet-stream` — the server never sees the real type.
+ * `recipients` are who may fetch it; the upload is the only thing that grants that (#38). */
 export function uploadEncryptedBlob(
   mediaUrl: string,
   encrypted: EncryptedFile,
+  recipients: string[],
   signer: Signer,
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<BlobDescriptor> {
   return (async () => {
     const sha256 = sha256Hex(encrypted.ciphertextBytes.buffer as ArrayBuffer);
-    const authEvent = await buildBlossomAuthEvent("upload", { sha256 }, signer);
+    const authEvent = await buildBlossomAuthEvent("upload", { sha256, recipients }, signer);
 
     return new Promise<BlobDescriptor>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
