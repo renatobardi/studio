@@ -184,9 +184,22 @@ class EventStore:
     several Workspaces holds one connection and derives a store per Workspace
     with `for_workspace()`; there is no unscoped way to publish or query."""
 
-    def __init__(self, db: Any, workspace_slug: str | None = None) -> None:
+    def __init__(
+        self, db: Any, workspace_slug: str | None = None,
+        *, replace_lock: asyncio.Lock | None = None,
+    ) -> None:
         self._db = db
         self._workspace_slug = workspace_slug
+        # Replacing a replaceable/addressable event is a compare-and-set the
+        # database cannot do on its own: the row is selected, compared in
+        # Python, then written back. Concurrent publishes to the same slot
+        # would either lose the winner or collide inside SurrealDB, so they
+        # take turns here. Shared with every store derived by for_workspace()
+        # — one API process owns the connection (ticket #44). One lock for
+        # every slot rather than one per slot: it is held for two round trips
+        # and replaceable events are a small minority of what a relay takes,
+        # so a dict of per-slot locks would cost more than it saves.
+        self._replace_lock = replace_lock if replace_lock is not None else asyncio.Lock()
 
     @property
     def workspace_slug(self) -> str:
@@ -199,7 +212,7 @@ class EventStore:
 
     def for_workspace(self, slug: str) -> "EventStore":
         """Another Workspace on the same connection."""
-        return EventStore(self._db, slug)
+        return EventStore(self._db, slug, replace_lock=self._replace_lock)
 
     @classmethod
     async def connect(
@@ -258,10 +271,11 @@ class EventStore:
         row = to_event_row(event, workspace_slug=self.workspace_slug)
 
         if kind_cls in (KindClass.REPLACEABLE, KindClass.ADDRESSABLE):
-            existing_rows = await self._db.select(record_id)
-            if existing_rows and not _supersedes(event, existing_rows[0]):
-                return PublishResult.SUPERSEDED
-            await self._db.upsert(record_id, row)
+            async with self._replace_lock:
+                existing_rows = await self._db.select(record_id)
+                if existing_rows and not _supersedes(event, existing_rows[0]):
+                    return PublishResult.SUPERSEDED
+                await self._db.upsert(record_id, row)
             return PublishResult.OK
 
         try:
