@@ -47,14 +47,18 @@ would only manufacture false assurance.
 design artefact nothing imports, which on its own produced most of the
 project's CRITICAL findings and drowned the ones that are ours.
 
-The project is on the built-in `Sonar way` quality gate, but `alert_status` has
-no value on `main` and no coverage is reported (automatic analysis does not
-compute it). Every condition in that gate is scoped to *new code* and to
-metrics nothing currently publishes, so today's green `SonarCloud Code
-Analysis` check means "analysis ran", not "quality threshold met". Closing that
-gap means either enabling main-branch automatic analysis or moving to a
-CI-based scan with coverage upload — tracked in #76, along with the backlog of
-existing findings. `scripts/ops/check-sonar-gate.sh` reports the current state.
+The project is on the built-in `Sonar way` quality gate, whose conditions are
+all scoped to *new code*. On a pull request that works: new code is the diff,
+the gate computes, and it does fail — PR #77 was rejected on
+`new_security_rating` 3 against a threshold of 1. On `main` it reports
+`Not computed`, because the project has **no New Code definition** set
+(Administration > New Code): with no reference period there is nothing for the
+conditions to measure. Coverage is uploaded by nothing either, so the coverage
+condition never participates.
+
+So the required check does gate pull requests, which is where the ruleset uses
+it — but `main` itself carries no gate status, and the two gaps above are
+tracked in #76. `scripts/ops/check-sonar-gate.sh` reports the current state.
 
 ## Production
 
