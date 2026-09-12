@@ -53,15 +53,27 @@ export function publishEvent(ws: WebSocket, event: VerifiedEvent): Promise<void>
 
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
-interface SubscribeHandlers {
+export interface SubscriptionHandlers {
   onEvent(event: VerifiedEvent): void;
   onEose?(): void;
+  /** The relay refused or ended this subscription (NIP-01 `CLOSED`): auth-required, restricted,
+   * or a store failure. Without this the refusal is invisible — the subscription simply never
+   * delivers anything. */
+  onClosed?(reason: string): void;
 }
+
+/** The unsubscribe function, plus the one thing a caller may still do with a live
+ * subscription: widen or narrow its filters without spending a second subscription. */
+export type SubscriptionHandle = (() => void) & {
+  /** Re-issues the REQ under the same id, which NIP-01 defines as replacing the
+   * subscription — no CLOSE, and no window in which nothing is listening. */
+  update(filters: Filter[]): void;
+};
 
 interface Subscription {
   id: string;
   filters: Filter[];
-  handlers: SubscribeHandlers;
+  handlers: SubscriptionHandlers;
 }
 
 export interface RelayClientOptions {
@@ -162,6 +174,15 @@ export class RelayClient {
         if (msg[0] === "EOSE") {
           const [, subId] = msg as [string, string];
           this.subscriptions.get(subId)?.handlers.onEose?.();
+          return;
+        }
+        if (msg[0] === "CLOSED") {
+          const [, subId, reason] = msg as [string, string, string];
+          const sub = this.subscriptions.get(subId);
+          // The relay ended it, so forget it here too: nothing more will arrive under
+          // that id, and a reconnect must not re-issue a REQ the relay already refused.
+          this.subscriptions.delete(subId);
+          sub?.handlers.onClosed?.(reason);
         }
       };
 
@@ -215,14 +236,20 @@ export class RelayClient {
 
   /** Subscribes to `filters`; returns an unsubscribe function. Safe to call before `connect()`
    * resolves — the subscription is (re-)issued whenever the connection is or becomes open. */
-  subscribe(filters: Filter[], handlers: SubscribeHandlers): () => void {
+  subscribe(filters: Filter[], handlers: SubscriptionHandlers): SubscriptionHandle {
     const id = `sub${++subCounter}`;
     this.subscriptions.set(id, { id, filters, handlers });
     if (this._state === "open") this.send(["REQ", id, ...filters]);
-    return () => {
+    const unsubscribe = () => {
       this.subscriptions.delete(id);
       this.send(["CLOSE", id]);
     };
+    return Object.assign(unsubscribe, {
+      update: (next: Filter[]) => {
+        this.subscriptions.set(id, { id, filters: next, handlers });
+        if (this._state === "open") this.send(["REQ", id, ...next]);
+      },
+    });
   }
 
   /** Publishes once the connection is open — waiting out a brief reconnect rather than failing,
