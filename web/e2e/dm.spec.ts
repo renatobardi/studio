@@ -64,6 +64,12 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await receivedMessage.getByTestId("dm-attachment-image").click();
   await expect(pageB.getByTestId("dm-attachment-lightbox")).toBeVisible();
 
+  // Dismissed before anything else is clicked: the lightbox is `position: fixed; inset: 0`,
+  // so while it is open it swallows every click meant for the page under it — the composer's
+  // Send included.
+  await pageB.getByTestId("dm-attachment-lightbox").click();
+  await expect(pageB.getByTestId("dm-attachment-lightbox")).toHaveCount(0);
+
   // B answers, so the restore below has both directions of the conversation to recover.
   const reply = `e2e dm reply ${Date.now()}`;
   await pageB.getByTestId("dm-composer").fill(reply);
