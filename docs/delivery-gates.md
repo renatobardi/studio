@@ -38,10 +38,30 @@ mutable branch tip.
 ## Required checks on `main`
 
 The ruleset requires `test`, `web`, `gates` and `SonarCloud Code Analysis`, a
-pull request with one approving review, resolved conversations, no force-push
-and no branch deletion. Repository admins are bypass actors: this is a
-single-maintainer repo, and a rule nobody can satisfy is a rule that gets
-turned off. Apply it with `scripts/ops/apply-main-ruleset.sh`.
+pull request, resolved conversations, no force-push and no branch deletion.
+Repository admins are bypass actors: this is a single-maintainer repo, and a
+rule nobody can satisfy is a rule that gets turned off.
+
+### Why no approving review
+
+Issue #51 asked for an effective review on `main`, and the ruleset was first
+applied with `required_approving_review_count: 1`. On a single-maintainer repo
+that is unsatisfiable: GitHub does not let anyone approve their own pull
+request, so the only way past it was admin bypass — which is how every PR from
+#78 to #85 merged. A gate that is crossed by bypass every single time teaches
+nobody anything, and it hides the checks that do work behind a red banner.
+
+The repository owner asked for it to be dropped, and it was, on 12/09/2026 via
+`scripts/ops/relax-main-ruleset-approvals.sh`. Two settings had to go, not one:
+with approvals at zero, `require_extra_approval_for_unattributed_changes` would
+still have demanded one for any commit GitHub cannot attribute to an account —
+which includes every commit carrying a `Co-Authored-By:` trailer for a
+non-GitHub identity.
+
+What guards `main` is therefore the four required checks, plus the fact that a
+pull request and resolved conversations are still mandatory. If a second person
+ever joins the repo, restoring the approval is the first thing to revisit —
+that is the condition the original requirement was really written for.
 
 `CodeRabbit` is deliberately **not** a required check. On this public repo it
 reports `Review skipped: manual review required for this OSS repository` and
