@@ -259,7 +259,13 @@ export function AppShell({
           </>
         )}
         {mode === "dms" && pubkey && (
-          <DirectMessagesPane client={client} myPubkey={pubkey} signer={signer} mediaUrl={workspace.media_url} />
+          <DirectMessagesPane
+            client={client}
+            myPubkey={pubkey}
+            signer={signer}
+            mediaUrl={workspace.media_url}
+            workspaceSlug={workspace.slug}
+          />
         )}
         {mode === "admin" && canManage && (
           <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />

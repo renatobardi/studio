@@ -1,63 +1,51 @@
-import { nip19 } from "nostr-tools";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import type { WorkspaceMemberOut } from "../../lib/api";
 import type { Conversation } from "../../lib/conversations";
-import { displayName, type useProfiles } from "./useProfiles";
-
-/** Decodes an `npub1…` or a raw 64-hex pubkey the same way; throws on anything else. */
-function decodePubkey(input: string): string {
-  if (input.startsWith("npub1")) {
-    const decoded = nip19.decode(input);
-    if (decoded.type !== "npub") throw new Error("not an npub");
-    return decoded.data;
-  }
-  if (!/^[0-9a-f]{64}$/.test(input)) throw new Error("not a pubkey");
-  return input;
-}
+import { selectableMembers } from "../../lib/memberDirectory";
+import { MemberPicker } from "./MemberPicker";
+import { displayName, profileName, type useProfiles } from "./useProfiles";
 
 export function ConversationList({
   conversations,
+  members,
+  myPubkey,
   selectedKey,
   onSelect,
   onStart,
   profiles,
+  membersError,
 }: Readonly<{
   conversations: Conversation[];
+  members: WorkspaceMemberOut[];
+  myPubkey: string;
   selectedKey: string | null;
   onSelect: (key: string) => void;
   onStart: (peerPubkey: string) => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
+  membersError: string | null;
 }>) {
-  const [newPeer, setNewPeer] = useState("");
-  const [newPeerError, setNewPeerError] = useState<string | null>(null);
-
-  const startConversation = (e: FormEvent) => {
-    e.preventDefault();
-    setNewPeerError(null);
-    const trimmed = newPeer.trim();
-    if (!trimmed) return;
-    try {
-      onStart(decodePubkey(trimmed));
-      setNewPeer("");
-    } catch {
-      setNewPeerError("Enter a valid pubkey or npub.");
-    }
-  };
+  const [picking, setPicking] = useState(false);
 
   return (
     <nav className="conversation-list" aria-label="Direct Messages">
-      <form className="conversation-list-new" onSubmit={startConversation}>
-        <input
-          className="composer-input"
-          value={newPeer}
-          placeholder="npub or pubkey…"
-          onChange={(e) => setNewPeer(e.target.value)}
-          data-testid="dm-new-peer-input"
+      <button
+        className="btn btn-outline"
+        onClick={() => setPicking((open) => !open)}
+        data-testid="dm-new-conversation"
+      >
+        {picking ? "Cancel" : "New Direct Message"}
+      </button>
+      {picking && membersError && <div className="error-banner">{membersError}</div>}
+      {picking && (
+        <MemberPicker
+          members={selectableMembers(members, myPubkey, (pubkey) => profileName(profiles, pubkey))}
+          profiles={profiles}
+          onPick={(pubkey) => {
+            setPicking(false);
+            onStart(pubkey);
+          }}
         />
-        <button className="btn btn-outline" type="submit" data-testid="dm-new-peer-start">
-          New
-        </button>
-      </form>
-      {newPeerError && <div className="error-banner">{newPeerError}</div>}
+      )}
       {conversations.map((conversation) => (
         <button
           key={conversation.key}
