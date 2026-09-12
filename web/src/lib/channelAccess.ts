@@ -2,6 +2,13 @@ import type { ChannelOut } from "./api";
 
 const WORKSPACE_MANAGER_ROLES = new Set(["owner", "admin"]);
 
+/** The Workspace-signed projections that change what an Identity may reach:
+ * Channel metadata (39000), Channel member lists (39002) and the add/remove
+ * moderation events (9000/9001). Any of them can mean a Channel appeared or
+ * disappeared for a caller, so each one re-reads the REST list — the
+ * authority is the table, not the event (ADR-0002). */
+export const ACCESS_PROJECTION_KINDS = [39000, 39002, 9000, 9001];
+
 /** Where the app opens: the Channel this Identity last had open, or the first
  * one it can still reach. */
 export function initialSelection(channels: ChannelOut[], rememberedId?: string): string | null {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../../lib/api";
 import { authProof, type ChannelOut, type InviteOut, type WorkspaceMemberOut } from "../../lib/api";
-import { isWorkspaceManager, manageableChannels } from "../../lib/channelNav";
+import { ACCESS_PROJECTION_KINDS, isWorkspaceManager, manageableChannels } from "../../lib/channelAccess";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { displayName, useProfiles } from "./useProfiles";
@@ -238,8 +238,13 @@ function ChannelsTab({
 
   // Another admin's Channel creation or membership change lands here the same
   // way it lands in the navigation: on the projection, re-read the REST list.
+  // `since` keeps mounting from replaying every stored projection as its own
+  // reload — only what happens from now on is news.
   useEffect(() => {
-    return client.subscribe([{ kinds: [39000, 39002] }], { onEvent: () => void reload() });
+    const since = Math.floor(Date.now() / 1000);
+    return client.subscribe([{ kinds: ACCESS_PROJECTION_KINDS, since }], {
+      onEvent: () => void reload(),
+    });
   }, [client, reload]);
 
   const create = async () => {

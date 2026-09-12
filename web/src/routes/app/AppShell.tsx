@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
-import { canManageChannels, initialSelection, keepSelection } from "../../lib/channelNav";
+import {
+  ACCESS_PROJECTION_KINDS,
+  canManageChannels,
+  initialSelection,
+  keepSelection,
+} from "../../lib/channelAccess";
 import {
   clearIdentity,
   loadChannelId,
@@ -20,13 +25,6 @@ import { DirectMessagesPane } from "./DirectMessagesPane";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileEditor } from "./ProfileEditor";
 
-/** The Workspace-signed projections that change what this Identity may see:
- * Channel metadata (39000), Channel member lists (39002) and the add/remove
- * moderation events (9000/9001). Any of them can mean a Channel appeared or
- * disappeared for this caller, so each one re-reads the REST list — which is
- * the authority, not the event (ADR-0002). */
-const ACCESS_PROJECTION_KINDS = [39000, 39002, 9000, 9001];
-
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 export function AppShell({
@@ -39,6 +37,11 @@ export function AppShell({
   onSignOut: () => void;
 }>) {
   const [client] = useState(() => new RelayClient(workspace.relay_url, signer));
+  /** Where the access subscription starts. Fixed at mount, not at the moment
+   * the REQ goes out: a membership change landing between the first Channel
+   * fetch and that REQ would otherwise be missed, and nothing reconciles it
+   * until the next administrative change (#42). */
+  const [mountedAt] = useState(nowSeconds);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
@@ -124,20 +127,19 @@ export function AppShell({
   const loaded = channels !== null;
   useEffect(() => {
     if (!loaded) return;
-    return client.subscribe([{ kinds: ACCESS_PROJECTION_KINDS, since: nowSeconds() }], {
+    return client.subscribe([{ kinds: ACCESS_PROJECTION_KINDS, since: mountedAt }], {
       onEvent: () => void refreshChannels().catch(() => {}),
     });
-  }, [client, loaded, refreshChannels]);
+  }, [client, loaded, mountedAt, refreshChannels]);
 
   const channelIds = channels?.map((c) => c.id) ?? [];
   const channelIdsKey = channelIds.join(",");
   useEffect(() => {
     if (channelIdsKey === "" || pubkey === null) return;
-    const ids = channelIdsKey.split(",");
     // From the oldest last-read mark, not from now: that is what makes a
     // Message sent while the app was closed still count as unread (#42).
-    const since = oldestRead(readAtRef.current, ids, nowSeconds());
-    return client.subscribe([{ kinds: [9], "#h": ids, since }], {
+    const since = oldestRead(readAtRef.current, channelIds, nowSeconds());
+    return client.subscribe([{ kinds: [9], "#h": channelIds, since }], {
       onEvent: (event) => {
         const channelId = event.tags.find((t) => t[0] === "h")?.[1];
         if (!channelId || event.pubkey === pubkey) return;
@@ -149,6 +151,7 @@ export function AppShell({
         }
       },
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- channelIdsKey already tracks channelIds' contents
   }, [client, channelIdsKey, pubkey]);
 
   const selectChannel = (channelId: string) => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChannelOut } from "./api";
-import { canManageChannels, initialSelection, keepSelection, manageableChannels } from "./channelNav";
+import { canManageChannels, initialSelection, keepSelection, manageableChannels } from "./channelAccess";
 
 function channel(id: string, role: string | null = null): ChannelOut {
   return { id, name: id, about: "", private: false, role };
