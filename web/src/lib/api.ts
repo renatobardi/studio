@@ -24,6 +24,9 @@ export interface AccountOut {
 export interface InvitePreview {
   workspace_name: string;
   valid: boolean;
+  /** Why it cannot be used — "not_found", "revoked", "expired" or
+   * "exhausted" — or null when it can (#46). */
+  reason: string | null;
 }
 
 export interface ChannelOut {
@@ -53,9 +56,12 @@ export interface InviteOut {
   max_uses: number | null;
   use_count: number;
   revoked: boolean;
+  /** "active", or why it admits nobody: "revoked", "expired", "exhausted".
+   * Decided by the server, by the same rule redemption is judged by (#46). */
+  state: string;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
 
   constructor(status: number, message: string) {
@@ -153,6 +159,22 @@ export async function hasKeyBackup(firebaseIdToken: string): Promise<boolean> {
  */
 export function listWorkspaces(firebaseIdToken: string): Promise<WorkspaceOut[]> {
   return request("/workspaces", { headers: { Authorization: `Bearer ${firebaseIdToken}` } });
+}
+
+/**
+ * Creates a Workspace with this Identity as its owner. The slug is validated
+ * server-side (kebab-case: it namespaces every event row and is a URL path
+ * segment, ADR-0005) and decides the Workspace's own `relay_url`.
+ */
+export function createWorkspace(
+  nip98Token: string,
+  body: { slug: string; name: string },
+): Promise<WorkspaceOut> {
+  return request("/workspaces", {
+    method: "POST",
+    headers: { Authorization: nip98Token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 /** Re-fetches a previously-joined Workspace, e.g. on app resume. Member-only. */

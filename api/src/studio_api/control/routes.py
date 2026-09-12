@@ -25,8 +25,8 @@ from studio_api.control.errors import (
     NotAWorkspaceMemberError,
     WorkspaceSlugTakenError,
 )
-from studio_api.control.models import Workspace
-from studio_api.control.repository import ControlPlaneRepository
+from studio_api.control.models import Invite, Workspace
+from studio_api.control.repository import ControlPlaneRepository, invite_state
 
 router = APIRouter(prefix="/api")
 
@@ -286,11 +286,29 @@ class InviteOut(BaseModel):
     max_uses: int | None
     use_count: int
     revoked: bool
+    state: str
+    """"active", or why it admits nobody: "revoked", "expired", "exhausted".
+    Judged here, by the same rule redemption is judged by — a client deriving
+    it from the fields above would be a second copy of that rule, free to
+    drift from this one (#46)."""
+
+
+def _invite_out(invite: Invite, *, now: int) -> InviteOut:
+    return InviteOut(
+        code=invite.code, role=invite.role, expires_at=invite.expires_at,
+        max_uses=invite.max_uses, use_count=invite.use_count, revoked=invite.revoked,
+        state=invite_state(invite, now=now),
+    )
 
 
 class InvitePreviewOut(BaseModel):
     workspace_name: str
     valid: bool
+    reason: str | None
+    """Why it cannot be used — "not_found", "revoked", "expired" or
+    "exhausted" — or null when it can. Without it the client can only say
+    "not valid", which reads as a typo and sends people back to the code they
+    already typed correctly (#46)."""
 
 
 class WorkspaceMemberOut(BaseModel):
@@ -307,14 +325,18 @@ async def create_invite(
 ) -> InviteOut:
     pubkey = await _caller_pubkey(caller, repo)
     await _require_workspace_manager(repo, slug, pubkey)
+    # Limits now come from the interface (#46), so limits that could never
+    # admit anybody are named as the mistake they are rather than stored as an
+    # invite whose only possible answer is "not valid".
+    if body.expires_at is not None and body.expires_at <= int(time.time()):
+        raise HTTPException(400, "that expiry is already in the past")
+    if body.max_uses is not None and body.max_uses < 1:
+        raise HTTPException(400, "an invite must allow at least one use")
     invite = await repo.create_invite(
         workspace_slug=slug, role=body.role, expires_at=body.expires_at,
         max_uses=body.max_uses, created_by=pubkey,
     )
-    return InviteOut(
-        code=invite.code, role=invite.role, expires_at=invite.expires_at,
-        max_uses=invite.max_uses, use_count=invite.use_count, revoked=invite.revoked,
-    )
+    return _invite_out(invite, now=int(time.time()))
 
 
 @router.get("/workspaces/{slug}/invites")
@@ -326,13 +348,8 @@ async def list_invites(
     pubkey = await _caller_pubkey(caller, repo)
     await _require_workspace_manager(repo, slug, pubkey)
     invites = await repo.list_invites(slug)
-    return [
-        InviteOut(
-            code=i.code, role=i.role, expires_at=i.expires_at, max_uses=i.max_uses,
-            use_count=i.use_count, revoked=i.revoked,
-        )
-        for i in invites
-    ]
+    now = int(time.time())
+    return [_invite_out(i, now=now) for i in invites]
 
 
 @router.delete("/workspaces/{slug}/invites/{code}")
@@ -352,8 +369,8 @@ async def revoke_invite(
 async def preview_invite(
     code: str, repo: ControlPlaneRepository = Depends(get_repo)
 ) -> InvitePreviewOut:
-    name, valid = await repo.preview_invite(code, now=int(time.time()))
-    return InvitePreviewOut(workspace_name=name, valid=valid)
+    name, reason = await repo.preview_invite(code, now=int(time.time()))
+    return InvitePreviewOut(workspace_name=name, valid=reason is None, reason=reason)
 
 
 @router.post("/invites/{code}/redeem")

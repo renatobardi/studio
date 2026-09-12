@@ -199,11 +199,11 @@ class TestInvite:
         assert invite.use_count == 0
         assert invite.revoked is False
 
-    async def test_preview_of_an_unknown_code_is_invalid(
+    async def test_preview_of_an_unknown_code_says_not_found(
         self, repo: ControlPlaneRepository
     ) -> None:
-        _name, valid = await repo.preview_invite("nope", now=NOW)
-        assert valid is False
+        _name, reason = await repo.preview_invite("nope", now=NOW)
+        assert reason == "not_found"
 
     async def test_preview_of_a_valid_code_names_the_workspace(
         self, repo: ControlPlaneRepository
@@ -214,11 +214,11 @@ class TestInvite:
             created_by="owner1",
         )
 
-        name, valid = await repo.preview_invite(invite.code, now=NOW)
+        name, reason = await repo.preview_invite(invite.code, now=NOW)
 
-        assert (name, valid) == ("Family", True)
+        assert (name, reason) == ("Family", None)
 
-    async def test_revoked_invite_preview_is_invalid(self, repo: ControlPlaneRepository) -> None:
+    async def test_revoked_invite_preview_says_revoked(self, repo: ControlPlaneRepository) -> None:
         await self._workspace(repo)
         invite = await repo.create_invite(
             workspace_slug="family", role="member", expires_at=None, max_uses=None,
@@ -226,20 +226,20 @@ class TestInvite:
         )
         await repo.revoke_invite(invite.code)
 
-        _, valid = await repo.preview_invite(invite.code, now=NOW)
-        assert valid is False
+        _, reason = await repo.preview_invite(invite.code, now=NOW)
+        assert reason == "revoked"
 
-    async def test_expired_invite_preview_is_invalid(self, repo: ControlPlaneRepository) -> None:
+    async def test_expired_invite_preview_says_expired(self, repo: ControlPlaneRepository) -> None:
         await self._workspace(repo)
         invite = await repo.create_invite(
             workspace_slug="family", role="member", expires_at=NOW - 1, max_uses=None,
             created_by="owner1",
         )
 
-        _, valid = await repo.preview_invite(invite.code, now=NOW)
-        assert valid is False
+        _, reason = await repo.preview_invite(invite.code, now=NOW)
+        assert reason == "expired"
 
-    async def test_exhausted_invite_preview_is_invalid(self, repo: ControlPlaneRepository) -> None:
+    async def test_exhausted_invite_preview_says_exhausted(self, repo: ControlPlaneRepository) -> None:
         await self._workspace(repo)
         invite = await repo.create_invite(
             workspace_slug="family", role="member", expires_at=None, max_uses=1,
@@ -247,8 +247,8 @@ class TestInvite:
         )
         await repo.redeem_invite(code=invite.code, pubkey="newmember1", now=NOW)
 
-        _, valid = await repo.preview_invite(invite.code, now=NOW)
-        assert valid is False
+        _, reason = await repo.preview_invite(invite.code, now=NOW)
+        assert reason == "exhausted"
 
     async def test_redeeming_creates_a_workspace_member_with_the_invites_role(
         self, repo: ControlPlaneRepository

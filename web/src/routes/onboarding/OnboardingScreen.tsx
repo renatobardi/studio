@@ -14,6 +14,12 @@ import {
   validateBackupPassphrase,
 } from "../../lib/backup";
 import {
+  forgetInviteCode,
+  invitePreviewMessage,
+  pendingInviteCode,
+} from "../../lib/invites";
+import { slugFromName, workspaceForm } from "../../lib/workspaceForm";
+import {
   generateIdentity,
   nsecFromSecretKey,
   profileEventTemplate,
@@ -67,8 +73,18 @@ export function OnboardingScreen({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [inviteCode, setInviteCode] = useState("");
+  // An invite link is remembered at boot (App.tsx) so it can survive sign-in
+  // and email verification — this is where it stops being a URL and starts
+  // being the code somebody is joining with (#46).
+  const [inviteCode, setInviteCode] = useState(() => pendingInviteCode() ?? "");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+
+  // Where this Identity's Workspace comes from: somebody's invite, or one it
+  // founds. Founding one from the interface is what the first Workspace on a
+  // server has instead of a curl (#46).
+  const [workspaceSource, setWorkspaceSource] = useState<"invite" | "create">("invite");
+  const [newWorkspace, setNewWorkspace] = useState({ name: "", slug: "" });
+  const [slugEdited, setSlugEdited] = useState(false);
 
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(EMOJIS[0]);
@@ -143,6 +159,34 @@ export function OnboardingScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once: which Identity this Account has is settled before the first step
   }, []);
 
+  // An invite that arrived as a link is previewed here, before the Identity
+  // step — so the Workspace being joined is named up front, and a code that
+  // is revoked or used up says so rather than failing at the last step (#46).
+  useEffect(() => {
+    const code = pendingInviteCode();
+    if (!code) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const preview = await api.previewInvite(code);
+        if (cancelled) return;
+        if (preview.valid) {
+          setWorkspaceName(preview.workspace_name);
+        } else {
+          // A dead code is worth nothing on the next visit either, and keeping
+          // it would re-fire this same message forever.
+          forgetInviteCode();
+          setError(invitePreviewMessage(preview.reason));
+        }
+      } catch {
+        if (!cancelled) setError("Couldn't check that invite link.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const goBack = () => {
     if (step === "restore") {
       setStep("invite");
@@ -175,12 +219,41 @@ export function OnboardingScreen({
     runStep(async () => {
       const preview = await api.previewInvite(inviteCode.trim());
       if (!preview.valid) {
-        setError("This invite isn't valid anymore.");
+        // Why, not just "not valid": a revoked or used-up code is not a typo,
+        // and re-typing it is the one thing that cannot help (#46).
+        setError(invitePreviewMessage(preview.reason));
         return;
       }
+      setWorkspaceSource("invite");
       setWorkspaceName(preview.workspace_name);
       setStep("profile");
-    }, "Couldn't find that invite. Check the code and try again.");
+    }, "Couldn't reach the server to check that invite. Try again.");
+
+  /** Founding a Workspace needs an Identity to own it, so it takes the same
+   * path as joining one and only diverges at the last step. */
+  const chooseToCreateWorkspace = () => {
+    setError(null);
+    setWorkspaceSource("create");
+    setWorkspaceName(null);
+    // Declining the invite is as final as spending it: leaving the code
+    // remembered would pre-fill the next onboarding with something this
+    // person already turned down.
+    forgetInviteCode();
+  };
+
+  const handleCreateWorkspaceNext = () => {
+    chooseToCreateWorkspace();
+    setStep("profile");
+  };
+
+  const handleWorkspaceNameChange = (value: string) => {
+    setNewWorkspace((current) => ({
+      name: value,
+      // Suggesting the address until it is touched keeps the kebab-case rule
+      // from being taught by rejection.
+      slug: slugEdited ? current.slug : slugFromName(value),
+    }));
+  };
 
   const handleGoRestore = () => {
     setMode("restore");
@@ -326,8 +399,74 @@ export function OnboardingScreen({
     },
   });
 
+  /** Whether this signer may go on. Under an extension there is no Key Backup
+   * step to link from, so this is where the Account learns which Identity is
+   * its own — and where an extension holding a different one is turned away
+   * rather than quietly onboarded as a substitute (#36). */
+  const confirmExtensionIdentity = async (signer: Signer): Promise<boolean> => {
+    const extensionPubkey = await signer.getPublicKey();
+    if (linkedPubkey === null) {
+      const linked = await linkAccountIdentity(await idToken(), signer);
+      setLinkedPubkey(linked.pubkey);
+      return true;
+    }
+    if (extensionPubkey !== linkedPubkey) {
+      setError("Your Nostr extension holds a different Identity than this account's.");
+      return false;
+    }
+    return true;
+  };
+
+  /** The Workspace this Identity founds, or null when the form or the server
+   * turned it down — the reason is on screen by then (#46). */
+  const foundWorkspace = async (signer: Signer): Promise<WorkspaceOut | null> => {
+    const form = workspaceForm(newWorkspace);
+    if (!form.ok) {
+      setError(form.error);
+      return null;
+    }
+    try {
+      return await api.createWorkspace(
+        await api.authProof(`${window.location.origin}/api/workspaces`, "POST", signer),
+        form.body,
+      );
+    } catch (caught) {
+      if (caught instanceof api.ApiError && caught.status === 409) {
+        setError("That address is already taken. Pick another.");
+        return null;
+      }
+      if (caught instanceof api.ApiError && caught.status === 422) {
+        setError("The address may only use lowercase letters, numbers and single hyphens.");
+        return null;
+      }
+      throw caught;
+    }
+  };
+
+  /** The Workspace the invite admits this Identity to, or null when it admits
+   * nobody any more — the reason is on screen by then (#46). */
+  const redeemPendingInvite = async (signer: Signer): Promise<WorkspaceOut | null> => {
+    const code = inviteCode.trim();
+    const url = `${window.location.origin}/api/invites/${code}/redeem`;
+    try {
+      const joined = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
+      forgetInviteCode();
+      return joined;
+    } catch (caught) {
+      // The invite was fine when it was previewed; between then and now it
+      // can have been revoked or spent its last use. Asking why turns
+      // "couldn't connect" into something the person can act on (#46).
+      if (caught instanceof api.ApiError && [404, 410].includes(caught.status)) {
+        const preview = await api.previewInvite(code).catch(() => null);
+        setError(invitePreviewMessage(preview?.reason ?? null));
+        return null;
+      }
+      throw caught;
+    }
+  };
+
   /** `joining` is a Workspace this Identity is already a Member of (restore);
-   * without one, the invite is redeemed to become a Member. */
+   * without one it either founds a Workspace or redeems an invite into one. */
   const handleSetup = (joining?: WorkspaceOut) => {
     return runStep(async () => {
       // Under an extension this is the extension's own signer: the key never
@@ -338,29 +477,15 @@ export function OnboardingScreen({
           : await getSigner();
       if (!signer) throw new Error("no signer available");
 
-      if (custody === "extension") {
-        // Under an extension there is no Key Backup step to link from, so
-        // this is where the Account learns which Identity is its own — and
-        // where an extension holding a different one is turned away rather
-        // than quietly onboarded as a substitute (#36).
-        const extensionPubkey = await signer.getPublicKey();
-        if (linkedPubkey === null) {
-          const linked = await linkAccountIdentity(await idToken(), signer);
-          setLinkedPubkey(linked.pubkey);
-        } else if (extensionPubkey !== linkedPubkey) {
-          setError("Your Nostr extension holds a different Identity than this account's.");
-          return;
-        }
-      }
+      if (custody === "extension" && !(await confirmExtensionIdentity(signer))) return;
 
-      let target = joining;
-      if (!target) {
-        const url = `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`;
-        target = await api.redeemInvite(
-          inviteCode.trim(),
-          await api.authProof(url, "POST", signer),
-        );
-      }
+      const target =
+        joining ??
+        (workspaceSource === "create"
+          ? await foundWorkspace(signer)
+          : await redeemPendingInvite(signer));
+      if (!target) return;
+
       setWorkspace(target);
 
       const ws = await connectAndAuthenticate(target.relay_url, signer);
@@ -383,6 +508,8 @@ export function OnboardingScreen({
     await storeWorkspaceSlug(workspace.slug);
     onComplete(workspace);
   };
+
+  const setupActionLabel = workspaceSource === "create" ? "Create Workspace" : "Connect";
 
   const mustConfirmAccountPassword = needsAccountPassword(
     user.providerData.map((p) => p.providerId),
@@ -419,10 +546,17 @@ export function OnboardingScreen({
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
               />
-              <button className="btn btn-primary btn-block" disabled={busy || !inviteCode} onClick={handleInviteNext}>
+              <button
+                className="btn btn-primary btn-block"
+                disabled={busy || !inviteCode}
+                onClick={handleInviteNext}
+              >
                 Continue
               </button>
               {workspaceName && <span className="meta">Joining {workspaceName}</span>}
+              <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
+                Create a new Workspace instead
+              </button>
               {custody === "local" && (
                 <button type="button" className="link" onClick={handleGoRestore}>
                   Restore an existing Identity from Key Backup
@@ -569,7 +703,9 @@ export function OnboardingScreen({
 
         {step === "setup" && (
           <>
-            <h1 className="onboarding-title">Connecting you to your workspace</h1>
+            <h1 className="onboarding-title">
+              {workspaceSource === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
+            </h1>
             <div className="onboarding-actions">
               {/* A restored Identity is already a Member: it reconnects through
                   its own Workspaces, so no invite is asked for — and none of
@@ -588,11 +724,11 @@ export function OnboardingScreen({
                 ))
               ) : (
                 <>
-                  {mode === "restore" && (
+                  {mode === "restore" && workspaceSource === "invite" && (
                     <>
                       <p className="meta">
                         Your Identity isn't a member of any workspace yet. Enter an invite to join
-                        one.
+                        one, or create your own.
                       </p>
                       <input
                         className="field-label"
@@ -600,14 +736,45 @@ export function OnboardingScreen({
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
                       />
+                      <button type="button" className="link" onClick={chooseToCreateWorkspace}>
+                        Create a new Workspace instead
+                      </button>
+                    </>
+                  )}
+                  {workspaceSource === "create" && (
+                    <>
+                      <p className="meta">
+                        You'll be its owner. The address is how it appears in links — lowercase
+                        letters, numbers and hyphens.
+                      </p>
+                      <input
+                        placeholder="Workspace name"
+                        aria-label="Workspace name"
+                        value={newWorkspace.name}
+                        onChange={(e) => handleWorkspaceNameChange(e.target.value)}
+                      />
+                      <input
+                        placeholder="workspace-address"
+                        aria-label="Workspace address"
+                        value={newWorkspace.slug}
+                        onChange={(e) => {
+                          setSlugEdited(true);
+                          setNewWorkspace((current) => ({ ...current, slug: e.target.value }));
+                        }}
+                      />
                     </>
                   )}
                   <button
                     className="btn btn-primary btn-block"
-                    disabled={busy || (mode === "restore" && !inviteCode)}
+                    disabled={
+                      busy ||
+                      (workspaceSource === "create"
+                        ? !newWorkspace.name.trim() || !newWorkspace.slug.trim()
+                        : mode === "restore" && !inviteCode)
+                    }
                     onClick={() => handleSetup()}
                   >
-                    {busy ? "Connecting…" : "Connect"}
+                    {busy ? "Connecting…" : setupActionLabel}
                   </button>
                 </>
               )}

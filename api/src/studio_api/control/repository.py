@@ -67,6 +67,19 @@ def _run_in_transaction(statements: list[str], params: dict[str, Any]) -> tuple[
     return surql, params
 
 
+def invite_state(invite: Invite, *, now: int) -> str:
+    """"active", or why this invite admits nobody. The single place the rule
+    lives: redemption, the public preview and the admin list are all judged by
+    it, so none of them can drift from the others (#46)."""
+    if invite.revoked:
+        return "revoked"
+    if invite.expires_at is not None and now > invite.expires_at:
+        return "expired"
+    if invite.max_uses is not None and invite.use_count >= invite.max_uses:
+        return "exhausted"
+    return "active"
+
+
 class ControlPlaneRepository:
     def __init__(self, db: Any, *, event_store: EventStore, server_secret: str) -> None:
         self._db = db
@@ -300,19 +313,20 @@ class ControlPlaneRepository:
         await self._db.merge(RecordID("invite", code), {"revoked": True})
 
     def _invite_is_valid(self, invite: Invite, *, now: int) -> bool:
-        if invite.revoked:
-            return False
-        if invite.expires_at is not None and now > invite.expires_at:
-            return False
-        return not (invite.max_uses is not None and invite.use_count >= invite.max_uses)
+        return invite_state(invite, now=now) == "active"
 
-    async def preview_invite(self, code: str, *, now: int) -> tuple[str, bool]:
+    async def preview_invite(self, code: str, *, now: int) -> tuple[str, str | None]:
+        """The Workspace's name and why the invite cannot be used — None for a
+        reason means it can. Saying why is what lets a client offer "ask for a
+        new one" instead of leaving somebody re-typing a code that was never
+        going to work (#46)."""
         invite = await self.get_invite(code)
         if invite is None:
-            return "", False
+            return "", "not_found"
         workspace = await self.get_workspace(invite.workspace_slug)
         name = workspace.name if workspace is not None else ""
-        return name, self._invite_is_valid(invite, now=now)
+        state = invite_state(invite, now=now)
+        return name, None if state == "active" else state
 
     async def redeem_invite(self, *, code: str, pubkey: str, now: int) -> WorkspaceMember:
         peek = await self.get_invite(code)
