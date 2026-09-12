@@ -1,31 +1,71 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { clearMediaCache, MEDIA_CACHE } from "./mediaCache";
+import { cacheBlob, mediaCacheName, pruneMediaCaches, readCachedBlob } from "./mediaCache";
+import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 
-describe("clearMediaCache", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of globals stubbed below
-    delete globalThis.caches;
+const bytesOf = (...values: number[]) => new Uint8Array(values).buffer as ArrayBuffer;
+
+const PUBKEY_A = "a".repeat(64);
+const PUBKEY_B = "b".repeat(64);
+const URL_ = "https://studio.test/media/" + "f".repeat(64);
+
+describe("the media cache", () => {
+  afterEach(restoreCaches);
+
+  test("gives back to the same Identity what it cached, hash key and all", async () => {
+    stubCaches();
+
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png");
+    const cached = await readCachedBlob(PUBKEY_A, URL_);
+
+    expect(cached && new Uint8Array(cached.bytes)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(cached?.contentType).toBe("image/png");
   });
 
-  test("deletes the cached media of the account signing out", async () => {
-    // Ticket #45: the media cache is per-origin, so without this a photo
-    // already delivered to one account stays readable to the next person
-    // signing in on the same browser.
-    const deleted: string[] = [];
-    // @ts-expect-error minimal CacheStorage stub
-    globalThis.caches = {
-      delete: async (name: string) => {
-        deleted.push(name);
-        return true;
-      },
-    };
+  test("never answers another Identity out of the same browser's cache", async () => {
+    // Ticket #39: Cache Storage is per-origin. Keyed by URL alone, a blob A
+    // was entitled to would answer B's fetch before the server ever decided
+    // whether B may read it.
+    stubCaches();
 
-    await clearMediaCache();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png");
 
-    expect(deleted).toEqual([MEDIA_CACHE]);
+    expect(await readCachedBlob(PUBKEY_B, URL_)).toBeUndefined();
   });
 
-  test("signing out works in a browser with no Cache Storage", async () => {
-    await clearMediaCache(); // must not throw
+  test("a browser with no Cache Storage neither caches nor reads", async () => {
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png"); // must not throw
+    expect(await readCachedBlob(PUBKEY_A, URL_)).toBeUndefined();
+  });
+
+  test("pruning keeps the signed-in Identity's cache and drops every other", async () => {
+    // The leftovers of an Identity that never signed out cleanly — closed tab,
+    // failed cleanup — must not survive the next sign-in.
+    const { stores } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    await cacheBlob(PUBKEY_B, URL_, bytesOf(2), "image/png");
+    stores["studio-media-v1"] = {}; // the origin-wide cache this replaces
+
+    await pruneMediaCaches(PUBKEY_A);
+
+    expect(Object.keys(stores)).toEqual([mediaCacheName(PUBKEY_A)]);
+  });
+
+  test("pruning to no Identity empties every media cache, and leaves the app shell alone", async () => {
+    const { stores } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    stores["workbox-precache-v2"] = {};
+
+    await pruneMediaCaches(null);
+
+    expect(Object.keys(stores)).toEqual(["workbox-precache-v2"]);
+  });
+
+  test("a cache that cannot be deleted is reported, not passed off as cleaned", async () => {
+    // Sign-out must not claim success it did not get: the bytes are still there.
+    const { failDeleteOf } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    failDeleteOf(mediaCacheName(PUBKEY_A));
+
+    await expect(pruneMediaCaches(null)).rejects.toThrow(/cached media/i);
   });
 });

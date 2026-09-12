@@ -1,12 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { finalizeEvent, getPublicKey } from "nostr-tools";
+import { generateIdentity } from "./identity";
+import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 import {
   buildDmImetaTag,
+  fetchDmAttachmentObjectUrl,
   decryptDmAttachmentBytes,
   encryptFileForDm,
   parseDmImetaTags,
   type DmAttachment,
 } from "./dmMedia";
-import { sha256Hex, type BlobDescriptor } from "./media";
+import { MediaError, sha256Hex, type BlobDescriptor } from "./media";
 
 describe("encryptFileForDm / decryptDmAttachmentBytes", () => {
   test("round-trips the original bytes", () => {
@@ -71,5 +75,73 @@ describe("buildDmImetaTag / parseDmImetaTags", () => {
 
   test("non-imeta tags are ignored", () => {
     expect(parseDmImetaTags([["p", "somepubkey"]])).toEqual([]);
+  });
+});
+
+describe("fetchDmAttachmentObjectUrl", () => {
+  function signerFor(secretKey: Uint8Array) {
+    return {
+      async getPublicKey() {
+        return getPublicKey(secretKey);
+      },
+      async signEvent(template: { kind: number; tags: string[][]; content: string; created_at: number }) {
+        return finalizeEvent(template, secretKey);
+      },
+      async nip44Encrypt() {
+        throw new Error("not used in these tests");
+      },
+      async nip44Decrypt() {
+        throw new Error("not used in these tests");
+      },
+    };
+  }
+
+  const original = new TextEncoder().encode("this is a fake photo's bytes");
+  const encrypted = encryptFileForDm(original.buffer as ArrayBuffer, "image/png");
+  const ciphertext = encrypted.ciphertextBytes;
+  const hash = sha256Hex(ciphertext.buffer as ArrayBuffer);
+  const url = `https://studio.test/media/${hash}`;
+
+  const realFetch = globalThis.fetch;
+
+  function stubFetch(ok = true) {
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: string) => {
+      calls.push(String(input));
+      return new Response(ok ? (ciphertext.buffer as ArrayBuffer) : null, { status: ok ? 200 : 403 });
+    }) as typeof fetch;
+    return calls;
+  }
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    restoreCaches();
+  });
+
+  test("caches the ciphertext, never the decrypted photo", async () => {
+    // ADR-0003: the plaintext of a Direct Message photo exists only in the page.
+    // What gets kept for the next view is what the server handed over.
+    const { stores } = stubCaches();
+    const signer = signerFor(generateIdentity().secretKey);
+    const calls = stubFetch();
+
+    await fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", signer);
+    await fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", signer);
+
+    expect(calls).toHaveLength(1);
+    const scope = Object.keys(stores)[0]!;
+    expect(new Uint8Array(scope ? stores[scope]![url]!.bytes : new ArrayBuffer(0))).toEqual(ciphertext);
+  });
+
+  test("another Identity on the same browser is refused instead of served A's copy", async () => {
+    stubCaches();
+    const a = signerFor(generateIdentity().secretKey);
+    stubFetch();
+    await fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", a);
+
+    const b = signerFor(generateIdentity().secretKey);
+    stubFetch(false);
+
+    await expect(fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", b)).rejects.toThrow(MediaError);
   });
 });

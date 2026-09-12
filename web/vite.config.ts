@@ -6,9 +6,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   plugins: [
     react(),
-    // A hand-written service worker (src/sw.ts): app-shell precaching (issue #8) plus the
-    // ticket #6 media cache-by-hash. injectManifest lets self.__WB_MANIFEST list the build's
-    // own assets — precacheAndRoute in sw.ts consumes it.
+    // A hand-written service worker (src/sw.ts): app-shell precaching (issue #8).
+    // injectManifest lets self.__WB_MANIFEST list the build's own assets —
+    // precacheAndRoute in sw.ts consumes it. Media is cached by the page, per
+    // Identity, not here (ADR-0007).
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',

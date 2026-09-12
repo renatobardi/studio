@@ -1,6 +1,7 @@
 import { nip44 } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Signer } from "./custody";
+import { cacheBlob, readCachedBlob } from "./mediaCache";
 import { MediaError, blossomAuthorizationHeader, buildBlossomAuthEvent, sha256Hex, type BlobDescriptor } from "./media";
 
 export { validateAttachment } from "./media";
@@ -84,7 +85,9 @@ export function uploadEncryptedBlob(
 }
 
 /** Fetches an encrypted DM attachment, verifies the ciphertext's sha256, decrypts it with the
- * per-file key carried in the rumor, and returns an object URL for the original image. */
+ * per-file key carried in the rumor, and returns an object URL for the original image. Only the
+ * ciphertext is cached, under this Identity's own scope (#39) — the decrypted photo exists
+ * nowhere but in the page (ADR-0003). */
 export async function fetchDmAttachmentObjectUrl(
   url: string,
   sha256: string,
@@ -92,14 +95,24 @@ export async function fetchDmAttachmentObjectUrl(
   originalMime: string,
   signer: Signer,
 ): Promise<string> {
+  const pubkey = await signer.getPublicKey();
+  const cached = await readCachedBlob(pubkey, url);
+  const ciphertextBytes =
+    cached && sha256Hex(cached.bytes) === sha256 ? cached.bytes : await downloadCiphertext(url, sha256, pubkey, signer);
+  const plaintextBytes = decryptDmAttachmentBytes(ciphertextBytes, keyHex);
+  return URL.createObjectURL(new Blob([plaintextBytes as BlobPart], { type: originalMime }));
+}
+
+async function downloadCiphertext(url: string, sha256: string, pubkey: string, signer: Signer): Promise<ArrayBuffer> {
   const authEvent = await buildBlossomAuthEvent("get", {}, signer);
   const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
-  const ciphertextBytes = await response.arrayBuffer();
-  const actual = sha256Hex(ciphertextBytes);
-  if (actual !== sha256) throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
-  const plaintextBytes = decryptDmAttachmentBytes(ciphertextBytes, keyHex);
-  return URL.createObjectURL(new Blob([plaintextBytes as BlobPart], { type: originalMime }));
+  const bytes = await response.arrayBuffer();
+  if (sha256Hex(bytes) !== sha256) {
+    throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
+  }
+  await cacheBlob(pubkey, url, bytes, "application/octet-stream");
+  return bytes;
 }
 
 /** kind 14 rumor `imeta` tag for a Direct Message photo: like NIP-92's, plus the per-file

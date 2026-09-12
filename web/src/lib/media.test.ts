@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { finalizeEvent, verifyEvent } from "nostr-tools";
+import { afterEach, describe, expect, test } from "bun:test";
+import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools";
 import { generateIdentity } from "./identity";
+import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 import {
   MAX_UPLOAD_BYTES,
+  fetchBlobObjectUrl,
   MediaError,
   buildBlossomAuthEvent,
   buildImetaTag,
@@ -15,7 +17,7 @@ import {
 function signerFor(secretKey: Uint8Array) {
   return {
     async getPublicKey() {
-      return "";
+      return getPublicKey(secretKey);
     },
     async signEvent(template: { kind: number; tags: string[][]; content: string; created_at: number }) {
       return finalizeEvent(template, secretKey);
@@ -129,5 +131,70 @@ describe("parseImetaTags", () => {
     const b: BlobDescriptor = { url: "https://x/media/b", sha256: "b", size: 2, type: "image/png" };
 
     expect(parseImetaTags([buildImetaTag(a), buildImetaTag(b)])).toEqual([a, b]);
+  });
+});
+
+describe("fetchBlobObjectUrl", () => {
+  const bytes = new TextEncoder().encode("not a real PNG, but bytes all the same");
+  const hash = sha256Hex(bytes.buffer as ArrayBuffer);
+  const url = `https://studio.test/media/${hash}`;
+
+  const realFetch = globalThis.fetch;
+
+  function stubFetch(body: Uint8Array, ok = true) {
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: string) => {
+      calls.push(String(input));
+      return new Response(ok ? (body.buffer as ArrayBuffer) : null, {
+        status: ok ? 200 : 403,
+        headers: { "content-type": "image/png" },
+      });
+    }) as typeof fetch;
+    return calls;
+  }
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    restoreCaches();
+  });
+
+  test("the same Identity's second view of an image doesn't download it again", async () => {
+    // Ticket #6: caching by content hash is the point — within one Identity's scope.
+    stubCaches();
+    const signer = signerFor(generateIdentity().secretKey);
+    const calls = stubFetch(bytes);
+
+    await fetchBlobObjectUrl(url, hash, signer);
+    await fetchBlobObjectUrl(url, hash, signer);
+
+    expect(calls).toHaveLength(1);
+  });
+
+  test("another Identity on the same browser is refused instead of served A's copy", async () => {
+    // Ticket #39: B must reach the server's authorization check. Keyed by URL
+    // alone, the cache would answer first and hand over what A was entitled to.
+    stubCaches();
+    const a = signerFor(generateIdentity().secretKey);
+    stubFetch(bytes);
+    await fetchBlobObjectUrl(url, hash, a);
+
+    const b = signerFor(generateIdentity().secretKey);
+    stubFetch(bytes, false);
+
+    await expect(fetchBlobObjectUrl(url, hash, b)).rejects.toThrow(MediaError);
+  });
+
+  test("a cached copy that no longer matches its hash is downloaded again", async () => {
+    const { stores } = stubCaches();
+    const signer = signerFor(generateIdentity().secretKey);
+    stubFetch(bytes);
+    await fetchBlobObjectUrl(url, hash, signer);
+
+    const scope = Object.keys(stores)[0]!;
+    stores[scope]![url] = { bytes: new TextEncoder().encode("tampered").buffer as ArrayBuffer, contentType: "image/png" };
+    const calls = stubFetch(bytes);
+    await fetchBlobObjectUrl(url, hash, signer);
+
+    expect(calls).toHaveLength(1);
   });
 });
