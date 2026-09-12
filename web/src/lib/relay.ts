@@ -53,6 +53,17 @@ export function publishEvent(ws: WebSocket, event: VerifiedEvent): Promise<void>
 
 export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 
+/**
+ * Something the relay said that the connection state alone cannot express: a
+ * refused subscription, a `NOTICE`, or a rejected NIP-42 AUTH. Each of these
+ * leaves the socket looking healthy while nothing is delivered, so the app has
+ * to be told the reason rather than left showing an empty timeline (#47).
+ */
+export interface RelayProblem {
+  kind: "auth" | "closed" | "notice";
+  reason: string;
+}
+
 export interface SubscriptionHandlers {
   onEvent(event: VerifiedEvent): void;
   onEose?(): void;
@@ -97,6 +108,8 @@ export class RelayClient {
   private ws: WebSocket | null = null;
   private _state: ConnectionState = "closed";
   private readonly stateListeners = new Set<(state: ConnectionState) => void>();
+  private readonly problemListeners = new Set<(problem: RelayProblem | null) => void>();
+  private _problem: RelayProblem | null = null;
   private readonly subscriptions = new Map<string, Subscription>();
   private explicitlyClosed = false;
   private readonly wsFactory: (url: string) => WebSocket;
@@ -120,6 +133,23 @@ export class RelayClient {
   onStateChange(callback: (state: ConnectionState) => void): () => void {
     this.stateListeners.add(callback);
     return () => this.stateListeners.delete(callback);
+  }
+
+  get problem(): RelayProblem | null {
+    return this._problem;
+  }
+
+  /** Returns an unsubscribe function. `null` means the last problem is over —
+   * a reconnection that authenticated clears it. */
+  onProblem(callback: (problem: RelayProblem | null) => void): () => void {
+    this.problemListeners.add(callback);
+    return () => this.problemListeners.delete(callback);
+  }
+
+  private setProblem(problem: RelayProblem | null): void {
+    if (this._problem === null && problem === null) return;
+    this._problem = problem;
+    for (const listener of this.problemListeners) listener(problem);
   }
 
   private setState(state: ConnectionState): void {
@@ -155,6 +185,7 @@ export class RelayClient {
           const [, , ok] = msg as [string, string, boolean, string];
           if (ok) {
             this.reconnectAttempt = 0;
+            this.setProblem(null);
             this.setState("open");
             this.resubscribeAll();
             if (!settled) {
@@ -162,6 +193,11 @@ export class RelayClient {
               resolve();
             }
           } else {
+            const [, , , message] = msg as [string, string, boolean, string];
+            // The relay will keep refusing the same Identity, so the reason has
+            // to outlive the socket — otherwise this is an endless, silent
+            // reconnect loop.
+            this.setProblem({ kind: "auth", reason: message });
             ws.close();
           }
           return;
@@ -182,7 +218,13 @@ export class RelayClient {
           // The relay ended it, so forget it here too: nothing more will arrive under
           // that id, and a reconnect must not re-issue a REQ the relay already refused.
           this.subscriptions.delete(subId);
+          this.setProblem({ kind: "closed", reason });
           sub?.handlers.onClosed?.(reason);
+          return;
+        }
+        if (msg[0] === "NOTICE") {
+          const [, reason] = msg as [string, string];
+          this.setProblem({ kind: "notice", reason });
         }
       };
 

@@ -16,6 +16,12 @@ export function useProfiles(client: RelayClient): {
   return { profiles, ensure: store.ensure };
 }
 
+/** The published kind 0 name, or null when this Identity has none yet — the
+ * distinction `displayName` erases, and which sorting a member list needs. */
+export function profileName(profiles: Map<string, Profile>, pubkey: string): string | null {
+  return profiles.get(pubkey)?.name || null;
+}
+
 export function displayName(profiles: Map<string, Profile>, pubkey: string): string {
   return profiles.get(pubkey)?.name || `${pubkey.slice(0, 8)}…`;
 }

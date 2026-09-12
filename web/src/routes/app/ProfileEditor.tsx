@@ -3,6 +3,7 @@ import { profileEventTemplate } from "../../lib/identity";
 import { profileFormSeed } from "../../lib/profileForm";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
+import { relayRejection } from "../../lib/relayReasons";
 import { Avatar } from "./Avatar";
 import { useProfiles } from "./useProfiles";
 
@@ -44,8 +45,10 @@ export function ProfileEditor({
       const event = await signer.signEvent(template);
       await client.publish(event);
       setSaved(true);
-    } catch {
-      setError("Couldn't save your profile. Check your connection and try again.");
+    } catch (error) {
+      setError(
+        relayRejection(error) ?? "Couldn't save your profile. Check your connection and try again.",
+      );
     } finally {
       setSaving(false);
     }

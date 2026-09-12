@@ -3,6 +3,7 @@ import { useState } from "react";
 import { buildThreadReply, type TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
+import { publishFailureMessage } from "../../lib/relayReasons";
 import { Avatar } from "./Avatar";
 import { displayName, type useProfiles } from "./useProfiles";
 
@@ -35,8 +36,8 @@ export function ThreadPane({
       const signed = await signer.signEvent(template);
       await client.publish(signed);
       setDraft("");
-    } catch {
-      setSendError("Couldn't send — check your connection and try again.");
+    } catch (error) {
+      setSendError(publishFailureMessage(error));
     } finally {
       setSending(false);
     }

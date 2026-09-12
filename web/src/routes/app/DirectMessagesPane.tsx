@@ -7,6 +7,7 @@ import { ConversationList } from "./ConversationList";
 import { ConversationView } from "./ConversationView";
 import { useDirectMessages } from "./useDirectMessages";
 import { useProfiles } from "./useProfiles";
+import { useWorkspaceMembers } from "./useWorkspaceMembers";
 
 /** Direct Messages mode (ticket #7): the conversation list plus the selected conversation —
  * the DM equivalent of `ChannelList` + `ChannelView`, sharing the same relay connection. */
@@ -15,17 +16,24 @@ export function DirectMessagesPane({
   myPubkey,
   signer,
   mediaUrl,
+  workspaceSlug,
 }: Readonly<{
   client: RelayClient;
   myPubkey: string;
   signer: Signer;
   mediaUrl: string;
+  workspaceSlug: string;
 }>) {
   const rumors = useDirectMessages(client, signer, myPubkey);
   const { profiles, ensure } = useProfiles(client);
+  const { members, error: membersError } = useWorkspaceMembers(client, workspaceSlug, signer);
   const [selectedPeerPubkeys, setSelectedPeerPubkeys] = useState<string[] | null>(null);
 
   const conversations = groupConversations(rumors, myPubkey);
+
+  const memberPubkeysKey = members.map((m) => m.pubkey).join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- memberPubkeysKey already tracks the pubkeys' contents
+  useEffect(() => ensure(memberPubkeysKey.split(",").filter(Boolean)), [memberPubkeysKey, ensure]);
 
   const authorPubkeysKey = [...new Set(rumors.map((r) => r.pubkey))].join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- authorPubkeysKey already tracks the pubkeys' contents
@@ -38,6 +46,9 @@ export function DirectMessagesPane({
     <>
       <ConversationList
         conversations={conversations}
+        members={members}
+        myPubkey={myPubkey}
+        membersError={membersError}
         selectedKey={selectedKey}
         onSelect={(key) => {
           const conversation = conversations.find((c) => c.key === key);
@@ -59,7 +70,7 @@ export function DirectMessagesPane({
         />
       )}
       {!selectedPeerPubkeys && conversations.length === 0 && (
-        <p className="meta">No Direct Messages yet — enter a pubkey to start one.</p>
+        <p className="meta">No Direct Messages yet — pick a Member to start one.</p>
       )}
     </>
   );
