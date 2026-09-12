@@ -1,11 +1,13 @@
 import { del, get, set } from "idb-keyval";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import { secretKeyFromNsec } from "./identity";
+import type { ReadState } from "./unread";
 import { clearMediaCache } from "./mediaCache";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
+const CHANNEL_READ_KEY = "studio.identity.channelReadAt";
 
 /** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
 export function hasNip07(): boolean {
@@ -41,6 +43,7 @@ export async function clearIdentity(): Promise<void> {
   await del(STORE_KEY);
   await del(WORKSPACE_SLUG_KEY);
   await del(CHANNEL_ID_KEY);
+  await del(CHANNEL_READ_KEY);
   await clearMediaCache();
 }
 
@@ -64,6 +67,18 @@ export async function storeChannelId(channelId: string): Promise<void> {
 
 export async function loadChannelId(): Promise<string | undefined> {
   return get<string>(CHANNEL_ID_KEY);
+}
+
+/**
+ * Remembers how far each Channel has been read, so unread survives a reload
+ * instead of restarting from "everything since this tab opened" (#42).
+ */
+export async function storeChannelReadAt(readAt: ReadState): Promise<void> {
+  await set(CHANNEL_READ_KEY, readAt);
+}
+
+export async function loadChannelReadAt(): Promise<ReadState> {
+  return (await get<ReadState>(CHANNEL_READ_KEY)) ?? {};
 }
 
 async function loadStoredNsec(): Promise<string | undefined> {

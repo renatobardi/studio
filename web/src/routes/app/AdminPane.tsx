@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../../lib/api";
 import { authProof, type ChannelOut, type InviteOut, type WorkspaceMemberOut } from "../../lib/api";
+import { isWorkspaceManager, manageableChannels } from "../../lib/channelNav";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { displayName, useProfiles } from "./useProfiles";
@@ -8,24 +9,33 @@ import { MemberProfile } from "./MemberProfile";
 
 type AdminTab = "invites" | "members" | "channels";
 
-/** Owner/admin console: Invites, Workspace Members and Channels — the REST admin surface
- * (ADR-0002: this is the source of truth the server projects into NIP-43/NIP-29 events). */
+/** The admin console. A Workspace owner/admin gets all of it: Invites,
+ * Workspace Members and Channels — the REST admin surface (ADR-0002: this is
+ * the source of truth the server projects into NIP-43/NIP-29 events). A
+ * Channel admin who holds no Workspace role gets only the Channels tab, and
+ * only the Channels they administer (#42); the API enforces the same line. */
 export function AdminPane({
   client,
   signer,
   slug,
-}: Readonly<{ client: RelayClient; signer: Signer; slug: string }>) {
-  const [tab, setTab] = useState<AdminTab>("invites");
+  workspaceRole,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string }>) {
+  const isManager = isWorkspaceManager(workspaceRole);
+  const [tab, setTab] = useState<AdminTab>(isManager ? "invites" : "channels");
 
   return (
     <div className="card stack" data-testid="admin-pane">
       <nav className="button-group" aria-label="Admin section">
-        <button className={`btn btn-outline${tab === "invites" ? " active" : ""}`} onClick={() => setTab("invites")}>
-          Invites
-        </button>
-        <button className={`btn btn-outline${tab === "members" ? " active" : ""}`} onClick={() => setTab("members")}>
-          Members
-        </button>
+        {isManager && (
+          <>
+            <button className={`btn btn-outline${tab === "invites" ? " active" : ""}`} onClick={() => setTab("invites")}>
+              Invites
+            </button>
+            <button className={`btn btn-outline${tab === "members" ? " active" : ""}`} onClick={() => setTab("members")}>
+              Members
+            </button>
+          </>
+        )}
         <button
           className={`btn btn-outline${tab === "channels" ? " active" : ""}`}
           onClick={() => setTab("channels")}
@@ -33,9 +43,11 @@ export function AdminPane({
           Channels
         </button>
       </nav>
-      {tab === "invites" && <InvitesTab signer={signer} slug={slug} />}
-      {tab === "members" && <MembersTab client={client} signer={signer} slug={slug} />}
-      {tab === "channels" && <ChannelsTab client={client} signer={signer} slug={slug} />}
+      {tab === "invites" && isManager && <InvitesTab signer={signer} slug={slug} />}
+      {tab === "members" && isManager && <MembersTab client={client} signer={signer} slug={slug} />}
+      {tab === "channels" && (
+        <ChannelsTab client={client} signer={signer} slug={slug} workspaceRole={workspaceRole} />
+      )}
     </div>
   );
 }
@@ -196,7 +208,12 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
   );
 }
 
-function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; signer: Signer; slug: string }>) {
+function ChannelsTab({
+  client,
+  signer,
+  slug,
+  workspaceRole,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string }>) {
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [name, setName] = useState("");
   const [about, setAbout] = useState("");
@@ -206,8 +223,8 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
 
   const reload = useCallback(async () => {
     const proof = await proofFor(slug, "/channels", "GET", signer);
-    setChannels(await api.listChannels(slug, proof));
-  }, [slug, signer]);
+    setChannels(manageableChannels(workspaceRole, await api.listChannels(slug, proof)));
+  }, [slug, signer, workspaceRole]);
 
   useEffect(() => {
     (async () => {
@@ -218,6 +235,12 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
       }
     })();
   }, [reload]);
+
+  // Another admin's Channel creation or membership change lands here the same
+  // way it lands in the navigation: on the projection, re-read the REST list.
+  useEffect(() => {
+    return client.subscribe([{ kinds: [39000, 39002] }], { onEvent: () => void reload() });
+  }, [client, reload]);
 
   const create = async () => {
     setError(null);
@@ -237,17 +260,19 @@ function ChannelsTab({ client, signer, slug }: Readonly<{ client: RelayClient; s
   return (
     <div className="stack" data-testid="channels-tab">
       {error && <div className="error-banner">{error}</div>}
-      <div className="field">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Channel name" />
-        <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="About (optional)" />
-        <label className="conversation-list-item-row">
-          <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-          Private
-        </label>
-        <button className="btn btn-primary" onClick={() => void create()}>
-          Create Channel
-        </button>
-      </div>
+      {isWorkspaceManager(workspaceRole) && (
+        <div className="field">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Channel name" />
+          <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="About (optional)" />
+          <label className="conversation-list-item-row">
+            <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+            Private
+          </label>
+          <button className="btn btn-primary" onClick={() => void create()}>
+            Create Channel
+          </button>
+        </div>
+      )}
       <ul className="member-list">
         {channels?.map((channel) => (
           <li key={channel.id} className="conversation-list-item-row">

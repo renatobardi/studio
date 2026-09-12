@@ -1,7 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
-import { clearIdentity, loadChannelId, storeChannelId, type Signer } from "../../lib/custody";
+import { canManageChannels, initialSelection, keepSelection } from "../../lib/channelNav";
+import {
+  clearIdentity,
+  loadChannelId,
+  loadChannelReadAt,
+  storeChannelId,
+  storeChannelReadAt,
+  type Signer,
+} from "../../lib/custody";
 import { RelayClient, type ConnectionState } from "../../lib/relay";
+import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
 import { AdminPane } from "./AdminPane";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ChannelList } from "./ChannelList";
@@ -11,7 +20,14 @@ import { DirectMessagesPane } from "./DirectMessagesPane";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileEditor } from "./ProfileEditor";
 
-const MANAGER_ROLES = new Set(["owner", "admin"]);
+/** The Workspace-signed projections that change what this Identity may see:
+ * Channel metadata (39000), Channel member lists (39002) and the add/remove
+ * moderation events (9000/9001). Any of them can mean a Channel appeared or
+ * disappeared for this caller, so each one re-reads the REST list — which is
+ * the authority, not the event (ADR-0002). */
+const ACCESS_PROJECTION_KINDS = [39000, 39002, 9000, 9001];
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 export function AppShell({
   workspace,
@@ -27,8 +43,15 @@ export function AppShell({
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
-  const [unreadChannelIds, setUnreadChannelIds] = useState<Set<string>>(new Set());
+  const [accessLost, setAccessLost] = useState(false);
+  /** Null until the stored marks are read back — writing before that would
+   * race the load and wipe them. */
+  const [readAt, setReadAt] = useState<ReadState | null>(null);
+  const [activityAt, setActivityAt] = useState<ReadState>({});
   const [mode, setMode] = useState<"channels" | "dms" | "admin" | "settings">("channels");
+
+  const selectedRef = useRef<string | null>(null);
+  const readAtRef = useRef<ReadState>({});
 
   useEffect(() => {
     const unsubscribe = client.onStateChange(setConnectionState);
@@ -44,50 +67,95 @@ export function AppShell({
   }, [signer]);
 
   useEffect(() => {
+    selectedRef.current = selectedChannelId;
+  }, [selectedChannelId]);
+
+  useEffect(() => {
+    if (readAt === null) return;
+    readAtRef.current = readAt;
+    void storeChannelReadAt(readAt);
+  }, [readAt]);
+
+  const fetchChannels = useCallback(async () => {
+    const url = `${window.location.origin}/api/workspaces/${workspace.slug}/channels`;
+    return listChannels(workspace.slug, await authProof(url, "GET", signer));
+  }, [workspace.slug, signer]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
-      const url = `${window.location.origin}/api/workspaces/${workspace.slug}/channels`;
-      const [proof, lastChannelId] = await Promise.all([authProof(url, "GET", signer), loadChannelId()]);
-      const list = await listChannels(workspace.slug, proof);
+      const [list, lastChannelId, storedReadAt] = await Promise.all([
+        fetchChannels(),
+        loadChannelId(),
+        loadChannelReadAt(),
+      ]);
       if (cancelled) return;
-      // Both setState calls together, in the same tick — keeping them batched into one render
-      // (as they were before this file needed a second, async lastChannelId source) matters: a
-      // channels-then-selectedChannelId split across two renders churns the unread-subscription
-      // effect below through subscribe→unsubscribe→resubscribe, which used to crash the app on
-      // still-CONNECTING sockets (see relay.ts's send() guard) — this avoids the churn outright.
+      const resumed = selectedRef.current ?? initialSelection(list, lastChannelId);
+      const now = nowSeconds();
+      let marks = seedMissing(storedReadAt, list.map((c) => c.id), now);
+      // Opening a Channel reads it — including the one resumed from last time.
+      if (resumed !== null) marks = touch(marks, resumed, now);
+      // All three setState calls together, in the same tick — keeping them batched into one
+      // render (as they were before this file needed a second, async lastChannelId source)
+      // matters: a channels-then-selectedChannelId split across two renders churns the
+      // unread-subscription effect below through subscribe→unsubscribe→resubscribe, which used
+      // to crash the app on still-CONNECTING sockets (see relay.ts's send() guard).
+      setReadAt(marks);
       setChannels(list);
-      setSelectedChannelId((current) => current ?? list.find((c) => c.id === lastChannelId)?.id ?? list[0]?.id ?? null);
+      setSelectedChannelId(resumed);
     })();
     return () => {
       cancelled = true;
     };
-  }, [workspace.slug, signer]);
+  }, [fetchChannels]);
 
+  /** Re-reads the Channel list and re-settles the navigation around it: a
+   * Channel this Identity just gained appears, one it just lost disappears,
+   * and the active Channel is left behind if it was the one lost (#42). */
+  const refreshChannels = useCallback(async () => {
+    const list = await fetchChannels();
+    const kept = keepSelection(list, selectedRef.current);
+    setReadAt((prev) => seedMissing(prev ?? {}, list.map((c) => c.id), nowSeconds()));
+    setChannels(list);
+    setAccessLost(selectedRef.current !== null && kept === null);
+    setSelectedChannelId(kept);
+  }, [fetchChannels]);
+
+  const loaded = channels !== null;
   useEffect(() => {
-    if (!channels || channels.length === 0) return;
-    const unsubscribe = client.subscribe(
-      [{ kinds: [9], "#h": channels.map((c) => c.id), since: Math.floor(Date.now() / 1000) }],
-      {
-        onEvent: (event) => {
-          const channelId = event.tags.find((t) => t[0] === "h")?.[1];
-          if (channelId && channelId !== selectedChannelId) {
-            setUnreadChannelIds((prev) => new Set(prev).add(channelId));
-          }
-        },
+    if (!loaded) return;
+    return client.subscribe([{ kinds: ACCESS_PROJECTION_KINDS, since: nowSeconds() }], {
+      onEvent: () => void refreshChannels().catch(() => {}),
+    });
+  }, [client, loaded, refreshChannels]);
+
+  const channelIds = channels?.map((c) => c.id) ?? [];
+  const channelIdsKey = channelIds.join(",");
+  useEffect(() => {
+    if (channelIdsKey === "" || pubkey === null) return;
+    const ids = channelIdsKey.split(",");
+    // From the oldest last-read mark, not from now: that is what makes a
+    // Message sent while the app was closed still count as unread (#42).
+    const since = oldestRead(readAtRef.current, ids, nowSeconds());
+    return client.subscribe([{ kinds: [9], "#h": ids, since }], {
+      onEvent: (event) => {
+        const channelId = event.tags.find((t) => t[0] === "h")?.[1];
+        if (!channelId || event.pubkey === pubkey) return;
+        setActivityAt((prev) => touch(prev, channelId, event.created_at));
+        // The open Channel is being read as it arrives — and only that one: a
+        // Channel that is not on screen keeps its older last-read mark (#42).
+        if (channelId === selectedRef.current) {
+          setReadAt((prev) => touch(prev ?? {}, channelId, event.created_at));
+        }
       },
-    );
-    return unsubscribe;
-  }, [client, channels, selectedChannelId]);
+    });
+  }, [client, channelIdsKey, pubkey]);
 
   const selectChannel = (channelId: string) => {
+    setAccessLost(false);
     setSelectedChannelId(channelId);
     void storeChannelId(channelId);
-    setUnreadChannelIds((prev) => {
-      if (!prev.has(channelId)) return prev;
-      const next = new Set(prev);
-      next.delete(channelId);
-      return next;
-    });
+    setReadAt((prev) => touch(prev ?? {}, channelId, nowSeconds()));
   };
 
   const handleSignOut = async () => {
@@ -95,6 +163,9 @@ export function AppShell({
     await clearIdentity();
     onSignOut();
   };
+
+  const unread = unreadChannelIds(readAt ?? {}, activityAt);
+  const canManage = canManageChannels(workspace.role, channels ?? []);
 
   return (
     <div className="app-shell">
@@ -116,7 +187,7 @@ export function AppShell({
             >
               Direct Messages
             </button>
-            {MANAGER_ROLES.has(workspace.role) && (
+            {canManage && (
               <button
                 className={`btn btn-outline${mode === "admin" ? " active" : ""}`}
                 onClick={() => setMode("admin")}
@@ -147,9 +218,14 @@ export function AppShell({
               <ChannelList
                 channels={channels}
                 selectedChannelId={selectedChannelId}
-                unreadChannelIds={unreadChannelIds}
+                unreadChannelIds={unread}
                 onSelect={selectChannel}
               />
+            )}
+            {accessLost && (
+              <p className="meta" data-testid="channel-access-lost">
+                You no longer have access to that Channel.
+              </p>
             )}
             {selectedChannelId && pubkey && (
               <ChannelView
@@ -167,8 +243,8 @@ export function AppShell({
         {mode === "dms" && pubkey && (
           <DirectMessagesPane client={client} myPubkey={pubkey} signer={signer} mediaUrl={workspace.media_url} />
         )}
-        {mode === "admin" && MANAGER_ROLES.has(workspace.role) && (
-          <AdminPane client={client} signer={signer} slug={workspace.slug} />
+        {mode === "admin" && canManage && (
+          <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />
         )}
         {mode === "settings" && pubkey && (
           <div className="stack">
