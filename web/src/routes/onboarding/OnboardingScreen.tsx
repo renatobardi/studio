@@ -1,5 +1,5 @@
-import { EmailAuthProvider, reauthenticateWithCredential, type User } from "firebase/auth";
-import { finalizeEvent, getPublicKey, nip44, nip98 } from "nostr-tools";
+import type { User } from "firebase/auth";
+import { finalizeEvent, getPublicKey, nip44 } from "nostr-tools";
 import { useEffect, useState } from "react";
 import * as api from "../../lib/api";
 import type { AccountOut, WorkspaceOut } from "../../lib/api";
@@ -37,6 +37,7 @@ import {
   type OnboardingStep,
 } from "../../lib/onboardingSteps";
 import { connectAndAuthenticate, publishEvent } from "../../lib/relay";
+import { AccountPasswordGate } from "./AccountPasswordGate";
 
 type Step = OnboardingStep | "restore";
 
@@ -100,7 +101,6 @@ export function OnboardingScreen({
   // Held in memory for this session only, never persisted: it is what the Key
   // Backup passphrase must differ from.
   const [knownPassword, setKnownPassword] = useState<string | null>(accountPassword);
-  const [accountPasswordInput, setAccountPasswordInput] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -247,16 +247,6 @@ export function OnboardingScreen({
 
   const handleBackupNext = () => advance("backup");
 
-  const handleConfirmAccountPassword = () =>
-    runStep(async () => {
-      // Verified against Firebase rather than merely typed: an unchecked
-      // answer would make "different from your account password" vacuous.
-      const credential = EmailAuthProvider.credential(user.email ?? "", accountPasswordInput);
-      await reauthenticateWithCredential(user, credential);
-      setKnownPassword(accountPasswordInput);
-      setAccountPasswordInput("");
-    }, "That isn't your account password.");
-
   const handleCreateBackup = () => {
     if (!identity) return;
     const invalid = validateBackupPassphrase(passphrase, knownPassword ?? "");
@@ -365,13 +355,11 @@ export function OnboardingScreen({
 
       let target = joining;
       if (!target) {
-        const proof = await nip98.getToken(
-          `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`,
-          "POST",
-          (e) => signer.signEvent(e),
-          true,
+        const url = `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`;
+        target = await api.redeemInvite(
+          inviteCode.trim(),
+          await api.authProof(url, "POST", signer),
         );
-        target = await api.redeemInvite(inviteCode.trim(), proof);
       }
       setWorkspace(target);
 
@@ -526,28 +514,7 @@ export function OnboardingScreen({
         )}
 
         {step === "backup-options" && mustConfirmAccountPassword && (
-          <>
-            <h1 className="onboarding-title">Confirm your account password</h1>
-            <p className="meta">
-              Your password is never stored, so we need it again to check that your Key Backup
-              passphrase is a different one.
-            </p>
-            <div className="onboarding-actions">
-              <input
-                type="password"
-                placeholder="Account password"
-                value={accountPasswordInput}
-                onChange={(e) => setAccountPasswordInput(e.target.value)}
-              />
-              <button
-                className="btn btn-primary btn-block"
-                disabled={busy || !accountPasswordInput}
-                onClick={handleConfirmAccountPassword}
-              >
-                Confirm
-              </button>
-            </div>
-          </>
+          <AccountPasswordGate user={user} onConfirmed={setKnownPassword} />
         )}
 
         {step === "backup-options" && !mustConfirmAccountPassword && (

@@ -1,5 +1,4 @@
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
-import { nip98 } from "nostr-tools";
 import { useEffect, useState } from "react";
 import { applyAppearance, loadAppearance } from "./lib/appearance";
 import * as api from "./lib/api";
@@ -28,8 +27,7 @@ async function resumeWorkspace(signer: Signer, user: User | null): Promise<Works
   if (slug) {
     try {
       const url = `${window.location.origin}/api/workspaces/${slug}`;
-      const proof = await nip98.getToken(url, "GET", (e) => signer.signEvent(e), true);
-      return await api.getWorkspace(slug, proof);
+      return await api.getWorkspace(slug, await api.authProof(url, "GET", signer));
     } catch {
       // Falls through: the remembered slug may be stale (membership removed).
     }
