@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as api from "../../lib/api";
 import { authProof, type ChannelOut, type InviteOut, type WorkspaceMemberOut } from "../../lib/api";
 import { ACCESS_PROJECTION_KINDS, isWorkspaceManager, manageableChannels } from "../../lib/channelAccess";
+import { describeInvite, inviteLimits, inviteLink } from "../../lib/invites";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { displayName, useProfiles } from "./useProfiles";
@@ -59,12 +60,19 @@ async function proofFor(slug: string, path: string, method: string, signer: Sign
 
 function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>) {
   const [invites, setInvites] = useState<InviteOut[] | null>(null);
+  // Read when the list is fetched, not during render: "expired" is judged
+  // against the same instant the list describes.
+  const [listedAt, setListedAt] = useState(() => Math.floor(Date.now() / 1000));
   const [role, setRole] = useState("member");
+  const [expiresInDays, setExpiresInDays] = useState("");
+  const [maxUses, setMaxUses] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const proof = await proofFor(slug, "/invites", "GET", signer);
     setInvites(await api.listInvites(slug, proof));
+    setListedAt(Math.floor(Date.now() / 1000));
   }, [slug, signer]);
 
   useEffect(() => {
@@ -79,12 +87,25 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
 
   const create = async () => {
     setError(null);
+    // Expiry and use limit are answered here rather than by a failed request:
+    // the server refuses the same impossible limits, but only after a round
+    // trip (#46).
+    const limits = inviteLimits(
+      { expiresInDays, maxUses },
+      Math.floor(Date.now() / 1000),
+    );
+    if (!limits.ok) {
+      setError(limits.error);
+      return;
+    }
     try {
       const proof = await proofFor(slug, "/invites", "POST", signer);
-      await api.createInvite(slug, proof, { role });
+      await api.createInvite(slug, proof, { role, ...limits.body });
+      setExpiresInDays("");
+      setMaxUses("");
       await reload();
-    } catch {
-      setError("Couldn't create the Invite.");
+    } catch (caught) {
+      setError(caught instanceof api.ApiError ? caught.message : "Couldn't create the Invite.");
     }
   };
 
@@ -99,6 +120,11 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
     }
   };
 
+  const copyLink = async (code: string) => {
+    await navigator.clipboard.writeText(inviteLink(window.location.origin, code));
+    setCopied(code);
+  };
+
   return (
     <div className="stack" data-testid="invites-tab">
       {error && <div className="error-banner">{error}</div>}
@@ -107,6 +133,18 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
           <option value="member">Member</option>
           <option value="admin">Admin</option>
         </select>
+        <input
+          value={expiresInDays}
+          onChange={(e) => setExpiresInDays(e.target.value)}
+          aria-label="Expires in days"
+          placeholder="Expires in days (optional)"
+        />
+        <input
+          value={maxUses}
+          onChange={(e) => setMaxUses(e.target.value)}
+          aria-label="Maximum uses"
+          placeholder="Max uses (optional)"
+        />
         <button className="btn btn-primary" onClick={() => void create()}>
           Create Invite
         </button>
@@ -115,10 +153,11 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
         {invites?.map((invite) => (
           <li key={invite.code} className="conversation-list-item-row">
             <span>
-              {invite.code} · {invite.role} · used {invite.use_count}
-              {invite.max_uses !== null ? `/${invite.max_uses}` : ""}
-              {invite.revoked ? " · revoked" : ""}
+              {invite.code} · {invite.role} · {describeInvite(invite, listedAt)}
             </span>
+            <button className="btn btn-outline" onClick={() => void copyLink(invite.code)}>
+              {copied === invite.code ? "Link copied" : "Copy link"}
+            </button>
             {!invite.revoked && (
               <button className="btn btn-outline" onClick={() => void revoke(invite.code)}>
                 Revoke

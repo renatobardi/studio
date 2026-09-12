@@ -426,12 +426,115 @@ class TestInviteAndMembers:
         assert revoke.status_code == 200
 
         preview = await client.get(f"/api/invites/{code}")
-        assert preview.json() == {"workspace_name": "Family", "valid": False}
+        assert preview.json() == {
+            "workspace_name": "Family", "valid": False, "reason": "revoked"
+        }
 
     async def test_preview_of_an_unknown_code(self, client: AsyncClient) -> None:
         response = await client.get("/api/invites/does-not-exist")
 
-        assert response.json() == {"workspace_name": "", "valid": False}
+        assert response.json() == {
+            "workspace_name": "", "valid": False, "reason": "not_found"
+        }
+
+    @pytest.mark.parametrize(
+        ("body", "fragment"),
+        [
+            ({"expires_at": 1}, "already in the past"),
+            ({"max_uses": 0}, "at least one use"),
+            ({"max_uses": -3}, "at least one use"),
+        ],
+    )
+    async def test_an_invite_that_would_be_born_unusable_is_refused(
+        self, client: AsyncClient, body: dict[str, int], fragment: str
+    ) -> None:
+        """#46: the owner sets expiry and use limit from the interface, so the
+        server is where a limit that can never admit anybody gets named as the
+        mistake it is — not stored as an invite nobody can redeem."""
+        sk, pubkey = await self._create_workspace(client)
+
+        response = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                sk, pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+            ),
+            json=body,
+        )
+
+        assert response.status_code == 400
+        assert fragment in response.json()["detail"]
+
+        listed = await client.get(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                sk, pubkey, url="http://test/api/workspaces/family/invites", method="GET"
+            ),
+        )
+        assert listed.json() == []
+
+    async def test_an_invite_carries_the_limits_it_was_created_with(
+        self, client: AsyncClient
+    ) -> None:
+        sk, pubkey = await self._create_workspace(client)
+        expires_at = int(time.time()) + 3600
+
+        created = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                sk, pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+            ),
+            json={"role": "admin", "expires_at": expires_at, "max_uses": 2},
+        )
+
+        assert created.status_code == 200
+        assert created.json()["expires_at"] == expires_at
+        assert created.json()["max_uses"] == 2
+        assert created.json()["role"] == "admin"
+
+    async def test_preview_says_why_the_invite_cannot_be_used(
+        self, client: AsyncClient
+    ) -> None:
+        """#46: "this invite isn't valid" leaves somebody re-typing a code that
+        was never going to work — the reason is what tells them to ask for a
+        new one instead. (Expiry is exercised in test_control_repository.py,
+        where `now` is a parameter rather than the wall clock.)"""
+        sk, pubkey = await self._create_workspace(client)
+
+        async def new_invite(**body: object) -> str:
+            response = await client.post(
+                "/api/workspaces/family/invites",
+                headers=nostr_header(
+                    sk, pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+                ),
+                json=body,
+            )
+            return response.json()["code"]  # type: ignore[no-any-return]
+
+        usable = await new_invite()
+        assert (await client.get(f"/api/invites/{usable}")).json() == {
+            "workspace_name": "Family", "valid": True, "reason": None
+        }
+
+        exhausted = await new_invite(max_uses=1)
+        member_sk, member_pubkey = new_keypair()
+        await client.post(
+            f"/api/invites/{exhausted}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey,
+                url=f"http://test/api/invites/{exhausted}/redeem", method="POST",
+            ),
+        )
+        assert (await client.get(f"/api/invites/{exhausted}")).json()["reason"] == "exhausted"
+
+        revoked = await new_invite()
+        await client.delete(
+            f"/api/workspaces/family/invites/{revoked}",
+            headers=nostr_header(
+                sk, pubkey,
+                url=f"http://test/api/workspaces/family/invites/{revoked}", method="DELETE",
+            ),
+        )
+        assert (await client.get(f"/api/invites/{revoked}")).json()["reason"] == "revoked"
 
     async def test_redeeming_an_invite_creates_a_member_then_can_be_managed(
         self, client: AsyncClient

@@ -12,6 +12,7 @@ import {
   type Signer,
 } from "./lib/custody";
 import { localIdentityMatches } from "./lib/accountIdentity";
+import { inviteCodeFromUrl, rememberInviteCode } from "./lib/invites";
 import { resolveInitialView, type AppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
@@ -54,6 +55,18 @@ export function App() {
 
   useEffect(() => {
     loadAppearance().then(applyAppearance);
+  }, []);
+
+  // An invite link has to survive sign-in, email verification and onboarding
+  // before anything can be done with it, so the code is taken off the URL the
+  // moment the app boots and held until it is redeemed (#46).
+  useEffect(() => {
+    const code = inviteCodeFromUrl(window.location.search);
+    if (!code) return;
+    rememberInviteCode(code);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("invite");
+    window.history.replaceState(null, "", url.toString());
   }, []);
 
   useEffect(() => {

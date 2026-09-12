@@ -299,20 +299,30 @@ class ControlPlaneRepository:
     async def revoke_invite(self, code: str) -> None:
         await self._db.merge(RecordID("invite", code), {"revoked": True})
 
-    def _invite_is_valid(self, invite: Invite, *, now: int) -> bool:
+    def _invite_unusable_reason(self, invite: Invite, *, now: int) -> str | None:
+        """Why this invite cannot be redeemed, or None when it can. The reason
+        is what lets the client say "ask for a new one" instead of leaving
+        somebody re-typing a code that was never going to work (#46)."""
         if invite.revoked:
-            return False
+            return "revoked"
         if invite.expires_at is not None and now > invite.expires_at:
-            return False
-        return not (invite.max_uses is not None and invite.use_count >= invite.max_uses)
+            return "expired"
+        if invite.max_uses is not None and invite.use_count >= invite.max_uses:
+            return "exhausted"
+        return None
 
-    async def preview_invite(self, code: str, *, now: int) -> tuple[str, bool]:
+    def _invite_is_valid(self, invite: Invite, *, now: int) -> bool:
+        return self._invite_unusable_reason(invite, now=now) is None
+
+    async def preview_invite(self, code: str, *, now: int) -> tuple[str, str | None]:
+        """The Workspace's name and why the invite cannot be used — None for a
+        reason means it can."""
         invite = await self.get_invite(code)
         if invite is None:
-            return "", False
+            return "", "not_found"
         workspace = await self.get_workspace(invite.workspace_slug)
         name = workspace.name if workspace is not None else ""
-        return name, self._invite_is_valid(invite, now=now)
+        return name, self._invite_unusable_reason(invite, now=now)
 
     async def redeem_invite(self, *, code: str, pubkey: str, now: int) -> WorkspaceMember:
         peek = await self.get_invite(code)

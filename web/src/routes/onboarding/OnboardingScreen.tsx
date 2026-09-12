@@ -14,6 +14,12 @@ import {
   validateBackupPassphrase,
 } from "../../lib/backup";
 import {
+  forgetInviteCode,
+  invitePreviewMessage,
+  pendingInviteCode,
+} from "../../lib/invites";
+import { slugFromName, workspaceForm } from "../../lib/workspaceForm";
+import {
   generateIdentity,
   nsecFromSecretKey,
   profileEventTemplate,
@@ -67,8 +73,18 @@ export function OnboardingScreen({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [inviteCode, setInviteCode] = useState("");
+  // An invite link is remembered at boot (App.tsx) so it can survive sign-in
+  // and email verification — this is where it stops being a URL and starts
+  // being the code somebody is joining with (#46).
+  const [inviteCode, setInviteCode] = useState(() => pendingInviteCode() ?? "");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+
+  // Whether this Identity is joining somebody's Workspace or founding one.
+  // Founding one from the interface is what the first Workspace on a server
+  // has instead of a curl (#46).
+  const [joinBy, setJoinBy] = useState<"invite" | "create">("invite");
+  const [newWorkspace, setNewWorkspace] = useState({ name: "", slug: "" });
+  const [slugEdited, setSlugEdited] = useState(false);
 
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(EMOJIS[0]);
@@ -143,6 +159,28 @@ export function OnboardingScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once: which Identity this Account has is settled before the first step
   }, []);
 
+  // An invite that arrived as a link is previewed here, before the Identity
+  // step — so the Workspace being joined is named up front, and a code that
+  // is revoked or used up says so rather than failing at the last step (#46).
+  useEffect(() => {
+    const code = pendingInviteCode();
+    if (!code) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const preview = await api.previewInvite(code);
+        if (cancelled) return;
+        if (preview.valid) setWorkspaceName(preview.workspace_name);
+        else setError(invitePreviewMessage(preview.reason));
+      } catch {
+        if (!cancelled) setError("Couldn't check that invite link.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const goBack = () => {
     if (step === "restore") {
       setStep("invite");
@@ -175,12 +213,33 @@ export function OnboardingScreen({
     runStep(async () => {
       const preview = await api.previewInvite(inviteCode.trim());
       if (!preview.valid) {
-        setError("This invite isn't valid anymore.");
+        // Why, not just "not valid": a revoked or used-up code is not a typo,
+        // and re-typing it is the one thing that cannot help (#46).
+        setError(invitePreviewMessage(preview.reason));
         return;
       }
+      setJoinBy("invite");
       setWorkspaceName(preview.workspace_name);
       setStep("profile");
-    }, "Couldn't find that invite. Check the code and try again.");
+    }, "Couldn't reach the server to check that invite. Try again.");
+
+  /** Founding a Workspace needs an Identity to own it, so it takes the same
+   * path as joining one and only diverges at the last step. */
+  const handleCreateWorkspaceNext = () => {
+    setError(null);
+    setJoinBy("create");
+    setWorkspaceName(null);
+    setStep("profile");
+  };
+
+  const handleWorkspaceNameChange = (value: string) => {
+    setNewWorkspace((current) => ({
+      name: value,
+      // Suggesting the address until it is touched keeps the kebab-case rule
+      // from being taught by rejection.
+      slug: slugEdited ? current.slug : slugFromName(value),
+    }));
+  };
 
   const handleGoRestore = () => {
     setMode("restore");
@@ -354,12 +413,46 @@ export function OnboardingScreen({
       }
 
       let target = joining;
+      if (!target && joinBy === "create") {
+        const form = workspaceForm(newWorkspace);
+        if (!form.ok) {
+          setError(form.error);
+          return;
+        }
+        try {
+          target = await api.createWorkspace(
+            await api.authProof(`${window.location.origin}/api/workspaces`, "POST", signer),
+            form.body,
+          );
+        } catch (caught) {
+          if (caught instanceof api.ApiError && caught.status === 409) {
+            setError("That address is already taken. Pick another.");
+            return;
+          }
+          if (caught instanceof api.ApiError && caught.status === 422) {
+            setError("The address may only use lowercase letters, numbers and single hyphens.");
+            return;
+          }
+          throw caught;
+        }
+      }
       if (!target) {
-        const url = `${window.location.origin}/api/invites/${inviteCode.trim()}/redeem`;
-        target = await api.redeemInvite(
-          inviteCode.trim(),
-          await api.authProof(url, "POST", signer),
-        );
+        const code = inviteCode.trim();
+        const url = `${window.location.origin}/api/invites/${code}/redeem`;
+        try {
+          target = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
+        } catch (caught) {
+          // The invite was fine when it was previewed; between then and now it
+          // can have been revoked or spent its last use. Asking why turns
+          // "couldn't connect" into something the person can act on (#46).
+          if (caught instanceof api.ApiError && [404, 410].includes(caught.status)) {
+            const preview = await api.previewInvite(code).catch(() => null);
+            setError(invitePreviewMessage(preview?.reason ?? null));
+            return;
+          }
+          throw caught;
+        }
+        forgetInviteCode();
       }
       setWorkspace(target);
 
@@ -419,10 +512,17 @@ export function OnboardingScreen({
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
               />
-              <button className="btn btn-primary btn-block" disabled={busy || !inviteCode} onClick={handleInviteNext}>
+              <button
+                className="btn btn-primary btn-block"
+                disabled={busy || !inviteCode}
+                onClick={handleInviteNext}
+              >
                 Continue
               </button>
               {workspaceName && <span className="meta">Joining {workspaceName}</span>}
+              <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
+                Create a new Workspace instead
+              </button>
               {custody === "local" && (
                 <button type="button" className="link" onClick={handleGoRestore}>
                   Restore an existing Identity from Key Backup
@@ -569,7 +669,9 @@ export function OnboardingScreen({
 
         {step === "setup" && (
           <>
-            <h1 className="onboarding-title">Connecting you to your workspace</h1>
+            <h1 className="onboarding-title">
+              {joinBy === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
+            </h1>
             <div className="onboarding-actions">
               {/* A restored Identity is already a Member: it reconnects through
                   its own Workspaces, so no invite is asked for — and none of
@@ -588,11 +690,11 @@ export function OnboardingScreen({
                 ))
               ) : (
                 <>
-                  {mode === "restore" && (
+                  {mode === "restore" && joinBy === "invite" && (
                     <>
                       <p className="meta">
                         Your Identity isn't a member of any workspace yet. Enter an invite to join
-                        one.
+                        one, or create your own.
                       </p>
                       <input
                         className="field-label"
@@ -600,14 +702,45 @@ export function OnboardingScreen({
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
                       />
+                      <button type="button" className="link" onClick={() => setJoinBy("create")}>
+                        Create a new Workspace instead
+                      </button>
+                    </>
+                  )}
+                  {joinBy === "create" && (
+                    <>
+                      <p className="meta">
+                        You'll be its owner. The address is how it appears in links — lowercase
+                        letters, numbers and hyphens.
+                      </p>
+                      <input
+                        placeholder="Workspace name"
+                        aria-label="Workspace name"
+                        value={newWorkspace.name}
+                        onChange={(e) => handleWorkspaceNameChange(e.target.value)}
+                      />
+                      <input
+                        placeholder="workspace-address"
+                        aria-label="Workspace address"
+                        value={newWorkspace.slug}
+                        onChange={(e) => {
+                          setSlugEdited(true);
+                          setNewWorkspace((current) => ({ ...current, slug: e.target.value }));
+                        }}
+                      />
                     </>
                   )}
                   <button
                     className="btn btn-primary btn-block"
-                    disabled={busy || (mode === "restore" && !inviteCode)}
+                    disabled={
+                      busy ||
+                      (joinBy === "create"
+                        ? !newWorkspace.name.trim() || !newWorkspace.slug.trim()
+                        : mode === "restore" && !inviteCode)
+                    }
                     onClick={() => handleSetup()}
                   >
-                    {busy ? "Connecting…" : "Connect"}
+                    {busy ? "Connecting…" : joinBy === "create" ? "Create Workspace" : "Connect"}
                   </button>
                 </>
               )}
