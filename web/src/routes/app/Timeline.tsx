@@ -1,5 +1,5 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import {
   buildMessage,
@@ -30,6 +30,9 @@ function imageDimensions(url: string): Promise<string | undefined> {
     image.src = url;
   });
 }
+
+/** How close to the top counts as asking for older Messages (story 30, #1). */
+const TOP_OF_HISTORY_PX = 48;
 
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
@@ -72,6 +75,23 @@ export function Timeline({
   const [sendError, setSendError] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const heightBeforePage = useRef<number | null>(null);
+
+  // Older Messages prepend, which would otherwise leave the view pinned at the top and pull
+  // in page after page. Giving back the height they added keeps the reader where they were.
+  useLayoutEffect(() => {
+    const timeline = scrollRef.current;
+    const before = heightBeforePage.current;
+    if (timeline === null || before === null || timeline.scrollHeight === before) return;
+    timeline.scrollTop += timeline.scrollHeight - before;
+    heightBeforePage.current = null;
+  }, [messages]);
+
+  const loadOlder = () => {
+    heightBeforePage.current = scrollRef.current?.scrollHeight ?? null;
+    onLoadOlder();
+  };
 
   const pickAttachment = async (file: File) => {
     const previewUrl = URL.createObjectURL(file);
@@ -138,9 +158,17 @@ export function Timeline({
   const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
 
   return (
-    <div className="timeline">
+    <div
+      className="timeline"
+      ref={scrollRef}
+      onScroll={(e) => {
+        // Reaching the top of the timeline pulls in the previous page; the feed ignores a
+        // request while one is already in flight, so scrolling cannot pile them up.
+        if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+      }}
+    >
       {hasMore && (
-        <button className="btn btn-outline load-older" onClick={onLoadOlder}>
+        <button className="btn btn-outline load-older" onClick={loadOlder}>
           Load older messages
         </button>
       )}
