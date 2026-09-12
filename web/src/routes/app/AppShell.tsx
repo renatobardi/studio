@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
   ACCESS_PROJECTION_KINDS,
+  accessLostAfterRefresh,
   canManageChannels,
   initialSelection,
   keepSelection,
@@ -117,10 +118,13 @@ export function AppShell({
    * and the active Channel is left behind if it was the one lost (#42). */
   const refreshChannels = useCallback(async () => {
     const list = await fetchChannels();
-    const kept = keepSelection(list, selectedRef.current);
+    // Read the selection once, here: the updater below runs whenever React
+    // gets to it, by which time the ref may already have been cleared.
+    const selected = selectedRef.current;
+    const kept = keepSelection(list, selected);
     setReadAt((prev) => seedMissing(prev ?? {}, list.map((c) => c.id), nowSeconds()));
     setChannels(list);
-    setAccessLost(selectedRef.current !== null && kept === null);
+    setAccessLost((shown) => accessLostAfterRefresh(shown, selected, kept));
     setSelectedChannelId(kept);
   }, [fetchChannels]);
 

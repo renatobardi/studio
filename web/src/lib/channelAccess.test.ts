@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ChannelOut } from "./api";
-import { canManageChannels, initialSelection, keepSelection, manageableChannels } from "./channelAccess";
+import {
+  accessLostAfterRefresh,
+  canManageChannels,
+  initialSelection,
+  keepSelection,
+  manageableChannels,
+} from "./channelAccess";
 
 function channel(id: string, role: string | null = null): ChannelOut {
   return { id, name: id, about: "", private: false, role };
@@ -55,5 +61,27 @@ describe("canManageChannels", () => {
 
   test("is true for a Workspace owner with no Channel of their own", () => {
     expect(canManageChannels("owner", [])).toBe(true);
+  });
+});
+
+describe("accessLostAfterRefresh", () => {
+  test("reports the loss when the active Channel is no longer listed", () => {
+    expect(accessLostAfterRefresh(false, "a", null)).toBe(true);
+  });
+
+  test("stays quiet while the active Channel is still listed", () => {
+    expect(accessLostAfterRefresh(false, "a", "a")).toBe(false);
+  });
+
+  test("stays quiet when nothing was open to lose", () => {
+    expect(accessLostAfterRefresh(false, null, null)).toBe(false);
+  });
+
+  test("keeps the notice up once the selection it refers to has been cleared", () => {
+    // Removing a Channel Member projects both a member list (39002) and a
+    // remove (9001), and the app re-reads on each. By the second pass the
+    // selection is already gone, so recomputing from it would take the notice
+    // back down before anyone read it (#42).
+    expect(accessLostAfterRefresh(true, null, null)).toBe(true);
   });
 });
