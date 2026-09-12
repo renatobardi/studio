@@ -6,7 +6,9 @@ NIP-42 AUTH, against a real EventStore and the shared live fan-out
 import asyncio
 import time
 from collections.abc import Callable
+from typing import Any
 
+import pytest
 from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
@@ -57,6 +59,12 @@ async def authenticate(
     auth_event = make_auth_event(sk, pubkey, relay_url=RELAY_URL, challenge=challenge, created_at=now)
     await connection.handle_message(["AUTH", auth_event])
     return recorder.of_type("OK")[-1]
+
+
+def _resolve_filter(raw: dict[str, Any], recipient_pubkey: str) -> dict[str, Any]:
+    """Fills a parametrised filter's `"recipient"` placeholder in — the pubkey only exists
+    once the test has generated it."""
+    return {k: [recipient_pubkey] if v == "recipient" else v for k, v in raw.items()}
 
 
 class TestAuthHandshake:
@@ -669,16 +677,27 @@ class TestGiftWrapAuthorization:
         received_ids = {e[2]["id"] for e in recorder.of_type("EVENT")}
         assert received_ids == {wrap["id"]}
 
-    async def test_a_third_party_with_no_p_filter_never_receives_someone_elses_gift_wrap(
-        self, store: EventStore, fanout: LiveFanout
+    @pytest.mark.parametrize(
+        ("label", "eavesdropper_filter"),
+        [
+            # No `#p` filter at all — the leak this ticket closes — and its pointed version,
+            # naming the recipient outright: what a gift wrap may be read by is its own `p`
+            # tag, never what the subscription asks for.
+            ("broad", {"kinds": [1059]}),
+            ("targeted", {"kinds": [1059], "#p": "recipient"}),
+        ],
+    )
+    async def test_a_third_party_never_receives_someone_elses_gift_wrap_from_history(
+        self, store: EventStore, fanout: LiveFanout, label: str, eavesdropper_filter: dict[str, Any]
     ) -> None:
         sender_sk, sender_pubkey = new_keypair()
         _recipient_sk, recipient_pubkey = new_keypair()
         eavesdropper_sk, eavesdropper_pubkey = new_keypair()
         now = int(time.time())
+        members = (sender_pubkey, eavesdropper_pubkey)
         publisher, pub_recorder = make_connection(
-            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
-            now=lambda: now, connection_id="publisher-gw",
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id=f"publisher-gw-{label}",
         )
         await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
         wrap = sign_event(
@@ -687,33 +706,41 @@ class TestGiftWrapAuthorization:
         await publisher.handle_message(["EVENT", wrap])
 
         eavesdropper, eve_recorder = make_connection(
-            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
-            now=lambda: now, connection_id="eavesdropper-gw",
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id=f"eavesdropper-gw-{label}",
         )
         await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
 
-        # No `#p` filter at all — the leak this ticket closes.
-        await eavesdropper.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+        await eavesdropper.handle_message(
+            ["REQ", "sub1", _resolve_filter(eavesdropper_filter, recipient_pubkey)]
+        )
 
         assert eve_recorder.of_type("EVENT") == []
 
+    @pytest.mark.parametrize(
+        ("label", "eavesdropper_filter"),
+        [("broad", {"kinds": [1059]}), ("targeted", {"kinds": [1059], "#p": "recipient"})],
+    )
     async def test_live_gift_wrap_delivery_is_restricted_to_the_recipient(
-        self, store: EventStore, fanout: LiveFanout
+        self, store: EventStore, fanout: LiveFanout, label: str, eavesdropper_filter: dict[str, Any]
     ) -> None:
         sender_sk, sender_pubkey = new_keypair()
         _recipient_sk, recipient_pubkey = new_keypair()
         eavesdropper_sk, eavesdropper_pubkey = new_keypair()
         now = int(time.time())
+        members = (sender_pubkey, eavesdropper_pubkey)
         eavesdropper, eve_recorder = make_connection(
-            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
-            now=lambda: now, connection_id="eavesdropper-gw-live",
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id=f"eavesdropper-gw-live-{label}",
         )
         await authenticate(eavesdropper, eve_recorder, eavesdropper_sk, eavesdropper_pubkey, now=now)
-        await eavesdropper.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+        await eavesdropper.handle_message(
+            ["REQ", "sub1", _resolve_filter(eavesdropper_filter, recipient_pubkey)]
+        )
 
         publisher, pub_recorder = make_connection(
-            store, fanout, allowed_pubkeys=(sender_pubkey, eavesdropper_pubkey),
-            now=lambda: now, connection_id="publisher-gw-live",
+            store, fanout, allowed_pubkeys=members, now=lambda: now,
+            connection_id=f"publisher-gw-live-{label}",
         )
         await authenticate(publisher, pub_recorder, sender_sk, sender_pubkey, now=now)
         wrap = sign_event(
@@ -726,6 +753,37 @@ class TestGiftWrapAuthorization:
 
         await eavesdropper.close()
         await publisher.close()
+
+    async def test_the_sender_reads_their_own_self_addressed_copy_and_not_the_recipients(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """NIP-17 publishes a wrap per participant *plus* one the sender addresses to itself —
+        the sender's only record of what it sent, since it cannot decrypt the recipient's copy
+        and the relay keeps no plaintext."""
+        sender_sk, sender_pubkey = new_keypair()
+        for_recipient_sk, for_recipient_pubkey = new_keypair()
+        for_self_sk, for_self_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey,), now=lambda: now
+        )
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        to_recipient = sign_event(
+            for_recipient_sk, pubkey=for_recipient_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]],
+        )
+        to_self = sign_event(
+            for_self_sk, pubkey=for_self_pubkey, created_at=now, kind=1059,
+            tags=[["p", sender_pubkey]],
+        )
+        await connection.handle_message(["EVENT", to_recipient])
+        await connection.handle_message(["EVENT", to_self])
+
+        await connection.handle_message(["REQ", "sub1", {"kinds": [1059]}])
+
+        received_ids = {e[2]["id"] for e in recorder.of_type("EVENT")}
+        assert received_ids == {to_self["id"]}
 
     async def test_any_workspace_member_may_publish_a_gift_wrap(
         self, store: EventStore, fanout: LiveFanout
@@ -777,6 +835,73 @@ class TestGiftWrapAuthorization:
         connection, recorder = make_connection(store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now)
         await authenticate(connection, recorder, sk, pubkey, now=now)
         wrap = sign_event(sk, pubkey=pubkey, created_at=now, kind=1059, tags=[])
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("invalid:")
+
+    async def test_publishing_a_gift_wrap_before_auth_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """The ephemeral-key exemption is about *authorship*, not about authentication: a wrap
+        still only travels on a connection that proved who it belongs to."""
+        ephemeral_sk, ephemeral_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, now=lambda: now)
+        await connection.start()
+        wrap = sign_event(
+            ephemeral_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("auth-required:")
+
+    async def test_a_non_member_cannot_publish_a_gift_wrap(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sender_sk, sender_pubkey = new_keypair()
+        ephemeral_sk, ephemeral_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(store, fanout, allowed_pubkeys=(), now=lambda: now)
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        wrap = sign_event(
+            ephemeral_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]],
+        )
+
+        await connection.handle_message(["EVENT", wrap])
+
+        ok = recorder.of_type("OK")[-1]
+        assert ok[2] is False
+        assert str(ok[3]).startswith("restricted:")
+
+    async def test_a_gift_wrap_whose_signature_does_not_match_its_pubkey_is_rejected(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        """Exempting gift wraps from the pubkey match must not exempt them from proving the
+        envelope is intact — checked on the ciphertext alone, never on the plaintext."""
+        sender_sk, sender_pubkey = new_keypair()
+        _ephemeral_sk, ephemeral_pubkey = new_keypair()
+        impostor_sk, _impostor_pubkey = new_keypair()
+        _recipient_sk, recipient_pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(sender_pubkey,), now=lambda: now
+        )
+        await authenticate(connection, recorder, sender_sk, sender_pubkey, now=now)
+        # Claims the ephemeral key's pubkey, but is signed by another key entirely.
+        wrap = sign_event(
+            impostor_sk, pubkey=ephemeral_pubkey, created_at=now, kind=1059,
+            tags=[["p", recipient_pubkey]], content="opaque-ciphertext",
+        )
 
         await connection.handle_message(["EVENT", wrap])
 
