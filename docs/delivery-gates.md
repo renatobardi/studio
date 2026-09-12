@@ -43,9 +43,12 @@ would only manufacture false assurance.
 
 ## Known limits of the Sonar gate
 
-`.sonarcloud.properties` excludes `docs/UI/design/**` — a vendored, generated
-design artefact nothing imports, which on its own produced most of the
-project's CRITICAL findings and drowned the ones that are ours.
+`docs/UI/design/**` is not excluded from analysis yet, and it should be: a
+vendored, generated design artefact nothing imports, it accounts for 321 of the
+project's 392 findings on its own. The exclusion was written here and then
+withdrawn — the `SonarCloud Code Analysis` check run stopped being posted on
+exactly the branch that carried the properties file, so the file is out while
+that is being pinned down. Tracked in #76.
 
 The project is on the built-in `Sonar way` quality gate, whose conditions are
 all scoped to *new code*. On a pull request that works: new code is the diff,
