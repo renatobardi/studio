@@ -2,6 +2,9 @@
 .env.*
 !.env.example
 node_modules/
+
+# macOS Finder metadata — never anyone's code
+.DS_Store
 scripts/ops/
 
 .claude/
