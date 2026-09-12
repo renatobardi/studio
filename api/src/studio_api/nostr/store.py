@@ -12,6 +12,7 @@ or persisted storage on the server side).
 """
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from enum import Enum
 from typing import Any, cast
@@ -24,7 +25,24 @@ from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.matching import event_matches_filters
 from studio_api.nostr.model import Filter, NostrEvent
 
+logger = logging.getLogger(__name__)
+
 _SCHEMA = "DEFINE TABLE IF NOT EXISTS event SCHEMALESS"
+
+# Ticket #52: how far behind one subscription may fall before the fan-out
+# stops keeping its events. A client that stops reading otherwise grows this
+# queue until the process runs out of memory.
+MAX_PENDING_EVENTS = 256
+
+
+class SubscriptionOverflow:
+    """Put on a subscription's queue in place of the event that no longer
+    fits: the subscription fell too far behind and has been dropped."""
+
+
+OVERFLOW = SubscriptionOverflow()
+
+Delivery = NostrEvent | SubscriptionOverflow
 
 
 class PublishResult(Enum):
@@ -134,17 +152,42 @@ class LiveFanout:
     def __init__(self, db: Any, live_id: object) -> None:
         self._db = db
         self._live_id = live_id
-        self._subs: dict[str, tuple[str, list[Filter], asyncio.Queue[NostrEvent]]] = {}
+        self._subs: dict[str, tuple[str, list[Filter], asyncio.Queue[Delivery]]] = {}
         self._task: asyncio.Task[None] | None = None
+        self._failure: str | None = None
 
-    def _start_consuming(self) -> None:
+    def start_consuming(self) -> None:
         self._task = asyncio.create_task(self._consume())
 
+    @property
+    def failure(self) -> str | None:
+        """Why live delivery stopped, or None while it is still running.
+
+        The live query is the essential delivery path: without it a REQ still
+        returns history and then goes quiet forever. A consumer that dies is
+        invisible from the outside — nothing errors, events simply stop
+        arriving — so the failure is recorded here for readiness to report
+        (ticket #52)."""
+        return self._failure
+
     async def _consume(self) -> None:
-        generator = await self._db.subscribe_live(self._live_id)
-        async for row in generator:
-            typed_row = cast(dict[str, Any], row)
-            await self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
+        try:
+            generator = await self._db.subscribe_live(self._live_id)
+            async for row in generator:
+                typed_row = cast(dict[str, Any], row)
+                await self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
+        except asyncio.CancelledError:
+            raise  # stop() — an orderly shutdown, not a failure
+        except Exception as error:  # noqa: BLE001 — whatever ends the stream, delivery is down
+            self._record_failure(type(error).__name__)
+        else:
+            self._record_failure("the live query ended")
+
+    def _record_failure(self, reason: str) -> None:
+        self._failure = reason
+        # The reason is a category, never the driver's own message: that text
+        # can carry the connection string, and with it the database password.
+        logger.error("live event delivery stopped", extra={"reason": reason})
 
     async def deliver(self, event: NostrEvent, *, workspace_slug: str) -> None:
         """Fan one event out to every matching subscription of that Workspace.
@@ -152,17 +195,35 @@ class LiveFanout:
         ephemeral ones — which are never written, so no live query would ever
         report them (ticket #43)."""
         # A snapshot: a subscription may come or go while this delivery runs.
-        for sub_workspace, filters, queue in tuple(self._subs.values()):
+        for sub_id, (sub_workspace, filters, queue) in tuple(self._subs.items()):
             if sub_workspace == workspace_slug and event_matches_filters(event, filters):
-                await queue.put(event)
+                self._offer(sub_id, queue, event)
+
+    def _offer(self, sub_id: str, queue: "asyncio.Queue[Delivery]", event: NostrEvent) -> None:
+        """Hand one event to one subscription without ever waiting on it. A
+        client that stopped reading would otherwise either grow this queue
+        without bound or — if the put blocked — stall delivery for every other
+        subscription of every other connection (ticket #52). Past the cap the
+        subscription is dropped and told so, rather than kept at a cost the
+        rest of the process pays."""
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            self.unsubscribe(sub_id)
+            queue.get_nowait()  # room for the marker; that event is dropped too
+            queue.put_nowait(OVERFLOW)
+            logger.warning(
+                "dropped a subscription that fell too far behind",
+                extra={"subscription": sub_id, "pending": MAX_PENDING_EVENTS},
+            )
 
     async def subscribe(
         self, sub_id: str, filters: list[Filter], *, workspace_slug: str
-    ) -> "asyncio.Queue[NostrEvent]":
+    ) -> "asyncio.Queue[Delivery]":
         """One subscription, scoped to one Workspace: this single app-wide
         live query feeds every Workspace, so the slug is what keeps them
         apart (ticket #45)."""
-        queue: asyncio.Queue[NostrEvent] = asyncio.Queue()
+        queue: asyncio.Queue[Delivery] = asyncio.Queue(maxsize=MAX_PENDING_EVENTS)
         self._subs[sub_id] = (workspace_slug, filters, queue)
         return queue
 
@@ -299,5 +360,5 @@ class EventStore:
     async def start_live_fanout(self) -> LiveFanout:
         live_id = await self._db.live("event")
         fanout = LiveFanout(self._db, live_id)
-        fanout._start_consuming()
+        fanout.start_consuming()
         return fanout

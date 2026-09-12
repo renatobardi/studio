@@ -1,6 +1,7 @@
 """RED: the NIP-11 relay information document."""
 
 from studio_api.nostr.nip11 import SUPPORTED_NIPS, build_info_document
+from studio_api.nostr.relay import CONNECTION_LIMITATION
 from studio_api.nostr.validation import LIMITATION
 
 
@@ -40,3 +41,13 @@ def test_document_publishes_the_enforced_limits() -> None:
     assert limitation["created_at_lower_limit"] == LIMITATION["created_at_lower_limit"]
     assert limitation["created_at_upper_limit"] == LIMITATION["created_at_upper_limit"]
     assert limitation["auth_required"] is True
+
+
+def test_document_publishes_the_connection_caps() -> None:
+    document = build_info_document(name="Studio")
+
+    limitation = document["limitation"]
+    assert limitation["max_subscriptions"] == CONNECTION_LIMITATION["max_subscriptions"]
+    assert limitation["max_filters"] == CONNECTION_LIMITATION["max_filters"]
+    assert limitation["max_limit"] == CONNECTION_LIMITATION["max_limit"]
+    assert limitation["max_message_length"] == CONNECTION_LIMITATION["max_message_length"]
