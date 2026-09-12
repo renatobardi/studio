@@ -329,10 +329,14 @@ class RelayConnection:
         queue = await self._fanout.subscribe(
             self._full_sub_id(sub_id), filters, workspace_slug=self._store.workspace_slug
         )
+        # Live from here on, so the subscription counts as open even while the
+        # snapshot is still being sent: whatever ends it — CLOSE, a failure, the
+        # connection closing — releases its queue and task through the usual path.
+        self._sub_ids.add(sub_id)
         try:
             events = await self._store.query(filters)
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
-            self._fanout.unsubscribe(self._full_sub_id(sub_id))
+            self._cancel_subscription(sub_id)
             await self._send(["CLOSED", sub_id, f"error: {error}"])
             return
         snapshot_ids: set[str] = set()
@@ -342,7 +346,8 @@ class RelayConnection:
                 await self._send(["EVENT", sub_id, event])
         await self._send(["EOSE", sub_id])
 
-        self._sub_ids.add(sub_id)
+        if sub_id not in self._sub_ids:
+            return  # closed while the snapshot was in flight
         self._tasks[sub_id] = asyncio.create_task(
             self._forward_live_events(sub_id, queue, snapshot_ids)
         )
@@ -353,9 +358,16 @@ class RelayConnection:
     async def _forward_live_events(
         self, sub_id: str, queue: "asyncio.Queue[NostrEvent]", snapshot_ids: set[str]
     ) -> None:
+        """Drains the live queue, skipping whatever the snapshot already sent.
+        Those ids are kept for the subscription's life, not just for the
+        buffered backlog: the live query can report an event stored during the
+        snapshot well after the backlog is drained, and that late copy is a
+        duplicate just the same."""
         while True:
             event = await queue.get()
-            if event["id"] in snapshot_ids:
-                continue
-            if await self._may_read(event):
-                await self._send(["EVENT", sub_id, event])
+            if event["id"] not in snapshot_ids:
+                await self._deliver(sub_id, event)
+
+    async def _deliver(self, sub_id: str, event: NostrEvent) -> None:
+        if await self._may_read(event):
+            await self._send(["EVENT", sub_id, event])

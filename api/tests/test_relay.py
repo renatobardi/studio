@@ -12,7 +12,7 @@ import pytest
 from coincurve import PrivateKey
 from support import Recorder, make_auth_event, new_keypair, sign_event, wait_until
 
-from studio_api.nostr.model import NostrEvent
+from studio_api.nostr.model import Filter, NostrEvent
 from studio_api.nostr.relay import (
     ConnectionRegistry,
     MediaReferenceRecorder,
@@ -1048,9 +1048,17 @@ class TestSnapshotToLiveTransition:
         sk, pubkey = new_keypair()
         now = int(time.time())
         event = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="in the gap")
+        # A probe subscription on the same fan-out: waiting for *it* to receive
+        # the event is what makes a real publish land inside the snapshot
+        # window deterministically, rather than a sleep hoping it does.
+        probe = await fanout.subscribe(
+            "probe-gap", [Filter(kinds=[1])], workspace_slug=store.workspace_slug
+        )
 
         async def publish_after_the_rows_are_read() -> None:
-            await fanout.deliver(event, workspace_slug=store.workspace_slug)
+            await store.publish(event)
+            async with asyncio.timeout(5):
+                await probe.get()
 
         hooked = _HookedQueryStore(store, after=publish_after_the_rows_are_read)
         subscriber, recorder = make_connection(
@@ -1066,6 +1074,7 @@ class TestSnapshotToLiveTransition:
         eose = recorder.of_type("EOSE")[0]
         assert recorder.sent.index(eose) < recorder.sent.index(["EVENT", "sub1", event])
 
+        fanout.unsubscribe("probe-gap")
         await subscriber.close()
 
     async def test_an_event_in_both_the_snapshot_and_the_buffer_is_sent_once(
@@ -1180,3 +1189,54 @@ class TestEphemeralEvents:
 
         await outsider.close()
         await publisher.close()
+
+
+class TestSubscriptionLifecycle:
+    async def test_reusing_a_subscription_id_replaces_the_old_subscription(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        subscriber, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="replacer"
+        )
+        await authenticate(subscriber, recorder, sk, pubkey, now=now)
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [1]}])
+        await subscriber.handle_message(["REQ", "sub1", {"kinds": [7]}])
+
+        publisher, pub_recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="replacer-pub"
+        )
+        await authenticate(publisher, pub_recorder, sk, pubkey, now=now)
+        note = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="old filter")
+        await publisher.handle_message(["EVENT", note])
+
+        await asyncio.sleep(0.2)
+        assert recorder.of_type("EVENT") == []  # the replaced subscription is gone, not doubled
+
+        await subscriber.close()
+        await publisher.close()
+
+    async def test_a_req_with_several_filters_matches_their_union(
+        self, store: EventStore, fanout: LiveFanout
+    ) -> None:
+        sk, pubkey = new_keypair()
+        now = int(time.time())
+        connection, recorder = make_connection(
+            store, fanout, allowed_pubkeys=(pubkey,), now=lambda: now, connection_id="union"
+        )
+        await authenticate(connection, recorder, sk, pubkey, now=now)
+        note = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="a note")
+        message = sign_event(sk, pubkey=pubkey, created_at=now, kind=9, tags=[["h", "chan1"]])
+        await connection.handle_message(["EVENT", note])
+        await connection.handle_message(["EVENT", message])
+
+        await connection.handle_message(["REQ", "sub1", {"kinds": [1]}, {"kinds": [9]}])
+
+        assert {e[2]["id"] for e in recorder.of_type("EVENT")} == {note["id"], message["id"]}
+
+        live_note = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content="live note")
+        await connection.handle_message(["EVENT", live_note])
+        await wait_until(lambda: len(recorder.of_type("EVENT")) == 3)
+
+        await connection.close()

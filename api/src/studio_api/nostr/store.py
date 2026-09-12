@@ -21,6 +21,7 @@ from surrealdb.data.types.record_id import RecordID
 from surrealdb.errors import SurrealError
 
 from studio_api.nostr.kinds import KindClass, kind_class
+from studio_api.nostr.matching import event_matches_filters
 from studio_api.nostr.model import Filter, NostrEvent
 
 _SCHEMA = "DEFINE TABLE IF NOT EXISTS event SCHEMALESS"
@@ -143,17 +144,13 @@ class LiveFanout:
         generator = await self._db.subscribe_live(self._live_id)
         async for row in generator:
             typed_row = cast(dict[str, Any], row)
-            await self.deliver(
-                _from_row(typed_row), workspace_slug=cast(str, typed_row.get("workspace_slug"))
-            )
+            await self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
 
     async def deliver(self, event: NostrEvent, *, workspace_slug: str) -> None:
         """Fan one event out to every matching subscription of that Workspace.
         Fed by the live query for stored events, and directly by the relay for
         ephemeral ones — which are never written, so no live query would ever
         report them (ticket #43)."""
-        from studio_api.nostr.matching import event_matches_filters
-
         for sub_workspace, filters, queue in list(self._subs.values()):
             if sub_workspace == workspace_slug and event_matches_filters(event, filters):
                 await queue.put(event)
