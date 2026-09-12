@@ -96,6 +96,24 @@ async def _test_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.store.close()
 
 
+def _authenticate(ws: WebSocketTestSession, sk: PrivateKey, pubkey: str) -> int:
+    """Walks one real socket through the NIP-42 handshake; returns the `now`
+    its auth event was signed with."""
+    auth_msg = ws.receive_json()
+    assert auth_msg[0] == "AUTH"
+    now = int(time.time())
+    auth_event = sign_event(
+        sk, pubkey=pubkey, created_at=now, kind=22242,
+        tags=[
+            ["relay", f"ws://testserver/relay/{WORKSPACE_SLUG}"],
+            ["challenge", auth_msg[1]],
+        ],
+    )
+    ws.send_json(["AUTH", auth_event])
+    assert ws.receive_json() == ["OK", auth_event["id"], True, ""]
+    return now
+
+
 class TestRelayWebSocket:
     def test_full_round_trip_over_a_real_websocket(self) -> None:
         sk, pubkey = new_keypair()
@@ -129,6 +147,25 @@ class TestRelayWebSocket:
             assert received == ["EVENT", "sub1", event]
             eose = ws.receive_json()
             assert eose == ["EOSE", "sub1"]
+
+    def test_an_ephemeral_event_is_delivered_live_but_never_stored(self) -> None:
+        sk, pubkey = new_keypair()
+        app = create_app(store=None, relay_workspaces={WORKSPACE_SLUG}, allowed_pubkeys={pubkey})
+        app.router.lifespan_context = _test_lifespan
+
+        with TestClient(app) as client, client.websocket_connect(f"/relay/{WORKSPACE_SLUG}") as ws:
+            now = _authenticate(ws, sk, pubkey)
+
+            ws.send_json(["REQ", "sub1", {"kinds": [20001]}])
+            assert ws.receive_json() == ["EOSE", "sub1"]
+
+            event = sign_event(sk, pubkey=pubkey, created_at=now, kind=20001, content="typing")
+            ws.send_json(["EVENT", event])
+            assert ws.receive_json() == ["OK", event["id"], True, ""]
+            assert ws.receive_json() == ["EVENT", "sub1", event]
+
+            ws.send_json(["REQ", "sub2", {"kinds": [20001]}])
+            assert ws.receive_json() == ["EOSE", "sub2"]
 
     def test_an_unknown_workspace_slug_closes_the_connection(self) -> None:
         from starlette.websockets import WebSocketDisconnect
