@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { profileEventTemplate } from "../../lib/identity";
+import { profileFormSeed } from "../../lib/profileForm";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { Avatar } from "./Avatar";
@@ -20,15 +21,19 @@ export function ProfileEditor({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
 
-  useEffect(() => {
-    const current = profiles.get(pubkey);
-    if (!current) return;
-    setName(current.name ?? "");
-    setPicture(current.picture ?? "");
-    setAbout(current.about ?? "");
-  }, [profiles, pubkey]);
+  // Adjusted during render, not in an effect: the profile is already in hand by
+  // the time this runs, so there is nothing to synchronise with afterwards.
+  const seed = profileFormSeed(profiles.get(pubkey), seededFor, pubkey);
+  if (seed) {
+    setSeededFor(pubkey);
+    setName(seed.name);
+    setPicture(seed.picture);
+    setAbout(seed.about);
+  }
 
   const handleSave = async () => {
     setSaving(true);
