@@ -341,7 +341,7 @@ class TestLiveFanoutBackpressure:
             )
 
             for i in range(MAX_PENDING_EVENTS + 10):
-                await fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
+                fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
 
             assert queue.qsize() <= MAX_PENDING_EVENTS
         finally:
@@ -357,7 +357,7 @@ class TestLiveFanoutBackpressure:
             )
 
             for i in range(MAX_PENDING_EVENTS + 10):
-                await fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
+                fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
 
             drained = [queue.get_nowait() for _ in range(queue.qsize())]
             assert isinstance(drained[-1], SubscriptionOverflow)
@@ -376,7 +376,7 @@ class TestLiveFanoutBackpressure:
             )
 
             for i in range(MAX_PENDING_EVENTS + 10):
-                await fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
+                fanout.deliver(make_event(id=f"id-{i}"), workspace_slug=TEST_WORKSPACE)
                 healthy.get_nowait()
 
             assert healthy.empty()  # every delivery arrived, none blocked behind the stalled one
@@ -461,7 +461,7 @@ class TestFailureLogging:
 
             with caplog.at_level(logging.WARNING):
                 for i in range(MAX_PENDING_EVENTS + 10):
-                    await fanout.deliver(
+                    fanout.deliver(
                         make_event(id=f"id-{i}", content="a-private-message"),
                         workspace_slug=TEST_WORKSPACE,
                     )

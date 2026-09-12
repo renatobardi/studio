@@ -1088,7 +1088,7 @@ class TestSnapshotToLiveTransition:
 
         async def publish_before_the_rows_are_read() -> None:
             await store.publish(event)
-            await fanout.deliver(event, workspace_slug=store.workspace_slug)
+            fanout.deliver(event, workspace_slug=store.workspace_slug)
 
         hooked = _HookedQueryStore(store, before=publish_before_the_rows_are_read)
         subscriber, recorder = make_connection(
@@ -1114,7 +1114,7 @@ class TestSnapshotToLiveTransition:
         )
 
         async def publish_after_the_rows_are_read() -> None:
-            await fanout.deliver(blocked, workspace_slug=store.workspace_slug)
+            fanout.deliver(blocked, workspace_slug=store.workspace_slug)
 
         hooked = _HookedQueryStore(store, after=publish_after_the_rows_are_read)
         subscriber, recorder = make_connection(
@@ -1498,7 +1498,7 @@ class TestSlowSubscriber:
 
         for i in range(MAX_PENDING_EVENTS + 5):
             backlogged = sign_event(sk, pubkey=pubkey, created_at=now, kind=1, content=str(i))
-            await fanout.deliver(backlogged, workspace_slug=store.workspace_slug)
+            fanout.deliver(backlogged, workspace_slug=store.workspace_slug)
 
         sender.released.set()
         await wait_until(lambda: bool(sender.of_type("CLOSED")))

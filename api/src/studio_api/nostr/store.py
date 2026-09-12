@@ -175,7 +175,7 @@ class LiveFanout:
             generator = await self._db.subscribe_live(self._live_id)
             async for row in generator:
                 typed_row = cast(dict[str, Any], row)
-                await self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
+                self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
         except asyncio.CancelledError:
             raise  # stop() — an orderly shutdown, not a failure
         except Exception as error:  # noqa: BLE001 — whatever ends the stream, delivery is down
@@ -189,11 +189,14 @@ class LiveFanout:
         # can carry the connection string, and with it the database password.
         logger.error("live event delivery stopped", extra={"reason": reason})
 
-    async def deliver(self, event: NostrEvent, *, workspace_slug: str) -> None:
+    def deliver(self, event: NostrEvent, *, workspace_slug: str) -> None:
         """Fan one event out to every matching subscription of that Workspace.
         Fed by the live query for stored events, and directly by the relay for
         ephemeral ones — which are never written, so no live query would ever
-        report them (ticket #43)."""
+        report them (ticket #43).
+
+        Synchronous on purpose: nothing here may wait on a subscriber, or one
+        slow client would hold up delivery to every other (ticket #52)."""
         # A snapshot: a subscription may come or go while this delivery runs.
         for sub_id, (sub_workspace, filters, queue) in tuple(self._subs.items()):
             if sub_workspace == workspace_slug and event_matches_filters(event, filters):

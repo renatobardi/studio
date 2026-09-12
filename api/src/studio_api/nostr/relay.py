@@ -370,7 +370,7 @@ class RelayConnection:
         if kind_class(event["kind"]) is KindClass.EPHEMERAL:
             # Never stored, so the live query will never report it: the relay
             # hands it to the fan-out itself (ticket #43).
-            await self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
+            self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
 
     async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
         """Ticket #6/#7: after an event is accepted, record which blobs it references — by
