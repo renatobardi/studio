@@ -72,7 +72,11 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
 
   // Issue #40: gift wraps are the only history that lives nowhere but the relay and the
   // Identity's own key. Restoring that Identity on a brand-new browser must bring both the
-  // sent copy (A's self-addressed wrap) and the received one back, decrypted.
+  // sent copy (A's self-addressed wrap) and the received one back, decrypted. A's first
+  // context goes away first, so this is a restore onto a cold browser and not two live
+  // sessions of the same Identity.
+  await contextA.close();
+
   const contextC = await browser.newContext();
   const pageC = await contextC.newPage();
   await reachAppViaRestoreWithCredentials(pageC, {
@@ -87,8 +91,10 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await pageC.getByTestId("conversation-list-item").filter({ hasText: reply }).click();
   await expect(pageC.getByTestId("dm-message").filter({ hasText: content })).toBeVisible({ timeout: 15_000 });
   await expect(pageC.getByTestId("dm-message").filter({ hasText: reply })).toBeVisible({ timeout: 15_000 });
+  await expect(
+    pageC.getByTestId("dm-message").filter({ hasText: content }).getByTestId("dm-attachment-image"),
+  ).toBeVisible({ timeout: 15_000 });
 
-  await contextA.close();
   await contextB.close();
   await contextC.close();
 });
