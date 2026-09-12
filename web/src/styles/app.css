@@ -549,6 +549,17 @@ body {
   gap: 8px;
 }
 
+.member-list button {
+  width: 100%;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .connection-badge {
   font-size: 10px;
   padding: 2px 8px;
