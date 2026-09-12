@@ -119,6 +119,18 @@ export function OnboardingScreen({
         setEntry(resolved);
         if (resolved === "restore") {
           setMode("restore");
+          // The key may already be in this browser — an onboarding
+          // interrupted after the Identity was stored but before a Workspace
+          // was joined. Asking for the passphrase again would be theatre:
+          // only the Workspace is missing (#36).
+          const stored = await getSigner();
+          const local = stored ? await stored.getPublicKey() : null;
+          if (local !== null && local === current.pubkey) {
+            setPubkey(local);
+            setWorkspaces(await api.listWorkspaces(token));
+            setStep("setup");
+            return;
+          }
           setStep("restore");
         }
       } catch {
@@ -327,7 +339,6 @@ export function OnboardingScreen({
   /** `joining` is a Workspace this Identity is already a Member of (restore);
    * without one, the invite is redeemed to become a Member. */
   const handleSetup = (joining?: WorkspaceOut) => {
-    if (custody === "local" && !identity) return;
     return runStep(async () => {
       // Under an extension this is the extension's own signer: the key never
       // leaves it, and no parallel Identity is ever created (#45).
@@ -337,11 +348,19 @@ export function OnboardingScreen({
           : await getSigner();
       if (!signer) throw new Error("no signer available");
 
-      // Under an extension there is no Key Backup step to link from, so this
-      // is where the Account learns which Identity is its own (#36).
-      if (custody === "extension" && linkedPubkey === null) {
-        const linked = await linkAccountIdentity(await idToken(), signer);
-        setLinkedPubkey(linked.pubkey);
+      if (custody === "extension") {
+        // Under an extension there is no Key Backup step to link from, so
+        // this is where the Account learns which Identity is its own — and
+        // where an extension holding a different one is turned away rather
+        // than quietly onboarded as a substitute (#36).
+        const extensionPubkey = await signer.getPublicKey();
+        if (linkedPubkey === null) {
+          const linked = await linkAccountIdentity(await idToken(), signer);
+          setLinkedPubkey(linked.pubkey);
+        } else if (extensionPubkey !== linkedPubkey) {
+          setError("Your Nostr extension holds a different Identity than this account's.");
+          return;
+        }
       }
 
       let target = joining;

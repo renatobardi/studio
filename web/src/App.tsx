@@ -97,6 +97,7 @@ export function App() {
         resolveInitialView({
           account: verified && firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email } : null,
           hasIdentity: signer !== null,
+          hasWorkspace: resumedWorkspace !== null,
         }),
       );
       setLoading(false);

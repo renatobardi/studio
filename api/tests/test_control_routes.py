@@ -254,6 +254,55 @@ class TestListingTheCallersWorkspaces:
 
         assert response.status_code == 400
 
+    async def test_recovery_outlives_the_invite_that_let_them_in(
+        self, client: AsyncClient
+    ) -> None:
+        """An Invite is how someone becomes a Member, not how they get back
+        in. Once spent — and revoked on top — it must stand between nobody
+        and their own Workspaces (#36)."""
+        owner_sk, owner_pubkey = new_keypair()
+        await client.post(
+            "/api/workspaces",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces", method="POST"
+            ),
+            json={"slug": "family", "name": "Family"},
+        )
+        created = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/invites",
+                method="POST",
+            ),
+            json={"max_uses": 1},
+        )
+        code = created.json()["code"]
+
+        member_sk, member_pubkey = new_keypair()
+        await link_identity(client, "member-uid", member_sk, member_pubkey)
+        redeemed = await client.post(
+            f"/api/invites/{code}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey,
+                url=f"http://test/api/invites/{code}/redeem", method="POST",
+            ),
+        )
+        assert redeemed.status_code == 200
+
+        # Spent by that single use, and revoked on top of it.
+        await client.delete(
+            f"/api/workspaces/family/invites/{code}",
+            headers=nostr_header(
+                owner_sk, owner_pubkey,
+                url=f"http://test/api/workspaces/family/invites/{code}", method="DELETE",
+            ),
+        )
+        assert (await client.get(f"/api/invites/{code}")).json()["valid"] is False
+
+        listed = await client.get("/api/workspaces", headers=firebase_header("member-uid"))
+
+        assert [w["slug"] for w in listed.json()] == ["family"]
+
 
 class TestWorkspace:
     async def test_creating_a_workspace_makes_the_caller_the_owner(
