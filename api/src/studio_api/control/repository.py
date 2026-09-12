@@ -167,6 +167,23 @@ class ControlPlaneRepository:
         row = await _select_or_none(self._db, RecordID("workspace_member", f"{slug}:{pubkey}"))
         return row["role"] if row is not None else None
 
+    async def list_workspaces_for(self, pubkey: str) -> list[tuple[Workspace, str]]:
+        """Every Workspace this Identity belongs to, with its role. Restoring
+        on a new browser has no invite and no local state, so the Identity is
+        the only thing left to resolve a Workspace from (#36)."""
+        rows = await _query_or_empty(
+            self._db,
+            "SELECT workspace_slug, role FROM workspace_member WHERE pubkey = $pubkey "
+            "ORDER BY workspace_slug;",
+            {"pubkey": pubkey},
+        )
+        found: list[tuple[Workspace, str]] = []
+        for row in rows:
+            workspace = await self.get_workspace(row["workspace_slug"])
+            if workspace is not None:
+                found.append((workspace, row["role"]))
+        return found
+
     async def is_workspace_member_anywhere(self, pubkey: str) -> bool:
         """Whether this pubkey is a Workspace Member of any Workspace this
         server hosts. Blobs are server-wide (/media is not per-Workspace), so

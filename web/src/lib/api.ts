@@ -14,6 +14,13 @@ export interface WorkspaceOut {
   role: string;
 }
 
+export interface AccountOut {
+  uid: string;
+  email: string;
+  /** The Identity bound to this Account, or null while it has none. */
+  pubkey: string | null;
+}
+
 export interface InvitePreview {
   workspace_name: string;
   valid: boolean;
@@ -76,18 +83,38 @@ export function redeemInvite(code: string, nip98Token: string): Promise<Workspac
   });
 }
 
-export function getAccount(firebaseIdToken: string): Promise<{ uid: string; email: string; pubkey: string | null }> {
+export function getAccount(firebaseIdToken: string): Promise<AccountOut> {
   return request("/account", { headers: { Authorization: `Bearer ${firebaseIdToken}` } });
 }
 
-export function linkIdentity(firebaseIdToken: string, nip98Token: string) {
+/**
+ * The signed NIP-98 event itself, rather than an `Authorization` value —
+ * link-identity carries the proof in the body, because the header already
+ * carries the Firebase token that says which Account is being linked.
+ */
+export async function identityProof(
+  url: string,
+  method: string,
+  signer: Signer,
+): Promise<Record<string, unknown>> {
+  const token = await nip98.getToken(url, method, (event) => signer.signEvent(event), false);
+  return JSON.parse(atob(token)) as Record<string, unknown>;
+}
+
+/** Binds this Account to the Identity that signed `proof`. The server refuses
+ * a second, different Identity (409) — that immutability is what protects the
+ * Key Backup (#36). */
+export function linkIdentity(
+  firebaseIdToken: string,
+  proof: Record<string, unknown>,
+): Promise<AccountOut> {
   return request("/account/link-identity", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${firebaseIdToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ proof: nip98Token }),
+    body: JSON.stringify({ proof }),
   });
 }
 
@@ -104,6 +131,25 @@ export function putKeyBackup(firebaseIdToken: string, blobBase64: string): Promi
 
 export function getKeyBackup(firebaseIdToken: string): Promise<{ blob_base64: string }> {
   return request("/account/key-backup", { headers: { Authorization: `Bearer ${firebaseIdToken}` } });
+}
+
+/** Whether the server holds a Key Backup for this Account — 404 means none. */
+export async function hasKeyBackup(firebaseIdToken: string): Promise<boolean> {
+  try {
+    await getKeyBackup(firebaseIdToken);
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return false;
+    throw error;
+  }
+}
+
+/**
+ * The caller's own Workspaces. A restore on a new browser has no invite and
+ * no local state, so this is how it finds where to reconnect (#36).
+ */
+export function listWorkspaces(firebaseIdToken: string): Promise<WorkspaceOut[]> {
+  return request("/workspaces", { headers: { Authorization: `Bearer ${firebaseIdToken}` } });
 }
 
 /** Re-fetches a previously-joined Workspace, e.g. on app resume. Member-only. */

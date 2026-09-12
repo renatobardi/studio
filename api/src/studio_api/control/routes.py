@@ -164,6 +164,13 @@ async def put_key_backup(
 ) -> dict[str, str]:
     if not isinstance(caller, FirebaseCaller):
         raise HTTPException(403, "only a Firebase-authenticated caller has a Key Backup")
+    # A Key Backup belongs to the Account's Identity, and that link is
+    # immutable (link_identity refuses a second pubkey). Requiring it here is
+    # what stops a second onboarding from storing a backup of a fresh key over
+    # the one that recovers the real Identity (#36).
+    account = await repo.get_account(caller.uid)
+    if account is None or account.pubkey is None:
+        raise HTTPException(400, "link an Identity to this Account before storing a Key Backup")
     blob = base64.b64decode(body.blob_base64)
     await repo.put_key_backup(uid=caller.uid, blob=blob)
     return {"status": "ok"}
@@ -209,6 +216,28 @@ def _workspace_urls(request: Request, slug: str) -> tuple[str, str]:
     relay_url = f"{ws_scheme}://{request.url.netloc}/relay/{slug}"
     media_url = f"{base}/media"
     return relay_url, media_url
+
+
+@router.get("/workspaces")
+async def list_workspaces(
+    request: Request,
+    caller: CallerIdentity = Depends(require_caller),
+    repo: ControlPlaneRepository = Depends(get_repo),
+) -> list[WorkspaceOut]:
+    """The caller's own Workspaces. A restore on a new browser has neither an
+    invite nor local state, so this is how it finds where to reconnect (#36)."""
+    pubkey = await _caller_pubkey(caller, repo)
+    found = await repo.list_workspaces_for(pubkey)
+    out: list[WorkspaceOut] = []
+    for workspace, role in found:
+        relay_url, media_url = _workspace_urls(request, workspace.slug)
+        out.append(
+            WorkspaceOut(
+                slug=workspace.slug, name=workspace.name, relay_url=relay_url,
+                media_url=media_url, role=role,
+            )
+        )
+    return out
 
 
 @router.post("/workspaces")

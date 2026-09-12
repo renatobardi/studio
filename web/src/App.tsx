@@ -5,11 +5,45 @@ import { applyAppearance, loadAppearance } from "./lib/appearance";
 import * as api from "./lib/api";
 import type { WorkspaceOut } from "./lib/api";
 import { auth } from "./lib/firebase";
-import { clearIdentity, getSigner, loadWorkspaceSlug, type Signer } from "./lib/custody";
+import {
+  clearIdentity,
+  getSigner,
+  loadWorkspaceSlug,
+  storeWorkspaceSlug,
+  type Signer,
+} from "./lib/custody";
+import { localIdentityMatches } from "./lib/accountIdentity";
 import { resolveInitialView, type AppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
 import { AppShell } from "./routes/app/AppShell";
+
+/**
+ * Where to reconnect on resume: the Workspace this browser last used, or —
+ * when there is no local trace of one (a restore on a new browser, a fresh
+ * sign-in) — the first the Account's Identity belongs to (#36).
+ */
+async function resumeWorkspace(signer: Signer, user: User | null): Promise<WorkspaceOut | null> {
+  const slug = await loadWorkspaceSlug();
+  if (slug) {
+    try {
+      const url = `${window.location.origin}/api/workspaces/${slug}`;
+      const proof = await nip98.getToken(url, "GET", (e) => signer.signEvent(e), true);
+      return await api.getWorkspace(slug, proof);
+    } catch {
+      // Falls through: the remembered slug may be stale (membership removed).
+    }
+  }
+  if (!user) return null;
+  try {
+    const workspaces = await api.listWorkspaces(await user.getIdToken());
+    const first = workspaces[0];
+    if (first) await storeWorkspaceSlug(first.slug);
+    return first ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -18,6 +52,7 @@ export function App() {
   const [accountPassword, setAccountPassword] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
   const [signer, setSigner] = useState<Signer | null>(null);
+  const [account, setAccount] = useState<api.AccountOut | null>(null);
 
   useEffect(() => {
     loadAppearance().then(applyAppearance);
@@ -32,22 +67,30 @@ export function App() {
       const verified =
         !!firebaseUser &&
         (firebaseUser.emailVerified || firebaseUser.providerData.some((p) => p.providerId !== "password"));
-      const signer = verified ? await getSigner() : null;
 
-      let resumedWorkspace: WorkspaceOut | null = null;
-      if (signer) {
-        const slug = await loadWorkspaceSlug();
-        if (slug) {
-          try {
-            const url = `${window.location.origin}/api/workspaces/${slug}`;
-            const proof = await nip98.getToken(url, "GET", (e) => signer.signEvent(e), true);
-            resumedWorkspace = await api.getWorkspace(slug, proof);
-          } catch {
-            resumedWorkspace = null;
-          }
+      // The Account is the source of truth for which Identity this person
+      // has: a local key that isn't the linked one must not be signed with,
+      // and onboarding must restore rather than generate over it (#36).
+      let accountOut: api.AccountOut | null = null;
+      if (verified && firebaseUser) {
+        try {
+          accountOut = await api.getAccount(await firebaseUser.getIdToken());
+        } catch {
+          accountOut = null;
         }
       }
 
+      let signer = verified ? await getSigner() : null;
+      if (signer && !localIdentityMatches(await signer.getPublicKey(), accountOut?.pubkey ?? null)) {
+        signer = null;
+      }
+
+      let resumedWorkspace: WorkspaceOut | null = null;
+      if (signer) {
+        resumedWorkspace = await resumeWorkspace(signer, firebaseUser);
+      }
+
+      setAccount(accountOut);
       setWorkspace(resumedWorkspace);
       setSigner(signer);
       setView(
@@ -79,12 +122,14 @@ export function App() {
     return (
       <OnboardingScreen
         user={user}
+        account={account}
         accountPassword={accountPassword}
         onComplete={async (ws) => {
           setWorkspace(ws);
           setSigner(await getSigner());
           setView("app");
         }}
+        onAccountChanged={setAccount}
       />
     );
   }
@@ -98,6 +143,7 @@ export function App() {
           onSignOut={async () => {
             await clearIdentity();
             await signOut(auth);
+            setAccount(null);
             setWorkspace(null);
             setView("auth");
           }}

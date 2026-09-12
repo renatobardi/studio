@@ -10,6 +10,17 @@ test("onboarding through verified Key Backup", async ({ page }) => {
   await page.getByLabel("Password").fill(testAccount.password());
   await page.getByRole("button", { name: "Sign in" }).click();
 
+  // First-time onboarding is a one-time state for any Account: once it has an
+  // Identity, the app may only restore it (#36). Flow 6 covers that repeatable
+  // case; this flow only has something to assert on a virgin Account.
+  await expect(
+    page.getByRole("heading", { name: /Enter your invite|Restore your Identity/ }),
+  ).toBeVisible({ timeout: 15_000 });
+  const alreadyOnboarded = await page
+    .getByRole("heading", { name: "Restore your Identity" })
+    .isVisible();
+  test.skip(alreadyOnboarded, "this Account already has an Identity — see identity-preserved.spec.ts");
+
   await page.getByPlaceholder("Invite code").fill(testInviteCode());
   await page.getByRole("button", { name: "Continue" }).click();
 
