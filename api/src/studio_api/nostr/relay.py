@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from studio_api.nostr.auth_event import AuthRejection, verify_auth_event
+from studio_api.nostr.kinds import KindClass, kind_class
 from studio_api.nostr.model import Filter, NostrEvent, all_tag_values, first_tag_value
 from studio_api.nostr.store import EventStore, LiveFanout, PublishResult
 from studio_api.nostr.validation import ROOT_TAG_BY_KIND, validate_event
@@ -44,6 +45,13 @@ WORKSPACE_WIDE_KINDS = frozenset({0, 10002, 10050, 10063, *MODERATION_KINDS})
 # the pubkey named in the event's own `p` tag — never by Channel/Workspace
 # membership alone, and never omitted just because there's no `h` tag.
 GIFT_WRAP_KINDS = frozenset({1059})
+
+_REJECTION_BY_RESULT = {
+    PublishResult.DUPLICATE: "duplicate: already have this event",
+    PublishResult.SUPERSEDED: (
+        "duplicate: a newer version of this replaceable event already exists"
+    ),
+}
 
 
 class RelayAuthorizer(Protocol):
@@ -265,21 +273,18 @@ class RelayConnection:
         except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
-        if result is PublishResult.OK:
-            await self._record_media_references(event, channel_id)
-        if result is PublishResult.DUPLICATE:
-            await self._send(["OK", event_id, False, "duplicate: already have this event"])
-        elif result is PublishResult.SUPERSEDED:
-            await self._send(
-                [
-                    "OK",
-                    event_id,
-                    False,
-                    "duplicate: a newer version of this replaceable event already exists",
-                ]
-            )
-        else:
-            await self._send(["OK", event_id, True, ""])
+        if result is not PublishResult.OK:
+            await self._send(["OK", event_id, False, _REJECTION_BY_RESULT[result]])
+            return
+        await self._on_accepted(event, channel_id)
+        await self._send(["OK", event_id, True, ""])
+
+    async def _on_accepted(self, event: NostrEvent, channel_id: str | None) -> None:
+        await self._record_media_references(event, channel_id)
+        if kind_class(event["kind"]) is KindClass.EPHEMERAL:
+            # Never stored, so the live query will never report it: the relay
+            # hands it to the fan-out itself (ticket #43).
+            await self._fanout.deliver(event, workspace_slug=self._store.workspace_slug)
 
     async def _record_media_references(self, event: NostrEvent, channel_id: str | None) -> None:
         """Ticket #6/#7: after an event is accepted, record which blobs it references — by
@@ -317,29 +322,52 @@ class RelayConnection:
             self._cancel_subscription(sub_id)
 
         filters = [parse_filter(raw) for raw in raw_filters]
-        try:
-            events = await self._store.query(filters)
-        except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
-            await self._send(["CLOSED", sub_id, f"error: {error}"])
-            return
-        for event in events:
-            if await self._may_read(event):
-                await self._send(["EVENT", sub_id, event])
-        await self._send(["EOSE", sub_id])
-
+        # Subscribe *before* reading the snapshot: anything published while the
+        # historical query runs lands in this queue instead of falling into the
+        # gap between the two (ticket #43). It is drained after EOSE, minus
+        # whatever the snapshot already carried.
         queue = await self._fanout.subscribe(
             self._full_sub_id(sub_id), filters, workspace_slug=self._store.workspace_slug
         )
+        # Live from here on, so the subscription counts as open even while the
+        # snapshot is still being sent: whatever ends it — CLOSE, a failure, the
+        # connection closing — releases its queue and task through the usual path.
         self._sub_ids.add(sub_id)
-        self._tasks[sub_id] = asyncio.create_task(self._forward_live_events(sub_id, queue))
+        try:
+            events = await self._store.query(filters)
+        except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
+            self._cancel_subscription(sub_id)
+            await self._send(["CLOSED", sub_id, f"error: {error}"])
+            return
+        snapshot_ids: set[str] = set()
+        for event in events:
+            if await self._may_read(event):
+                snapshot_ids.add(event["id"])
+                await self._send(["EVENT", sub_id, event])
+        await self._send(["EOSE", sub_id])
+
+        if sub_id not in self._sub_ids:
+            return  # closed while the snapshot was in flight
+        self._tasks[sub_id] = asyncio.create_task(
+            self._forward_live_events(sub_id, queue, snapshot_ids)
+        )
 
     def _handle_close(self, sub_id: str) -> None:
         self._cancel_subscription(sub_id)
 
     async def _forward_live_events(
-        self, sub_id: str, queue: "asyncio.Queue[NostrEvent]"
+        self, sub_id: str, queue: "asyncio.Queue[NostrEvent]", snapshot_ids: set[str]
     ) -> None:
+        """Drains the live queue, skipping whatever the snapshot already sent.
+        Those ids are kept for the subscription's life, not just for the
+        buffered backlog: the live query can report an event stored during the
+        snapshot well after the backlog is drained, and that late copy is a
+        duplicate just the same."""
         while True:
             event = await queue.get()
-            if await self._may_read(event):
-                await self._send(["EVENT", sub_id, event])
+            if event["id"] not in snapshot_ids:
+                await self._deliver(sub_id, event)
+
+    async def _deliver(self, sub_id: str, event: NostrEvent) -> None:
+        if await self._may_read(event):
+            await self._send(["EVENT", sub_id, event])
