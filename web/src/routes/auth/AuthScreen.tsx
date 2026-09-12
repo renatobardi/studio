@@ -17,9 +17,14 @@ type AuthStep = "signin" | "signup" | "verify" | "reset" | "sent";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AuthScreen({
+  notice,
   pendingUnverifiedUser,
   onAuthenticated,
 }: {
+  // What the previous session left behind on this browser, when signing out
+  // could not wipe all of it (#39) — shown here because this is the screen
+  // sign-out returns to.
+  notice?: string | null;
   // Set when Firebase already has a signed-in-but-unverified user (e.g. a
   // page reload mid-verification) — starts straight at the verify step.
   pendingUnverifiedUser?: User | null;
@@ -161,6 +166,12 @@ export function AuthScreen({
           <div style={{ fontSize: 24 }}>🌸</div>
           <h1 style={{ fontSize: 18, margin: 0 }}>Studio</h1>
         </div>
+
+        {notice && (
+          <div className="error-banner" data-testid="sign-out-notice">
+            {notice}
+          </div>
+        )}
 
         {error && (
           <div className="error-banner">

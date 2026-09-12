@@ -4,6 +4,7 @@ import { applyAppearance, loadAppearance } from "./lib/appearance";
 import * as api from "./lib/api";
 import type { WorkspaceOut } from "./lib/api";
 import { auth } from "./lib/firebase";
+import { pruneMediaCaches } from "./lib/mediaCache";
 import {
   clearIdentity,
   getSigner,
@@ -53,6 +54,7 @@ export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
   const [signer, setSigner] = useState<Signer | null>(null);
   const [account, setAccount] = useState<api.AccountOut | null>(null);
+  const [signOutWarning, setSignOutWarning] = useState<string | null>(null);
 
   useEffect(() => {
     loadAppearance().then(applyAppearance);
@@ -95,6 +97,12 @@ export function App() {
         signer = null;
       }
 
+      // Whoever holds this browser now keeps their own cached media and nobody
+      // else's — including the leftovers of an Identity that never signed out
+      // cleanly (#39). Best effort: booting the app is not the moment to fail
+      // on it, and sign-out is where a failed cleanup gets reported.
+      await pruneMediaCaches(signer ? await signer.getPublicKey() : null).catch(() => {});
+
       let resumedWorkspace: WorkspaceOut | null = null;
       if (signer) {
         resumedWorkspace = await resumeWorkspace(signer, firebaseUser);
@@ -119,6 +127,7 @@ export function App() {
   if (view === "auth") {
     return (
       <AuthScreen
+        notice={signOutWarning}
         pendingUnverifiedUser={user && !isEmailVerified(user) ? user : null}
         onAuthenticated={(authedUser, password) => {
           setUser(authedUser);
@@ -152,7 +161,14 @@ export function App() {
           workspace={workspace}
           signer={signer}
           onSignOut={async () => {
-            await clearIdentity();
+            // What could not be wiped is said out loud on the screen this
+            // returns to, rather than passed off as a clean sign-out (#39).
+            setSignOutWarning(null);
+            try {
+              await clearIdentity();
+            } catch (error) {
+              setSignOutWarning(error instanceof Error ? error.message : "Some of this session stayed on this browser.");
+            }
             await signOut(auth);
             setAccount(null);
             setWorkspace(null);

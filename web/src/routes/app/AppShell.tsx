@@ -8,7 +8,6 @@ import {
   keepSelection,
 } from "../../lib/channelAccess";
 import {
-  clearIdentity,
   loadChannelId,
   loadChannelReadAt,
   storeChannelId,
@@ -173,7 +172,8 @@ export function AppShell({
 
   const handleSignOut = async () => {
     client.close();
-    await clearIdentity();
+    // The wipe itself belongs to whoever owns the screen this returns to: it
+    // has somewhere to report a cleanup that failed (App.tsx, #39).
     onSignOut();
   };
 

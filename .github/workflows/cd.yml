@@ -187,7 +187,7 @@ jobs:
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
 
-      - name: Playwright smoke (flows 2, 3, 5, 6 & 7; flow 1 self-skips) against the just-deployed studio-test
+      - name: Playwright smoke (flows 2, 3, 5, 6, 7 & 8; flow 1 self-skips) against the just-deployed studio-test
         working-directory: web
         env:
           STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
@@ -199,7 +199,7 @@ jobs:
           # membership before it publishes anything — see e2e/helpers.ts.
           STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
           STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
-          # Flow 4 (ticket #7): a second, independently-seeded Account — see
+          # Flows 4 & 8 (tickets #7/#45): a second, independently-seeded Account — see
           # e2e/helpers.ts's testAccountTwo and scripts/ops/seed-e2e-test-account-2.mjs.
           STUDIO_TEST_EMAIL_2: ${{ secrets.STUDIO_TEST_EMAIL_2 }}
           STUDIO_TEST_PASSWORD_2: ${{ secrets.STUDIO_TEST_PASSWORD_2 }}

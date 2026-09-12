@@ -2,7 +2,7 @@ import { del, get, set } from "idb-keyval";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import { secretKeyFromNsec } from "./identity";
 import type { ReadState } from "./unread";
-import { clearMediaCache } from "./mediaCache";
+import { pruneMediaCaches } from "./mediaCache";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
@@ -38,13 +38,28 @@ export async function storeIdentity(nsec: string): Promise<void> {
  * Wipes the locally-stored key and every trace of the session, e.g. on
  * sign-out — the cached media included. Does not touch a NIP-07 extension's
  * own storage.
+ *
+ * Everything is attempted before anything is reported: a cache that refuses to
+ * go must not leave the key behind. Throws when some of it survived, so the
+ * caller can say so — sign-out must not claim a cleanup it did not get (#39).
  */
 export async function clearIdentity(): Promise<void> {
-  await del(STORE_KEY);
-  await del(WORKSPACE_SLUG_KEY);
-  await del(CHANNEL_ID_KEY);
-  await del(CHANNEL_READ_KEY);
-  await clearMediaCache();
+  const failures = new Set<string>();
+  for (const key of [STORE_KEY, WORKSPACE_SLUG_KEY, CHANNEL_ID_KEY, CHANNEL_READ_KEY]) {
+    try {
+      await del(key);
+    } catch {
+      failures.add("your Identity and session on this device");
+    }
+  }
+  try {
+    await pruneMediaCaches(null);
+  } catch {
+    failures.add("images already downloaded to this browser");
+  }
+  if (failures.size > 0) {
+    throw new Error(`Signed out, but this browser kept ${[...failures].join(" and ")}. Clear its site data.`);
+  }
 }
 
 /**

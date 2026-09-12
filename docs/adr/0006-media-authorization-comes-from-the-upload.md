@@ -38,7 +38,8 @@ We decided:
   means attributing blobs to a Workspace — a change to the table, the upload and the fetch, with
   a migration for existing rows. It is not done here.
 - Revoking access stops new redirects being issued; it cannot reach back into presigned URLs — or
-  copies — already delivered. A URL stays valid for its remaining TTL (60 seconds).
+  copies — already delivered. A URL stays valid for its remaining TTL (60 seconds). What a
+  browser already cached is reached only as far as ADR-0007 reaches: that device, that session.
 - Recipients are recorded as declared, so a Member may name any pubkey as the reader of their own
   upload. They could hand over the bytes directly anyway; the fetch still requires Membership.
 - Recipients now live in `blob_dm_recipient`. The `blob_dm_ref` rows the relay used to write from
