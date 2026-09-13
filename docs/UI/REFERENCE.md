@@ -78,6 +78,31 @@ Settings além de Appearance/Profile, popup Google simulado.
 3. **Etapas sem referência** (restore, gate de senha da conta, criar Workspace): seguem a
    composição da etapa mais próxima (título 20px/400, `max-width` do passo, CTA 320px).
 
+## Aceite visual (issue #73)
+
+Duas frentes, uma determinística e uma autenticada:
+
+- **Flow 10 — `web/e2e/visual.spec.ts`** compara os mesmos ids desta matriz renderizados por
+  `web/preview.html` (componentes reais sobre fixtures assinadas, relay e API falsos, relógio UTC,
+  Inter conferida) com baselines em `web/e2e/visual.spec.ts-snapshots/`. Roda com
+  `cd web && bun run test:visual` (sobe/reaproveita o Vite). Sem `STUDIO_PREVIEW_URL` o flow se
+  pula — o CD roda contra o build de produção, onde `preview.html` não existe.
+- **Flow 11 — `web/e2e/visual-live.spec.ts`** entra no studio-test com a conta de teste e
+  captura canal, thread, membros, DMs e Settings em 1440×900 e 390×844, light e dark, para
+  `web/test-results/visual-live/` (+ `manifest.json` com SHA, URL e browser). O CD liga
+  `STUDIO_VISUAL_CAPTURE=1` e sobe as PNGs no artefato `playwright-screenshots`. Dados reais do
+  Workspace de teste variam entre runs — por isso é captura para conferência manual, não baseline.
+
+Tolerância: `maxDiffPixelRatio 0.002`, `threshold 0.2` — o antialiasing de texto oscila em
+sub-pixel mesmo numa mesma máquina; um componente que mudou de posição, tamanho ou cor passa
+disso com folga. Nada é mascarado: as fixtures são fixas. Os baselines levam sufixo de plataforma
+(`-darwin`, `-linux`): texto rasteriza diferente por SO, então um baseline gerado no macOS nunca
+é comparado no Linux.
+
+**Política de baseline:** gerar com `bun run test:visual -- --update-snapshots`, conferir cada PNG
+contra `docs/UI/reference/` e só então commitar. Este PR **não** commita baselines: a aceitação
+é do dono. `--update-snapshots` para "deixar o CI verde" não é aceite.
+
 ## Sonar
 
 `docs/UI/design/**` ainda não está excluído da análise (ver `docs/delivery-gates.md`); o bundle

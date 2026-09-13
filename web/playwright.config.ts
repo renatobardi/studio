@@ -19,8 +19,29 @@ const url = new URL(baseURL);
 const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
 const insecureOrigin = url.protocol === "http:" && !isLocalhost ? url.origin : null;
 
+/** Flow 10 (visual.spec.ts) draws preview.html from a dev server; `bun run test:visual` sets
+ * STUDIO_PREVIEW_URL and this starts (or reuses) that server. Absent, the flow self-skips. */
+const previewUrl = process.env.STUDIO_PREVIEW_URL;
+
 export default defineConfig({
   testDir: "./e2e",
+  ...(previewUrl
+    ? {
+        webServer: {
+          command: "bunx vite --host localhost --port 5173 --strictPort",
+          url: `${previewUrl}/preview.html`,
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+      }
+    : {}),
+  expect: {
+    // Sub-pixel antialiasing differs run to run even on one machine; a component that moved,
+    // resized or recoloured is well above 0.2% of the page. Baselines carry the platform
+    // suffix on purpose: text rasterises differently per OS, so a baseline drawn on macOS is
+    // never compared against Linux (docs/UI/REFERENCE.md, "Aceite visual").
+    toHaveScreenshot: { maxDiffPixelRatio: 0.002, threshold: 0.2, animations: "disabled", caret: "hide" },
+  },
   fullyParallel: false,
   // restore.spec.ts needs onboarding.spec.ts's Key Backup to already exist
   // for the same test account — must run in file order, one worker.

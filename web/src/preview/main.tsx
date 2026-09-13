@@ -22,7 +22,7 @@ import { ALL_EVENTS, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
 /** Each screen: what mounts, then the clicks that reach it — the same clicks a person makes. */
 const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Step[] }> = {
   "auth-signin": { mount: "auth", steps: [] },
-  "auth-signup": { mount: "auth", steps: [{ click: "text=Create one" }] },
+  "auth-signup": { mount: "auth", steps: [{ click: "text=Don’t have an account? Create one" }] },
   "auth-reset": { mount: "auth", steps: [{ click: "text=Forgot password?" }] },
   "auth-signin-error": { mount: "auth", steps: [{ type: ['input[type="email"]', "not-an-email"] }, { click: "text=Sign in" }] },
   "onboarding-invite": { mount: "onboarding", steps: [] },

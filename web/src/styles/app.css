@@ -1292,18 +1292,54 @@ body {
   background: color-mix(in oklab, var(--primary) 8%, transparent);
 }
 
-/* The quick picker only shows while the row is hovered or focused — the prototype keeps
-   reactions out of the way until asked for. */
-.reaction-picker {
-  display: flex;
+.reaction-count {
+  color: var(--muted-foreground);
+}
+
+/* Hover actions — the quick reactions and, for a Message with no thread yet, "Reply in
+   thread" — float at the row's top right and only show while the row is hovered or focused,
+   so a row is as tall as its content, as in the prototype. */
+.message-actions {
+  position: absolute;
+  top: -10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
   gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--background);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
   opacity: 0;
   transition: opacity 150ms;
 }
 
-.message:hover .reaction-picker,
-.message:focus-within .reaction-picker {
+.message:hover .message-actions,
+.message:focus-within .message-actions {
   opacity: 1;
+}
+
+.reaction-picker {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.message-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.message-action:hover {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  color: var(--foreground);
 }
 
 .reaction-picker-item {

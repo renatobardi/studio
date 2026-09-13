@@ -38,7 +38,7 @@ import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Composer } from "./Composer";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
-import { ReactionBar } from "./ReactionBar";
+import { QuickReactions, ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
 type ReadyAttachment = { descriptor: BlobDescriptor; dim?: string };
@@ -61,6 +61,9 @@ function replyCountLabel(count: number): string {
   if (count === 1) return "1 reply";
   return `${count} replies`;
 }
+
+/** Lucide message-square, as the hover action's glyph. */
+const THREAD_GLYPH = "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z";
 
 export function Timeline({
   client,
@@ -230,7 +233,7 @@ export function Timeline({
             return (
               <li
                 key={message.id}
-                className={`message${message.id === openThreadRootId ? " active" : ""}${continuation ? " continuation" : ""}`}
+                className={`message${message.id === openThreadRootId ? " active" : ""}${continuation ? " continuation" : ""}${replyCount > 0 ? " has-replies" : ""}`}
                 data-row="true"
                 data-testid="timeline-message"
               >
@@ -256,16 +259,36 @@ export function Timeline({
                     onAdd={(emoji) => void react(target, emoji)}
                     onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
                   />
-                  <div className="thread-open-row">
+                  {/* The thread pill sits under a Message that has replies, as in the prototype;
+                      a Message without any offers "Reply in thread" among its hover actions. */}
+                  {replyCount > 0 && (
+                    <div className="thread-open-row">
+                      <button
+                        className="thread-open"
+                        onClick={() => onOpenThread({ ...target, content: message.content })}
+                        data-testid="open-thread"
+                      >
+                        {replyCountLabel(replyCount)}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <span className="message-actions">
+                  <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
+                  {replyCount === 0 && (
                     <button
-                      className="thread-open"
+                      className="message-action"
                       onClick={() => onOpenThread({ ...target, content: message.content })}
                       data-testid="open-thread"
+                      aria-label="Reply in thread"
+                      title="Reply in thread"
                     >
-                      {replyCountLabel(replyCount)}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d={THREAD_GLYPH} />
+                      </svg>
                     </button>
-                  </div>
-                </div>
+                  )}
+                </span>
               </li>
             );
           })}
