@@ -43,7 +43,7 @@ const at = (hh: number, mm: number) => DAY + (hh - 8) * 3600 + mm * 60;
 export const WORKSPACE: WorkspaceOut = {
   slug: "family",
   name: "Studio HQ",
-  relay_url: "ws://preview.invalid/relay",
+  relay_url: "wss://preview.invalid/relay",
   media_url: "/media",
   role: "owner",
 };

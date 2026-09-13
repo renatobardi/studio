@@ -107,8 +107,9 @@ function serve(dir) {
   });
 }
 
-// The runtime keeps no handle to the mounted logic instance; the React fiber tree does.
-function findLogic() {
+// The runtime keeps no handle to the mounted logic instance; the React fiber tree does. Runs
+// inside the page: it walks the fibers and patches the state in one go.
+function applyState([state, theme]) {
   for (const n of [document.body, ...document.body.querySelectorAll("*")]) {
     const k = Object.keys(n).find((k) => k.startsWith("__reactFiber$") || k.startsWith("__reactContainer$"));
     if (!k) continue;
@@ -118,11 +119,14 @@ function findLogic() {
       const f = stack.pop();
       if (!f || seen.has(f)) continue;
       seen.add(f);
-      if (f.stateNode && f.stateNode.logic && f.stateNode.logic.setState) return f.stateNode.logic;
+      if (f.stateNode && f.stateNode.logic && f.stateNode.logic.setState) {
+        f.stateNode.logic.setState({ ...state, theme, dialog: null, openMenu: null, hoveredGroup: null });
+        return;
+      }
       stack.push(f.return, f.child, f.sibling);
     }
   }
-  return null;
+  throw new Error("prototype logic instance not found");
 }
 
 const AFTER = {
@@ -145,7 +149,8 @@ async function capture() {
       // not used by any Studio screen. Blocking it keeps the capture offline and repeatable.
       await context.route(/fonts\.googleapis\.com|fonts\.gstatic\.com/, (route) => route.abort());
       const page = await context.newPage();
-      await page.goto(`http://127.0.0.1:${port}/Studio.dc.html`);
+      // Plain HTTP to the in-process loopback server above — nothing leaves this machine.
+      await page.goto(`http://127.0.0.1:${port}/Studio.dc.html`); // NOSONAR
       await page.waitForFunction(() => document.querySelector("[data-screen-label]") !== null);
       await page.evaluate(() => document.fonts.ready);
       const inter = await page.evaluate(() => document.fonts.check('12px "Inter Variable"'));
@@ -154,14 +159,7 @@ async function capture() {
       for (const entry of matrix) {
         if (name === "mobile" && !entry.mobile) continue;
         for (const dark of entry.dark && name === "desktop" ? [false, true] : [false]) {
-          await page.evaluate(
-            ([source, state, theme]) => {
-              const logic = new Function(`return (${source})()`)();
-              if (!logic) throw new Error("prototype logic instance not found");
-              logic.setState({ ...state, theme, dialog: null, openMenu: null, hoveredGroup: null });
-            },
-            [findLogic.toString(), entry.state, dark ? "dark" : "light"],
-          );
+          await page.evaluate(applyState, [entry.state, dark ? "dark" : "light"]);
           await page.waitForTimeout(250);
           if (entry.after) await AFTER[entry.after](page);
           await page.waitForTimeout(250);

@@ -19,6 +19,25 @@ import { FakeRelayClient, previewSigner } from "./fakeRelay";
 import { Steps, type Step } from "./Steps";
 import { ALL_EVENTS, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
 
+const NEXT: Step = { click: "text=Continue" };
+const PASSPHRASE_FIELD = 'input[placeholder="Backup passphrase"]';
+const PASSPHRASE = "preview passphrase 12";
+
+/** Onboarding is walked, not jumped to: each step's clicks are the previous step's plus its own. */
+const ONBOARDING_TO = (() => {
+  const profile: Step[] = [{ type: ['input[placeholder="Invite code"]', "PREVIEW"] }, NEXT];
+  const avatar: Step[] = [...profile, { type: ['input[placeholder="Your name"]', "Renato Bardi"] }, NEXT];
+  const backup: Step[] = [...avatar, NEXT];
+  const backupOptions: Step[] = [...backup, NEXT];
+  const download: Step[] = [
+    ...backupOptions,
+    { type: [PASSPHRASE_FIELD, PASSPHRASE] },
+    { type: ['input[placeholder="Confirm passphrase"]', PASSPHRASE] },
+    { click: "text=Create backup" },
+  ];
+  return { profile, avatar, backup, backupOptions, download };
+})();
+
 /** Each screen: what mounts, then the clicks that reach it — the same clicks a person makes. */
 const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Step[] }> = {
   "auth-signin": { mount: "auth", steps: [] },
@@ -26,77 +45,15 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
   "auth-reset": { mount: "auth", steps: [{ click: "text=Forgot password?" }] },
   "auth-signin-error": { mount: "auth", steps: [{ type: ['input[type="email"]', "not-an-email"] }, { click: "text=Sign in" }] },
   "onboarding-invite": { mount: "onboarding", steps: [] },
-  "onboarding-profile": { mount: "onboarding", steps: [{ type: ['input[placeholder="Invite code"]', "PREVIEW"] }, { click: "text=Continue" }] },
-  "onboarding-avatar": {
-    mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-    ],
-  },
-  "onboarding-backup": {
-    mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-    ],
-  },
-  "onboarding-backup-options": {
-    mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-    ],
-  },
-  "onboarding-download": {
-    mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Backup passphrase"]', "preview passphrase 12"] },
-      { type: ['input[placeholder="Confirm passphrase"]', "preview passphrase 12"] },
-      { click: "text=Create backup" },
-    ],
-  },
-  "onboarding-backup-revealed": {
-    mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { click: '[aria-label="Reveal private key"]' },
-    ],
-  },
+  "onboarding-profile": { mount: "onboarding", steps: ONBOARDING_TO.profile },
+  "onboarding-avatar": { mount: "onboarding", steps: ONBOARDING_TO.avatar },
+  "onboarding-backup": { mount: "onboarding", steps: ONBOARDING_TO.backup },
+  "onboarding-backup-revealed": { mount: "onboarding", steps: [...ONBOARDING_TO.backup, { click: '[aria-label="Reveal private key"]' }] },
+  "onboarding-backup-options": { mount: "onboarding", steps: ONBOARDING_TO.backupOptions },
+  "onboarding-download": { mount: "onboarding", steps: ONBOARDING_TO.download },
   "onboarding-setup": {
     mount: "onboarding",
-    steps: [
-      { type: ['input[placeholder="Invite code"]', "PREVIEW"] },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Your name"]', "Renato Bardi"] },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { click: "text=Continue" },
-      { type: ['input[placeholder="Backup passphrase"]', "preview passphrase 12"] },
-      { type: ['input[placeholder="Confirm passphrase"]', "preview passphrase 12"] },
-      { click: "text=Create backup" },
-      { type: ['input[placeholder="Backup passphrase"]', "preview passphrase 12"] },
-      { click: "text=Verify" },
-    ],
+    steps: [...ONBOARDING_TO.download, { type: [PASSPHRASE_FIELD, PASSPHRASE] }, { click: "text=Verify" }],
   },
   channel: { mount: "app", steps: [] },
   "channel-thread": { mount: "app", steps: [{ click: "text=4 replies" }] },
