@@ -40,19 +40,24 @@ export function AccountPasswordGate({
 
   return (
     <>
-      {error && <div className="error-banner">{error}</div>}
+      {error && <div className="error-banner onboarding-error">{error}</div>}
       <h1 className="onboarding-title">Confirm your account password</h1>
-      <p className="meta">
+      <p className="onboarding-body">
         Your password is never stored, so we need it again to check that your Key Backup passphrase
         is a different one.
       </p>
+      <div className="onboarding-form">
+        <label className="field">
+          <span className="field-label">Account password</span>
+          <input
+            type="password"
+            placeholder="Account password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+      </div>
       <div className="onboarding-actions">
-        <input
-          type="password"
-          placeholder="Account password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
         <button className="btn btn-primary btn-block" disabled={busy || !password} onClick={confirm}>
           Confirm
         </button>

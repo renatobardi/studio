@@ -309,30 +309,220 @@ body {
   background: color-mix(in oklab, var(--border) 45%, transparent);
 }
 
-.onboarding-shell {
+/* Auth (#69): the account screens sit on muted/40, a 352px column — sakura, title and subtitle
+   outside the card, the card holding fields, error and CTAs, the switch link and footnote below. */
+.auth-screen {
+  position: relative;
+  display: flex;
   min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 32px 24px;
+  background: color-mix(in oklab, var(--muted) 40%, transparent);
+}
+
+.auth-column {
+  display: flex;
+  width: 100%;
+  max-width: 352px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.auth-title {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  text-wrap: pretty;
+}
+
+.auth-body {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.auth-card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: var(--radius-2xl);
+  background: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.auth-fields,
+.auth-actions {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.auth-field-label {
+  padding-left: 12px;
+}
+
+.auth-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auth-forgot {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+
+.auth-forgot:hover {
+  color: var(--foreground);
+}
+
+.auth-field-hint {
+  padding-left: 12px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
+}
+
+.auth-panel-plain {
+  padding: 0;
+  background: transparent;
+}
+
+.auth-panel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+
+.auth-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, oklch(0.6 0.16 150) 16%, transparent);
+  color: oklch(0.5 0.14 150);
+}
+
+.auth-panel-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.auth-panel-mono {
+  font-family: ui-monospace, monospace;
+}
+
+.auth-panel-meta {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+.auth-resend {
+  align-self: flex-start;
+}
+
+.auth-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.auth-footnote {
+  margin: 0;
+  max-width: 300px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.6;
+  color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+  text-wrap: pretty;
+}
+
+/* Onboarding (#69): sakura, progress dots and the account chip in the header; each step in
+   its own column (src/lib/onboardingLayout.ts), CTA 320px wide, Back in the footer. */
+.onboarding-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
 }
 
 .onboarding-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 20px 24px;
 }
 
 .onboarding-progress {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   align-items: center;
+  margin: 0 auto;
 }
 
 .onboarding-progress .dot {
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--foreground) 30%, transparent);
+  display: block;
   width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 30%, transparent);
+  transition: width 150ms;
 }
 
 .onboarding-progress .dot.active {
@@ -341,54 +531,188 @@ body {
 }
 
 .account-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  max-width: 190px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
   font-size: 10px;
+  color: var(--muted-foreground);
 }
 
-.account-chip .avatar {
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  display: flex;
+.account-chip-avatar {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.account-chip-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .onboarding-content {
-  flex: 1;
   display: flex;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  overflow-y: auto;
+  padding: 24px 24px 32px;
+}
+
+.onboarding-step {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  gap: 16px;
-  padding: 24px;
 }
 
 .onboarding-title {
+  margin: 0;
   font-size: 20px;
   font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  text-wrap: pretty;
+}
+
+.onboarding-body {
+  margin: 16px 0 0;
+  max-width: 460px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.onboarding-error {
+  width: 100%;
+  max-width: 500px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.onboarding-form {
+  display: flex;
+  width: 100%;
+  max-width: 328px;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 32px;
+  text-align: left;
+}
+
+.onboarding-form .field input {
+  background: var(--background);
 }
 
 .onboarding-actions {
   display: flex;
+  width: 100%;
+  max-width: 320px;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 320px;
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.onboarding-name {
+  width: 100%;
+  margin-top: 40px;
+  padding: 8px 0;
+  border: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  background: transparent;
+  outline: none;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  color: var(--foreground);
+}
+
+.onboarding-name:focus-visible {
+  border-bottom-color: var(--ring);
+}
+
+.onboarding-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 152px;
+  height: 152px;
+  margin-top: 40px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  font-size: 64px;
+}
+
+.onboarding-avatar-caption {
+  margin: 12px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.onboarding-emoji-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.onboarding-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.onboarding-emoji.active {
+  background: color-mix(in oklab, var(--muted) 80%, transparent);
+}
+
+.onboarding-key {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 32px;
+  padding: 12px 14px;
+  border-radius: var(--radius-2xl);
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
 }
 
 .nsec-reveal {
-  font-family: monospace;
-  padding: 10px;
-  border-radius: var(--radius-lg);
-  background: var(--muted);
-  word-break: break-all;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
   filter: blur(4px);
   user-select: none;
   transition: filter 150ms;
@@ -397,6 +721,45 @@ body {
 .nsec-reveal.revealed {
   filter: none;
   user-select: text;
+}
+
+.onboarding-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.onboarding-card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 32px;
+  padding: 20px;
+  border-radius: var(--radius-2xl);
+  background: var(--card);
+  text-align: left;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.onboarding-card-action {
+  align-self: flex-start;
+}
+
+.onboarding-footer {
+  flex-shrink: 0;
+  padding: 0 24px 20px;
+}
+
+.onboarding-back {
+  gap: 6px;
+}
+
+.onboarding-back:hover {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
 }
 
 /* App shell (#68): the prototype's persistent 256px sidebar beside a main column, the whole
