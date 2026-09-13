@@ -173,7 +173,8 @@ export function Timeline({
         setDraft((current) => draftAfterSend(current, sentDraft));
         // Only what went out: a photo picked while this was publishing stays in the composer.
         for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
-        setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
+        const sentIds = new Set(sent.map((attachment) => attachment.id));
+        setAttachments((prev) => prev.filter((attachment) => !sentIds.has(attachment.id)));
       } catch (error) {
         setSendError(publishFailureMessage(error));
       } finally {

@@ -138,7 +138,8 @@ export function ConversationView({
           setDraft((current) => draftAfterSend(current, attempt.sentDraft));
           // Only what went out: a photo picked while this was publishing stays in the composer.
           for (const attachment of attempt.sent) URL.revokeObjectURL(attachment.previewUrl);
-          setAttachments((prev) => prev.filter((attachment) => !attempt.sent.some((s) => s.id === attachment.id)));
+          const sentIds = new Set(attempt.sent.map((attachment) => attachment.id));
+          setAttachments((prev) => prev.filter((attachment) => !sentIds.has(attachment.id)));
         } else if (outcome === "undelivered") {
           // Nobody has it: the composer is still free to change what gets sent.
           setPartial(null);
