@@ -18,9 +18,17 @@ test.use({ timezoneId: "UTC", locale: "en-GB" });
 
 test("captures the shell on the deployed app", async ({ page, browserName }) => {
   test.slow();
+  await mkdir(OUT, { recursive: true });
+  // The sign-in screen is the one screen before authentication a fixed Account can show.
+  for (const [viewport, size] of Object.entries(VIEWPORTS) as ["desktop" | "mobile", { width: number; height: number }][]) {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+    await page.screenshot({ path: `${OUT}/${viewport}/auth-signin.png`, animations: "disabled", caret: "hide" });
+  }
+  await page.setViewportSize(VIEWPORTS.desktop);
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
-  await mkdir(OUT, { recursive: true });
 
   const shot = async (viewport: "desktop" | "mobile", name: string) => {
     await page.screenshot({ path: `${OUT}/${viewport}/${name}.png`, animations: "disabled", caret: "hide" });

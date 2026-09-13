@@ -71,9 +71,8 @@ Settings além de Appearance/Profile, popup Google simulado.
    móvel; #72 implementa só o que o HTML define (thread substitui a timeline e membros vira
    overlay quando o canal tem < 600px, `web/src/lib/paneLayout.ts`) e **não inventa** drawer/tabs.
    Reproduzido no app em `preview.html?screen=channel-thread` a 390×844: sem overflow horizontal,
-   a conversa com os mesmos ~134px do protótipo. **Precisa de decisão do dono** — opções:
-   (a) manter fiel ao HTML; (b) sidebar recolhível/drawer abaixo de um breakpoint (não existe no
-   protótipo, seria invenção); (c) pedir uma tela móvel ao design.
+   a conversa com os mesmos ~134px do protótipo. **Decidido pelo dono (13/09/2026): manter fiel
+   ao HTML.** Uma navegação móvel própria só entra quando o design entregar uma tela para ela.
 2. **Tela inicial após onboarding.** HTML vai para `inbox` (fora do MVP); o app abre Channels.
 3. **Etapas sem referência** (restore, gate de senha da conta, criar Workspace): seguem a
    composição da etapa mais próxima (título 20px/400, `max-width` do passo, CTA 320px).
@@ -100,8 +99,9 @@ disso com folga. Nada é mascarado: as fixtures são fixas. Os baselines levam s
 é comparado no Linux.
 
 **Política de baseline:** gerar com `bun run test:visual -- --update-snapshots`, conferir cada PNG
-contra `docs/UI/reference/` e só então commitar. Este PR **não** commita baselines: a aceitação
-é do dono. `--update-snapshots` para "deixar o CI verde" não é aceite.
+contra `docs/UI/reference/` e só então commitar. Os baselines de #65 foram gerados no macOS
+(`-darwin`) e entram no PR para conferência do dono no review — a aceitação é dele, não do
+run. `--update-snapshots` para "deixar o CI verde" não é aceite.
 
 ## Sonar
 

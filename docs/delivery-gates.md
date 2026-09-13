@@ -87,7 +87,8 @@ would only manufacture false assurance.
 
 `docs/UI/design/**` is not excluded from analysis yet, and it should be: a
 vendored, generated design artefact nothing imports, it accounts for 321 of the
-project's 392 findings on its own. The exclusion was written here and then
+project's 392 findings on its own — more since #66 vendored the Kubo bundle
+(`_ds_bundle.js`) next to it. The exclusion was written here and then
 withdrawn — the `SonarCloud Code Analysis` check run stopped being posted on
 exactly the branch that carried the properties file, so the file is out while
 that is being pinned down. Tracked in #76.
