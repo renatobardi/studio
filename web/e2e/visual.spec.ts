@@ -13,10 +13,7 @@ const previewUrl = process.env.STUDIO_PREVIEW_URL;
 
 test.skip(!previewUrl, "STUDIO_PREVIEW_URL not set — the visual flow needs the dev server's preview.html");
 
-const VIEWPORTS = {
-  desktop: { width: 1440, height: 900 },
-  mobile: { width: 390, height: 844 },
-} as const;
+import { VIEWPORTS } from "./viewports";
 
 /** The same ids as docs/UI/reference/<viewport>/<id>.png, where the harness can reach them. */
 const SCREENS: { id: string; screen: string; mobile?: boolean; dark?: boolean; query?: string }[] = [
@@ -28,8 +25,10 @@ const SCREENS: { id: string; screen: string; mobile?: boolean; dark?: boolean; q
   { id: "onboarding-profile", screen: "onboarding-profile", mobile: true },
   { id: "onboarding-avatar", screen: "onboarding-avatar" },
   { id: "onboarding-backup", screen: "onboarding-backup", mobile: true, dark: true },
+  { id: "onboarding-backup-revealed", screen: "onboarding-backup-revealed" },
   { id: "onboarding-backup-options", screen: "onboarding-backup-options" },
   { id: "onboarding-download", screen: "onboarding-download", mobile: true },
+  { id: "onboarding-setup", screen: "onboarding-setup" },
   { id: "channel", screen: "channel", mobile: true, dark: true },
   { id: "channel-thread", screen: "channel-thread", mobile: true, dark: true },
   { id: "channel-members", screen: "channel-members", mobile: true },

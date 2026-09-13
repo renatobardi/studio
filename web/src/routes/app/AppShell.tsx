@@ -219,6 +219,7 @@ export function AppShell({
           if (item.channelId) selectChannel(item.channelId);
           setMode(item.mode);
         }}
+        onSelectMode={setMode}
         ownName={pubkey ? displayName(ownProfiles, pubkey) : "…"}
         workspaceName={workspace.name}
         role={workspace.role}

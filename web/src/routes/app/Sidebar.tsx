@@ -2,7 +2,7 @@ import { Icon } from "../../components/icons/Icon";
 import { Sakura } from "../../components/brand/Sakura";
 import type { Theme } from "../../lib/appearance";
 import type { ConnectionState } from "../../lib/relay";
-import { initials, type SidebarGroup, type SidebarItem } from "../../lib/sidebar";
+import { initials, type SidebarGroup, type SidebarItem, type SidebarMode } from "../../lib/sidebar";
 import { ConnectionBadge } from "./ConnectionBadge";
 
 /** The persistent 256px sidebar of the prototype: grouped destinations above, the account —
@@ -11,6 +11,7 @@ import { ConnectionBadge } from "./ConnectionBadge";
 export function Sidebar({
   groups,
   onSelect,
+  onSelectMode,
   ownName,
   workspaceName,
   role,
@@ -21,6 +22,7 @@ export function Sidebar({
 }: Readonly<{
   groups: SidebarGroup[];
   onSelect: (item: SidebarItem) => void;
+  onSelectMode: (mode: SidebarMode) => void;
   ownName: string;
   workspaceName: string;
   role: string;
@@ -34,7 +36,13 @@ export function Sidebar({
       <div className="sidebar-scroll">
         {groups.map((group) => (
           <section key={group.label} className="sidebar-group">
-            <h2 className="sidebar-group-label">{group.label}</h2>
+            {group.mode ? (
+              <button className="sidebar-group-label" data-testid={group.testId} onClick={() => onSelectMode(group.mode!)}>
+                {group.label}
+              </button>
+            ) : (
+              <h2 className="sidebar-group-label">{group.label}</h2>
+            )}
             <nav className="sidebar-nav" aria-label={group.label}>
               {group.items.map((item) => (
                 <button

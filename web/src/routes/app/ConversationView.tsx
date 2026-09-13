@@ -200,8 +200,8 @@ export function ConversationView({
                     </div>
                   )}
                   {message.content && <div className="message-content">{message.content}</div>}
-                  {parseDmImetaTags(message.tags).map((dmAttachment, index) => (
-                    <DmAttachmentImage key={`${index}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
+                  {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
+                    <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
                   ))}
                 </div>
               </li>

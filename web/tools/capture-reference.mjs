@@ -17,7 +17,7 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 const designDir = resolve(here, "../../docs/UI/design");
 const outDir = resolve(here, "../../docs/UI/reference");
 
-export const VIEWPORTS = {
+const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
   mobile: { width: 390, height: 844 },
 };
@@ -59,7 +59,7 @@ const channel = (extra = {}) => ({
 
 /** The matrix. `after` runs in the page once the state is applied (a click the state alone
  * cannot express). `mobile: true` states are captured at both viewports. */
-export const MATRIX = [
+const MATRIX = [
   { id: "auth-signin", state: auth("signin"), mobile: true, dark: true },
   { id: "auth-signin-error", state: auth("signin", { authError: "That email and password don’t match an account.", authErrorCode: "auth/invalid-credential" }) },
   { id: "auth-signup", state: auth("signup"), mobile: true },
@@ -131,7 +131,10 @@ const AFTER = {
   },
 };
 
-export async function capture({ viewports = VIEWPORTS, matrix = MATRIX, out = outDir } = {}) {
+async function capture() {
+  const viewports = VIEWPORTS;
+  const matrix = MATRIX;
+  const out = outDir;
   const { server, port } = await serve(designDir);
   const browser = await chromium.launch();
   const written = [];

@@ -18,6 +18,9 @@ export interface SidebarItem {
 export interface SidebarGroup {
   label: string;
   items: SidebarItem[];
+  /** When the group's own label is a destination (Channels), the mode it opens and its hook. */
+  mode?: SidebarMode;
+  testId?: string;
 }
 
 /**
@@ -57,7 +60,7 @@ export function sidebarGroups({
     { id: "settings", label: "Settings", icon: "settings", active: mode === "settings", unread: false, testId: "mode-settings", mode: "settings" },
   ];
   return [
-    { label: "Channels", items: channelItems },
+    { label: "Channels", items: channelItems, mode: "channels", testId: "mode-channels" },
     { label: "Workspace", items: workspaceItems },
   ];
 }

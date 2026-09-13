@@ -34,6 +34,7 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Composer } from "./Composer";
 import { AttachmentImage } from "./AttachmentImage";
@@ -62,8 +63,6 @@ function replyCountLabel(count: number): string {
   return `${count} replies`;
 }
 
-/** Lucide message-square, as the hover action's glyph. */
-const THREAD_GLYPH = "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z";
 
 export function Timeline({
   client,
@@ -250,8 +249,8 @@ export function Timeline({
                     </div>
                   )}
                   {message.content && <div className="message-content">{message.content}</div>}
-                  {parseImetaTags(message.tags).map((descriptor, index) => (
-                    <AttachmentImage key={`${index}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                  {parseImetaTags(message.tags).map((descriptor, position) => (
+                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
                   ))}
                   <ReactionBar
                     groups={groupReactions(reactionsForMessage, deletionsForMessage)}
@@ -283,9 +282,7 @@ export function Timeline({
                       aria-label="Reply in thread"
                       title="Reply in thread"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d={THREAD_GLYPH} />
-                      </svg>
+                      <Icon name="message-square" size={14} />
                     </button>
                   )}
                 </span>

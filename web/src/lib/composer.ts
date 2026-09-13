@@ -11,14 +11,9 @@ export function clockTime(createdAt: number, timeZone?: string): string {
   );
 }
 
-const CONTINUATION_WINDOW_SECONDS = 5 * 60;
-
-/** Whether `current` continues `previous` — same author, within five minutes — and so shares
- * its avatar and header instead of repeating them. */
-export function isContinuation(
-  previous: { pubkey: string; created_at: number } | undefined,
-  current: { pubkey: string; created_at: number },
-): boolean {
-  if (!previous) return false;
-  return previous.pubkey === current.pubkey && current.created_at - previous.created_at < CONTINUATION_WINDOW_SECONDS;
+/** Whether `current` continues `previous` — the same author, back to back — and so shares its
+ * avatar and header instead of repeating them. The prototype groups by author alone, with no
+ * time window (`buildRow` in docs/UI/design/Studio.dc.html). */
+export function isContinuation(previous: { pubkey: string } | undefined, current: { pubkey: string }): boolean {
+  return previous !== undefined && previous.pubkey === current.pubkey;
 }

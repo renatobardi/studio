@@ -27,17 +27,17 @@ describe("clockTime", () => {
   });
 });
 
-/** Consecutive Messages from the same author, close in time, share one avatar and header. */
+/** Consecutive Messages from the same author share one avatar and header — by author alone,
+ * as the prototype groups its rows. */
 describe("isContinuation", () => {
-  const a = { pubkey: "a", created_at: 1000 };
+  const a = { pubkey: "a" };
   test("the first Message is never a continuation", () => {
     expect(isContinuation(undefined, a)).toBe(false);
   });
-  test("the same author within five minutes continues", () => {
-    expect(isContinuation(a, { pubkey: "a", created_at: 1000 + 4 * 60 })).toBe(true);
+  test("the same author again continues, however long after", () => {
+    expect(isContinuation(a, { pubkey: "a" })).toBe(true);
   });
-  test("a different author, or a long pause, starts afresh", () => {
-    expect(isContinuation(a, { pubkey: "b", created_at: 1010 })).toBe(false);
-    expect(isContinuation(a, { pubkey: "a", created_at: 1000 + 6 * 60 })).toBe(false);
+  test("a different author starts afresh", () => {
+    expect(isContinuation(a, { pubkey: "b" })).toBe(false);
   });
 });

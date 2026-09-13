@@ -22,7 +22,6 @@ export function AppearanceSettings({
   appearance,
   onChange,
 }: Readonly<{ appearance: Appearance; onChange: (next: Appearance) => void }>) {
-  const update = onChange;
 
   const group = <T extends string>(
     label: string,
@@ -51,9 +50,9 @@ export function AppearanceSettings({
 
   return (
     <div className="settings-segmented" data-testid="appearance-settings">
-      {group("Theme", THEMES, appearance.theme, (theme) => update({ ...appearance, theme }))}
-      {group("Density", DENSITIES, appearance.density, (density) => update({ ...appearance, density }))}
-      {group("Font size", FONT_SCALES, appearance.fontScale, (fontScale) => update({ ...appearance, fontScale }))}
+      {group("Theme", THEMES, appearance.theme, (theme) => onChange({ ...appearance, theme }))}
+      {group("Density", DENSITIES, appearance.density, (density) => onChange({ ...appearance, density }))}
+      {group("Font size", FONT_SCALES, appearance.fontScale, (fontScale) => onChange({ ...appearance, fontScale }))}
     </div>
   );
 }

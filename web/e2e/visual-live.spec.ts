@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { reachAppViaRestore } from "./helpers";
+import { VIEWPORTS } from "./viewports";
 
 /**
  * Flow 11 (#73): the authenticated app on studio-test, captured for comparison — not compared
@@ -26,10 +27,7 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
   };
   const toggleTheme = () => page.getByRole("button", { name: /Switch to (dark|light)/ }).click();
 
-  for (const [viewport, size] of [
-    ["desktop", { width: 1440, height: 900 }],
-    ["mobile", { width: 390, height: 844 }],
-  ] as const) {
+  for (const [viewport, size] of Object.entries(VIEWPORTS) as ["desktop" | "mobile", { width: number; height: number }][]) {
     await page.setViewportSize(size);
     await page.getByTestId("channel-list-item").first().click();
     await shot(viewport, "channel");

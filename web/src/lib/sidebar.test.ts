@@ -33,6 +33,11 @@ describe("sidebarGroups", () => {
     expect(items.find((i) => i.mode === "dms")?.active).toBe(true);
   });
 
+  test("the Channels label itself returns to the Channel on screen (flow 7's mode-channels)", () => {
+    const groups = sidebarGroups({ channels, selectedChannelId: "c1", unreadChannelIds: new Set(), mode: "admin", canManage: true });
+    expect(groups[0]).toMatchObject({ label: "Channels", mode: "channels", testId: "mode-channels" });
+  });
+
   test("hides the admin console from someone who cannot manage the Workspace", () => {
     const items = sidebarGroups({ channels, selectedChannelId: null, unreadChannelIds: new Set(), mode: "channels", canManage: false }).flatMap((g) => g.items);
     expect(items.map((i) => i.mode)).not.toContain("admin");

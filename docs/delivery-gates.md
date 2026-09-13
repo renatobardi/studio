@@ -36,6 +36,15 @@ it. Issue #51.
    the two ways an extension fails to cooperate: refusing the request, and not
    doing NIP-44 (#75). Its first-access half self-skips like flow 1, for the
    same reason.
+   Flow 11 (`visual-live.spec.ts`, #73) runs in the same smoke with
+   `STUDIO_VISUAL_CAPTURE=1`: it captures the deployed shell at 1440×900 and
+   390×844, light and dark, into `web/test-results/visual-live/` — uploaded
+   by the screenshots artifact — for comparison by hand against
+   `docs/UI/reference`. Flow 10 (`visual.spec.ts`) compares preview.html
+   against committed baselines and runs only where a dev server exists
+   (`bun run test:visual`), never in CD: the production build has no
+   preview page, and a baseline is accepted by a person, not by a green run
+   (`docs/UI/REFERENCE.md`, "Aceite visual").
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
