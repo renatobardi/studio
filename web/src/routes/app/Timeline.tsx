@@ -22,7 +22,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
-import { clockTime, isContinuation } from "../../lib/composer";
+import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
   MAX_UPLOAD_BYTES,
@@ -37,8 +37,8 @@ import { publishFailureMessage } from "../../lib/relayReasons";
 import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { AttachmentImage } from "./AttachmentImage";
-import { Avatar } from "./Avatar";
 import { QuickReactions, ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
@@ -230,63 +230,55 @@ export function Timeline({
             const continuation = isContinuation(sorted[index - 1], message);
             const author = displayName(profiles, message.pubkey);
             return (
-              <li
+              <MessageRow
                 key={message.id}
-                className={`message${message.id === openThreadRootId ? " active" : ""}${continuation ? " continuation" : ""}${replyCount > 0 ? " has-replies" : ""}`}
-                data-row="true"
-                data-testid="timeline-message"
-              >
-                {continuation ? (
-                  <span className="message-gutter" />
-                ) : (
-                  <Avatar profile={profiles.get(message.pubkey)} name={author} />
-                )}
-                <div className="message-body">
-                  {!continuation && (
-                    <div className="message-header">
-                      <span className="message-author">{author}</span>
-                      <span className="message-time">{clockTime(message.created_at)}</span>
-                    </div>
-                  )}
-                  {message.content && <div className="message-content">{message.content}</div>}
-                  {parseImetaTags(message.tags).map((descriptor, position) => (
-                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
-                  ))}
-                  <ReactionBar
-                    groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                    ownPubkey={pubkey}
-                    onAdd={(emoji) => void react(target, emoji)}
-                    onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
-                  />
-                  {/* The thread pill sits under a Message that has replies, as in the prototype;
-                      a Message without any offers "Reply in thread" among its hover actions. */}
-                  {replyCount > 0 && (
-                    <div className="thread-open-row">
+                author={author}
+                profile={profiles.get(message.pubkey)}
+                createdAt={message.created_at}
+                content={message.content}
+                continuation={continuation}
+                className={message.id === openThreadRootId ? "active" : replyCount > 0 ? "has-replies" : ""}
+                testId="timeline-message"
+                actions={
+                  <span className="message-actions">
+                    <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
+                    {replyCount === 0 && (
                       <button
-                        className="thread-open"
+                        className="message-action"
                         onClick={() => onOpenThread({ ...target, content: message.content })}
                         data-testid="open-thread"
+                        aria-label="Reply in thread"
+                        title="Reply in thread"
                       >
-                        {replyCountLabel(replyCount)}
+                        <Icon name="message-square" size={14} />
                       </button>
-                    </div>
-                  )}
-                </div>
-                <span className="message-actions">
-                  <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
-                  {replyCount === 0 && (
+                    )}
+                  </span>
+                }
+              >
+                {parseImetaTags(message.tags).map((descriptor, position) => (
+                  <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                ))}
+                <ReactionBar
+                  groups={groupReactions(reactionsForMessage, deletionsForMessage)}
+                  ownPubkey={pubkey}
+                  onAdd={(emoji) => void react(target, emoji)}
+                  onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
+                />
+                {/* The thread pill sits under a Message that has replies, as in the prototype;
+                    a Message without any offers "Reply in thread" among its hover actions. */}
+                {replyCount > 0 && (
+                  <div className="thread-open-row">
                     <button
-                      className="message-action"
+                      className="thread-open"
                       onClick={() => onOpenThread({ ...target, content: message.content })}
                       data-testid="open-thread"
-                      aria-label="Reply in thread"
-                      title="Reply in thread"
                     >
-                      <Icon name="message-square" size={14} />
+                      {replyCountLabel(replyCount)}
                     </button>
-                  )}
-                </span>
-              </li>
+                  </div>
+                )}
+              </MessageRow>
             );
           })}
         </ul>

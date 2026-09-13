@@ -103,6 +103,25 @@ contra `docs/UI/reference/` e só então commitar. Os baselines de #65 foram ger
 (`-darwin`) e entram no PR para conferência do dono no review — a aceitação é dele, não do
 run. `--update-snapshots` para "deixar o CI verde" não é aceite.
 
+## Teclado virtual (issue #72) — checklist para aparelho real
+
+Sem aparelho na sessão de implementação, a verificação é do dono. Em um iPhone (Safari) e um
+Android (Chrome), no studio-test, anotar na issue #72 o modelo/browser e o resultado de:
+
+1. Abrir um canal, tocar no compositor: o teclado sobe e o campo continua visível acima dele
+   (não fica coberto); o histórico ainda rola por trás.
+2. Digitar três linhas (Shift+Enter não existe no teclado móvel — a quebra vem do botão de
+   "enter" do teclado; enviar é pelo botão de seta). Confirmar que o campo cresce até 160px e
+   depois rola internamente.
+3. Fechar o teclado: o compositor volta ao rodapé sem deixar espaço vazio.
+4. Repetir em Direct messages e num Thread aberto (que ocupa a largura toda abaixo de 600px).
+5. Girar para paisagem com o teclado aberto: nada sobreposto, nenhum overflow horizontal.
+6. Settings › Appearance em "Larger": o compositor e o teclado ainda cabem.
+
+Nomes longos, mensagens sem espaço e extremos de densidade/escala em auth, onboarding e
+Settings estão nas fixtures do preview e no flow 10 (`*-spacious-larger`, `*-compact-smaller`,
+canal `incident-review-…`, membro "Maximiliana …").
+
 ## Sonar
 
 `docs/UI/design/**` ainda não está excluído da análise (ver `docs/delivery-gates.md`); o bundle

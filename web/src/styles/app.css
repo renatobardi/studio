@@ -1652,6 +1652,20 @@ button.sidebar-group-label:hover {
   min-width: 0;
 }
 
+.member-row,
+.channel-list-item {
+  min-width: 0;
+  width: 100%;
+}
+
+.channel-list-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .connection-badge {
   font-size: 10px;
   padding: 2px 8px;

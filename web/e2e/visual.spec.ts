@@ -37,7 +37,14 @@ const SCREENS: { id: string; screen: string; mobile?: boolean; dark?: boolean; q
   { id: "settings-profile", screen: "settings-profile" },
   // Appearance at its extremes: nothing may overflow or clip (#71).
   { id: "channel-spacious-larger", screen: "channel", query: "density=spacious&fontScale=larger" },
-  { id: "channel-comfy-smaller", screen: "channel", query: "density=comfy&fontScale=smaller" },
+  { id: "channel-comfy-smaller", screen: "channel", query: "density=comfy&fontScale=smaller", mobile: true },
+  { id: "channel-members-spacious-larger", screen: "channel-members", query: "density=spacious&fontScale=larger" },
+  { id: "auth-signin-spacious-larger", screen: "auth-signin", query: "density=spacious&fontScale=larger", mobile: true },
+  { id: "auth-signup-compact-smaller", screen: "auth-signup", query: "fontScale=smaller" },
+  { id: "onboarding-backup-spacious-larger", screen: "onboarding-backup", query: "density=spacious&fontScale=larger", mobile: true },
+  { id: "onboarding-download-compact-smaller", screen: "onboarding-download", query: "fontScale=smaller" },
+  { id: "settings-spacious-larger", screen: "settings", query: "density=spacious&fontScale=larger", mobile: true },
+  { id: "settings-profile-comfy-smaller", screen: "settings-profile", query: "density=comfy&fontScale=smaller" },
 ];
 
 test.use({ timezoneId: "UTC", locale: "en-GB", colorScheme: "light" });

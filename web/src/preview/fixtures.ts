@@ -32,7 +32,9 @@ export const TOMAS = person(31, "Tomás Rocha");
 export const MARINA = person(41, "Marina Silva");
 export const SPRIG = person(51, "Sprig", "Triages nightly runs and files what a human has to decide.");
 export const HARBOR = person(61, "Harbor");
-export const PEOPLE = [OWN, ANA, TOMAS, MARINA, SPRIG, HARBOR];
+/** A name and a Channel long enough to have to be cut (#68, #72). */
+export const MAXI = person(71, "Maximiliana Konstantinopoulou-Berenguer de Albuquerque Vasconcelos");
+export const PEOPLE = [OWN, ANA, TOMAS, MARINA, SPRIG, HARBOR, MAXI];
 
 /** 2026-09-11 08:00 UTC, the day the reference captures show. */
 const DAY = Date.UTC(2026, 8, 11, 8, 0, 0) / 1000;
@@ -52,6 +54,13 @@ export const CHANNELS: ChannelOut[] = [
   { id: "general", name: "general", about: "", private: false, role: "member" },
   { id: "design-review", name: "design-review", about: "", private: false, role: "member" },
   { id: "release-train", name: "release-train", about: "", private: true, role: "member" },
+  {
+    id: "incident-review",
+    name: "incident-review-2026-q3-relay-bus-backpressure-and-scheduler-follow-ups",
+    about: "",
+    private: true,
+    role: "member",
+  },
 ];
 
 export const MEMBERS: WorkspaceMemberOut[] = [
@@ -61,6 +70,7 @@ export const MEMBERS: WorkspaceMemberOut[] = [
   { pubkey: MARINA.pubkey, role: "member" },
   { pubkey: SPRIG.pubkey, role: "agent" },
   { pubkey: HARBOR.pubkey, role: "agent" },
+  { pubkey: MAXI.pubkey, role: "member" },
 ];
 
 function signed(author: Person, kind: number, tags: string[][], content: string, created_at: number): VerifiedEvent {
@@ -102,6 +112,13 @@ const m5 = signed(
   at(10, 26),
 );
 const m6 = signed(OWN, 9, [["h", channel]], "Taking the second. Ship it behind the density setting first.", at(10, 31));
+const m7 = signed(
+  MAXI,
+  9,
+  [["h", channel]],
+  "Trace for the record: https://relay.example.invalid/runs/4f21c9/artifacts/backpressure_under_load/attempt-3/shared-runner-eu-west-1b/log.txt#L4821-L4903 — no spaces, so it has to wrap by itself.",
+  at(10, 40),
+);
 
 const reactionTo = (author: Person, target: VerifiedEvent, emoji: string, when: number) =>
   signed(author, 7, [["h", channel], ["e", target.id], ["k", "9"], ["p", target.pubkey]], emoji, when);
@@ -131,6 +148,7 @@ export const CHANNEL_EVENTS: VerifiedEvent[] = [
   m4,
   m5,
   m6,
+  m7,
   reactionTo(ANA, m1, "👍", at(8, 5)),
   reactionTo(MARINA, m1, "👍", at(8, 6)),
   replyTo(ANA, m2, "Does the quarantine skip it in the release gate too, or only nightly?", at(8, 20)),

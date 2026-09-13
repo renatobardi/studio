@@ -5,9 +5,8 @@ import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
 import { publishFailureMessage } from "../../lib/relayReasons";
 import { Icon } from "../../components/icons/Icon";
-import { clockTime } from "../../lib/composer";
-import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { displayName, type useProfiles } from "./useProfiles";
 
 export function ThreadPane({
@@ -54,21 +53,16 @@ export function ThreadPane({
     .filter((reply) => reply.tags.find((t) => t[0] === "E")?.[1] === root.id)
     .sort((a, b) => a.created_at - b.created_at);
 
-  const row = (key: string, pubkey: string, content: string, createdAt: number | undefined, testId?: string) => {
-    const author = displayName(profiles, pubkey);
-    return (
-      <li key={key} className="message" data-row="true" data-testid={testId}>
-        <Avatar profile={profiles.get(pubkey)} name={author} />
-        <div className="message-body">
-          <div className="message-header">
-            <span className="message-author">{author}</span>
-            {createdAt !== undefined && <span className="message-time">{clockTime(createdAt)}</span>}
-          </div>
-          <div className="message-content">{content}</div>
-        </div>
-      </li>
-    );
-  };
+  const row = (event: { id: string; pubkey: string; content: string; created_at?: number }, testId?: string) => (
+    <MessageRow
+      key={event.id}
+      author={displayName(profiles, event.pubkey)}
+      profile={profiles.get(event.pubkey)}
+      createdAt={event.created_at}
+      content={event.content}
+      testId={testId}
+    />
+  );
 
   return (
     <aside className="side-pane" aria-label="Thread" data-testid="thread-pane">
@@ -80,10 +74,10 @@ export function ThreadPane({
         </button>
       </header>
       <div className="side-pane-scroll">
-        <ul className="message-list">{row("root", root.pubkey, root.content, root.created_at)}</ul>
+        <ul className="message-list">{row(root)}</ul>
         <div className="separator thread-rule" />
         <ul className="message-list">
-          {sorted.map((reply) => row(reply.id, reply.pubkey, reply.content, reply.created_at, "thread-reply"))}
+          {sorted.map((reply) => row(reply, "thread-reply"))}
         </ul>
       </div>
       <Composer

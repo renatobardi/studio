@@ -13,7 +13,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { Icon } from "../../components/icons/Icon";
-import { clockTime, isContinuation } from "../../lib/composer";
+import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
 import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
@@ -32,6 +32,7 @@ import { publishFailureMessage } from "../../lib/relayReasons";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
 import { displayName, type useProfiles } from "./useProfiles";
 
@@ -185,26 +186,21 @@ export function ConversationView({
             const continuation = isContinuation(messages[index - 1], message);
             const author = displayName(profiles, message.pubkey);
             return (
-              <li
+              <MessageRow
                 key={message.id}
-                className={`message dm-message${continuation ? " continuation" : ""}`}
-                data-row="true"
-                data-testid="dm-message"
+                author={author}
+                profile={profiles.get(message.pubkey)}
+                createdAt={message.created_at}
+                content={message.content}
+                continuation={continuation}
+                avatarSize={26}
+                className="dm-message"
+                testId="dm-message"
               >
-                <Avatar profile={profiles.get(message.pubkey)} name={author} size={26} />
-                <div className="message-body">
-                  {!continuation && (
-                    <div className="message-header">
-                      <span className="message-author">{author}</span>
-                      <span className="message-time">{clockTime(message.created_at)}</span>
-                    </div>
-                  )}
-                  {message.content && <div className="message-content">{message.content}</div>}
-                  {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
-                    <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
-                  ))}
-                </div>
-              </li>
+                {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
+                  <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
+                ))}
+              </MessageRow>
             );
           })}
         </ul>
