@@ -1079,10 +1079,32 @@ body {
   min-height: 0;
 }
 
+/* The Channel's grid: timeline, then a side pane column sized by src/lib/paneLayout.ts. Under
+   600px it is one column — a thread replaces the timeline, the members list floats over it. */
 .channel-view-body {
+  position: relative;
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
+}
+
+.channel-view-body.narrow .side-pane:not(.side-pane-overlay) {
+  width: auto;
+  border-left: none;
+}
+
+.side-pane-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 150;
+  width: 300px;
+  max-width: 100%;
+  border-left: none;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
 }
 
 .timeline {
@@ -1445,7 +1467,7 @@ body {
 }
 
 .side-pane {
-  width: 300px;
+  width: auto;
   min-width: 0;
   min-height: 0;
   border-left: 1px solid var(--border);

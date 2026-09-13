@@ -13,8 +13,9 @@ import { useProfiles } from "./useProfiles";
 export function MembersPane({
   client,
   channelId,
+  overlay = false,
   onClose,
-}: Readonly<{ client: RelayClient; channelId: string; onClose: () => void }>) {
+}: Readonly<{ client: RelayClient; channelId: string; overlay?: boolean; onClose: () => void }>) {
   const [memberPubkeys, setMemberPubkeys] = useState<string[]>([]);
   const [viewing, setViewing] = useState<string | null>(null);
   const { profiles, ensure } = useProfiles(client);
@@ -32,7 +33,7 @@ export function MembersPane({
   useEffect(() => ensure(memberPubkeys), [memberPubkeys, ensure]);
 
   return (
-    <aside className="side-pane" aria-label="Channel members" data-testid="members-pane">
+    <aside className={`side-pane${overlay ? " side-pane-overlay" : ""}`} aria-label="Channel members" data-testid="members-pane">
       <header className="pane-header side-pane-header">
         <h2 className="side-pane-title">Members</h2>
         <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close members" title="Close members">

@@ -69,7 +69,11 @@ Settings além de Appearance/Profile, popup Google simulado.
 1. **Sidebar em 390×844.** O HTML mantém a sidebar de 256px fixa em qualquer largura
    (`reference/mobile/channel.png`: a conversa fica com ~130px). Não há referência de navegação
    móvel; #72 implementa só o que o HTML define (thread substitui a timeline e membros vira
-   overlay quando o canal tem < 600px) e **não inventa** drawer/tabs. Precisa de decisão do dono.
+   overlay quando o canal tem < 600px, `web/src/lib/paneLayout.ts`) e **não inventa** drawer/tabs.
+   Reproduzido no app em `preview.html?screen=channel-thread` a 390×844: sem overflow horizontal,
+   a conversa com os mesmos ~134px do protótipo. **Precisa de decisão do dono** — opções:
+   (a) manter fiel ao HTML; (b) sidebar recolhível/drawer abaixo de um breakpoint (não existe no
+   protótipo, seria invenção); (c) pedir uma tela móvel ao design.
 2. **Tela inicial após onboarding.** HTML vai para `inbox` (fora do MVP); o app abre Channels.
 3. **Etapas sem referência** (restore, gate de senha da conta, criar Workspace): seguem a
    composição da etapa mais próxima (título 20px/400, `max-width` do passo, CTA 320px).

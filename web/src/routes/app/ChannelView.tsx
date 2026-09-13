@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { ChannelOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
+import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import { MembersPane } from "./MembersPane";
@@ -29,6 +30,25 @@ export function ChannelView({
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
   const [sidePane, setSidePane] = useState<SidePane>(null);
+  /** The Channel's own width, from the grid it lays out in — measured, not the viewport's,
+   * because the sidebar and the shell zoom both eat into it (#72). */
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const next = node.getBoundingClientRect().width;
+      if (next > 0) setWidth((current) => (current === next ? current : next));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
+  const layout = channelLayout(width, { thread: sidePane?.type === "thread", members: sidePane?.type === "members" });
 
   const authorPubkeys = [...new Set([...feed.messages, ...feed.replies].map((e) => e.pubkey))];
   const authorPubkeysKey = authorPubkeys.join(",");
@@ -54,7 +74,12 @@ export function ChannelView({
           </button>
         </span>
       </header>
-      <div className="channel-view-body">
+      <div
+        className={`channel-view-body${layout.narrow ? " narrow" : ""}`}
+        ref={gridRef}
+        style={{ gridTemplateColumns: layout.columns }}
+      >
+        {layout.showTimeline && (
         <Timeline
           client={client}
           channelId={channelId}
@@ -74,6 +99,7 @@ export function ChannelView({
             setSidePane({ type: "thread", root: { ...root, created_at: message?.created_at } });
           }}
         />
+        )}
         {sidePane?.type === "thread" && (
           <ThreadPane
             client={client}
@@ -87,7 +113,12 @@ export function ChannelView({
           />
         )}
         {sidePane?.type === "members" && (
-          <MembersPane client={client} channelId={channelId} onClose={() => setSidePane(null)} />
+          <MembersPane
+            client={client}
+            channelId={channelId}
+            overlay={layout.membersOverlay}
+            onClose={() => setSidePane(null)}
+          />
         )}
       </div>
     </section>
