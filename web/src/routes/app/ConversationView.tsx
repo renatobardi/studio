@@ -158,6 +158,7 @@ export function ConversationView({
 
   return (
     <div className="conversation-view" data-testid="conversation-view">
+      <div className="timeline-scroll">
       <ul className="message-list">
         {messages.map((message) => (
           <li key={message.id} className="message" data-testid="dm-message">
@@ -173,6 +174,8 @@ export function ConversationView({
           </li>
         ))}
       </ul>
+      </div>
+      <div className="composer-region" data-composer="true">
       {sendError && <div className="error-banner">{sendError}</div>}
       <AttachmentDraftList
         attachments={attachments}
@@ -229,6 +232,7 @@ export function ConversationView({
       <span className="meta" data-testid="dm-attach-limit">
         {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
       </span>
+      </div>
     </div>
   );
 }

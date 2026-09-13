@@ -43,7 +43,7 @@ export function DirectMessagesPane({
   const selectedConversation = conversations.find((c) => c.key === selectedKey);
 
   return (
-    <>
+    <div className="dm-pane">
       <ConversationList
         conversations={conversations}
         members={members}
@@ -70,8 +70,8 @@ export function DirectMessagesPane({
         />
       )}
       {!selectedPeerPubkeys && conversations.length === 0 && (
-        <p className="meta">No Direct Messages yet — pick a Member to start one.</p>
+        <p className="meta app-notice">No Direct Messages yet — pick a Member to start one.</p>
       )}
-    </>
+    </div>
   );
 }

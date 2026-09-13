@@ -50,6 +50,7 @@ export function ThreadPane({
   return (
     <aside className="side-pane" aria-label="Thread" data-testid="thread-pane">
       <h2 className="side-pane-title">Thread</h2>
+      <div className="side-pane-scroll">
       <div className="thread-root">
         <div className="message-header">
           <Avatar profile={profiles.get(root.pubkey)} name={displayName(profiles, root.pubkey)} />
@@ -68,6 +69,8 @@ export function ThreadPane({
           </li>
         ))}
       </ul>
+      </div>
+      <div className="composer-region" data-composer="true">
       {sendError && <div className="error-banner">{sendError}</div>}
       <form
         className="composer"
@@ -86,6 +89,7 @@ export function ThreadPane({
           Reply
         </button>
       </form>
+      </div>
     </aside>
   );
 }

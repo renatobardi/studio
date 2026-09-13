@@ -201,15 +201,16 @@ export function Timeline({
   const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
 
   return (
-    <div
-      className="timeline"
-      ref={scrollRef}
-      onScroll={(e) => {
-        // Reaching the top of the timeline pulls in the previous page; the feed ignores a
-        // request while one is already in flight, so scrolling cannot pile them up.
-        if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
-      }}
-    >
+    <div className="timeline">
+      <div
+        className="timeline-scroll"
+        ref={scrollRef}
+        onScroll={(e) => {
+          // Reaching the top of the timeline pulls in the previous page; the feed ignores a
+          // request while one is already in flight, so scrolling cannot pile them up.
+          if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+        }}
+      >
       {hasMore && (
         <button className="btn btn-outline load-older" onClick={loadOlder}>
           Load older messages
@@ -255,6 +256,8 @@ export function Timeline({
           );
         })}
       </ul>
+      </div>
+      <div className="composer-region" data-composer="true">
       {sendError && <div className="error-banner">{sendError}</div>}
       <AttachmentDraftList
         attachments={attachments}
@@ -304,6 +307,7 @@ export function Timeline({
       <span className="meta" data-testid="attach-limit">
         {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
       </span>
+      </div>
     </div>
   );
 }

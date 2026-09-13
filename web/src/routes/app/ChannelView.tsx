@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../../components/icons/Icon";
+import type { ChannelOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
 import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
@@ -12,17 +14,18 @@ type SidePane = { type: "thread"; root: TargetRef & { content: string } } | { ty
 
 export function ChannelView({
   client,
-  channelId,
+  channel,
   pubkey,
   signer,
   mediaUrl,
 }: Readonly<{
   client: RelayClient;
-  channelId: string;
+  channel: ChannelOut;
   pubkey: string;
   signer: Signer;
   mediaUrl: string;
 }>) {
+  const channelId = channel.id;
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
   const [sidePane, setSidePane] = useState<SidePane>(null);
@@ -33,15 +36,24 @@ export function ChannelView({
   useEffect(() => ensure(authorPubkeys), [authorPubkeysKey, ensure]);
 
   return (
-    <div className="channel-view">
-      <div className="channel-view-header">
-        <button
-          className="btn btn-outline"
-          onClick={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
-        >
-          Members
-        </button>
-      </div>
+    <section className="channel-view" aria-label={`Channel ${channel.name}`}>
+      <header className="pane-header">
+        <span className="pane-title">
+          <Icon name={channel.private ? "lock" : "hash"} className="pane-title-icon" />
+          <h1 className="pane-title-text">{channel.name}</h1>
+        </span>
+        <span className="pane-header-actions">
+          <button
+            className={`btn btn-outline${sidePane?.type === "members" ? " active" : ""}`}
+            aria-pressed={sidePane?.type === "members"}
+            title="Channel members"
+            onClick={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
+          >
+            <Icon name="user" />
+            Members
+          </button>
+        </span>
+      </header>
       <div className="channel-view-body">
         <Timeline
           client={client}
@@ -71,6 +83,6 @@ export function ChannelView({
         )}
         {sidePane?.type === "members" && <MembersPane client={client} channelId={channelId} />}
       </div>
-    </div>
+    </section>
   );
 }

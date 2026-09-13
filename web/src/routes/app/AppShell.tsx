@@ -17,14 +17,16 @@ import {
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { humanRelayReason } from "../../lib/relayReasons";
 import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
+import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
+import { sidebarGroups, type SidebarMode } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
 import { AppearanceSettings } from "./AppearanceSettings";
-import { ChannelList } from "./ChannelList";
 import { ChannelView } from "./ChannelView";
-import { ConnectionBadge } from "./ConnectionBadge";
 import { DirectMessagesPane } from "./DirectMessagesPane";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileEditor } from "./ProfileEditor";
+import { Sidebar } from "./Sidebar";
+import { displayName, useProfiles } from "./useProfiles";
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -32,12 +34,15 @@ export function AppShell({
   workspace,
   signer,
   onSignOut,
+  client: providedClient,
 }: Readonly<{
   workspace: WorkspaceOut;
   signer: Signer;
   onSignOut: () => void;
+  /** The preview harness hands in a relay of fixtures; the app opens the Workspace's own. */
+  client?: RelayClient;
 }>) {
-  const [client] = useState(() => new RelayClient(workspace.relay_url, signer));
+  const [client] = useState(() => providedClient ?? new RelayClient(workspace.relay_url, signer));
   /** Where the access subscription starts. Fixed at mount, not at the moment
    * the REQ goes out: a membership change landing between the first Channel
    * fetch and that REQ would otherwise be missed, and nothing reconciles it
@@ -55,7 +60,11 @@ export function AppShell({
    * race the load and wipe them. */
   const [readAt, setReadAt] = useState<ReadState | null>(null);
   const [activityAt, setActivityAt] = useState<ReadState>({});
-  const [mode, setMode] = useState<"channels" | "dms" | "admin" | "settings">("channels");
+  const [mode, setMode] = useState<SidebarMode>("channels");
+  /** Theme, density and font scale live here so the sidebar's theme toggle and
+   * Settings › Appearance change the same thing (#68, #71). */
+  const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
+  const { profiles: ownProfiles, ensure: ensureOwnProfile } = useProfiles(client);
 
   const selectedRef = useRef<string | null>(null);
   const readAtRef = useRef<ReadState>({});
@@ -74,6 +83,23 @@ export function AppShell({
   useEffect(() => {
     signer.getPublicKey().then(setPubkey).catch(() => {});
   }, [signer]);
+
+  useEffect(() => {
+    if (pubkey) ensureOwnProfile([pubkey]);
+  }, [pubkey, ensureOwnProfile]);
+
+  useEffect(() => {
+    loadAppearance().then((loaded) => {
+      setAppearance(loaded);
+      applyAppearance(loaded);
+    });
+  }, []);
+
+  const updateAppearance = (next: Appearance) => {
+    setAppearance(next);
+    applyAppearance(next);
+    void storeAppearance(next);
+  };
 
   useEffect(() => {
     selectedRef.current = selectedChannelId;
@@ -179,91 +205,62 @@ export function AppShell({
 
   const unread = unreadChannelIds(readAt ?? {}, activityAt);
   const canManage = canManageChannels(workspace.role, channels ?? []);
+  const selectedChannel = channels?.find((c) => c.id === selectedChannelId) ?? null;
 
   return (
     <div className="app-shell">
-      <header className="app-shell-header">
-        <h1>{workspace.name}</h1>
-        <div className="app-shell-header-right">
-          <nav className="app-shell-mode-switch" aria-label="Channels or Direct Messages">
-            <button
-              className={`btn btn-outline${mode === "channels" ? " active" : ""}`}
-              onClick={() => setMode("channels")}
-              data-testid="mode-channels"
-            >
-              Channels
-            </button>
-            <button
-              className={`btn btn-outline${mode === "dms" ? " active" : ""}`}
-              onClick={() => setMode("dms")}
-              data-testid="mode-dms"
-            >
-              Direct Messages
-            </button>
-            {canManage && (
-              <button
-                className={`btn btn-outline${mode === "admin" ? " active" : ""}`}
-                onClick={() => setMode("admin")}
-                data-testid="mode-admin"
-              >
-                Admin
+      <Sidebar
+        groups={sidebarGroups({
+          channels: channels ?? [],
+          selectedChannelId,
+          unreadChannelIds: unread,
+          mode,
+          canManage,
+        })}
+        onSelect={(item) => {
+          if (item.channelId) selectChannel(item.channelId);
+          setMode(item.mode);
+        }}
+        ownName={pubkey ? displayName(ownProfiles, pubkey) : "…"}
+        workspaceName={workspace.name}
+        role={workspace.role}
+        connectionState={connectionState}
+        theme={appearance.theme}
+        onToggleTheme={() => updateAppearance({ ...appearance, theme: appearance.theme === "dark" ? "light" : "dark" })}
+        onSignOut={() => void handleSignOut()}
+      />
+      <main className="app-main">
+        {relayProblem && (
+          <div className="error-banner app-banner" data-testid="relay-problem">
+            {humanRelayReason(relayProblem.reason)}
+            {/* A refused AUTH keeps being true until the connection is re-made, so
+                only the one-off refusals (a lagging subscription, a NOTICE) can be
+                put away by hand. */}
+            {relayProblem.kind !== "auth" && (
+              <button className="link link-inline" onClick={() => setRelayProblem(null)} data-testid="relay-problem-dismiss">
+                Dismiss
               </button>
             )}
-            <button
-              className={`btn btn-outline${mode === "settings" ? " active" : ""}`}
-              onClick={() => setMode("settings")}
-              data-testid="mode-settings"
-            >
-              Settings
-            </button>
-          </nav>
-          <ConnectionBadge state={connectionState} />
-          <span className="meta">Connected as {workspace.role}</span>
-          <button className="btn btn-outline" onClick={() => void handleSignOut()}>
-            Sign out
-          </button>
-        </div>
-      </header>
-      {relayProblem && (
-        <div className="error-banner" data-testid="relay-problem">
-          {humanRelayReason(relayProblem.reason)}
-          {/* A refused AUTH keeps being true until the connection is re-made, so
-              only the one-off refusals (a lagging subscription, a NOTICE) can be
-              put away by hand. */}
-          {relayProblem.kind !== "auth" && (
-            <button className="link" onClick={() => setRelayProblem(null)} data-testid="relay-problem-dismiss">
-              Dismiss
-            </button>
-          )}
-        </div>
-      )}
-      <div className="app-shell-body">
+          </div>
+        )}
         {mode === "channels" && (
           <>
-            {channels && (
-              <ChannelList
-                channels={channels}
-                selectedChannelId={selectedChannelId}
-                unreadChannelIds={unread}
-                onSelect={selectChannel}
-              />
-            )}
             {accessLost && (
-              <p className="meta" data-testid="channel-access-lost">
+              <p className="meta app-notice" data-testid="channel-access-lost">
                 You no longer have access to that Channel.
               </p>
             )}
-            {selectedChannelId && pubkey && (
+            {selectedChannel && pubkey && (
               <ChannelView
-                key={selectedChannelId}
+                key={selectedChannel.id}
                 client={client}
-                channelId={selectedChannelId}
+                channel={selectedChannel}
                 pubkey={pubkey}
                 signer={signer}
                 mediaUrl={workspace.media_url}
               />
             )}
-            {channels?.length === 0 && <p className="meta">No Channels yet.</p>}
+            {channels?.length === 0 && <p className="meta app-notice">No Channels yet.</p>}
           </>
         )}
         {mode === "dms" && pubkey && (
@@ -276,16 +273,20 @@ export function AppShell({
           />
         )}
         {mode === "admin" && canManage && (
-          <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />
-        )}
-        {mode === "settings" && pubkey && (
-          <div className="stack">
-            <IosInstallHint />
-            <ProfileEditor client={client} signer={signer} pubkey={pubkey} />
-            <AppearanceSettings />
+          <div className="app-scroll">
+            <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />
           </div>
         )}
-      </div>
+        {mode === "settings" && pubkey && (
+          <div className="app-scroll">
+            <div className="stack">
+              <IosInstallHint />
+              <ProfileEditor client={client} signer={signer} pubkey={pubkey} />
+              <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

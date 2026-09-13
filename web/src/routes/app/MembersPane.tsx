@@ -29,6 +29,7 @@ export function MembersPane({ client, channelId }: Readonly<{ client: RelayClien
   return (
     <aside className="side-pane" aria-label="Channel members" data-testid="members-pane">
       <h2 className="side-pane-title">Members</h2>
+      <div className="side-pane-scroll">
       {viewing ? (
         <MemberProfile client={client} pubkey={viewing} onClose={() => setViewing(null)} />
       ) : (
@@ -45,6 +46,7 @@ export function MembersPane({ client, channelId }: Readonly<{ client: RelayClien
           ))}
         </ul>
       )}
+      </div>
     </aside>
   );
 }

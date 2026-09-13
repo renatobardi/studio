@@ -1,14 +1,4 @@
-import { useEffect, useState } from "react";
-import {
-  applyAppearance,
-  DEFAULT_APPEARANCE,
-  loadAppearance,
-  storeAppearance,
-  type Appearance,
-  type Density,
-  type FontScale,
-  type Theme,
-} from "../../lib/appearance";
+import type { Appearance, Density, FontScale, Theme } from "../../lib/appearance";
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: "light", label: "Light" },
@@ -25,23 +15,14 @@ const FONT_SCALES: { value: FontScale; label: string }[] = [
   { value: "larger", label: "Larger" },
 ];
 
-/** Theme, density and font scale, as in the prototype's Settings > Appearance screen. Changes
+/** Theme, density and font scale, as in the prototype's Settings > Appearance screen. The
+ * value is owned by the shell (the sidebar's theme toggle changes the same thing); changes
  * apply immediately and persist across launches (studio.appearance in IndexedDB). */
-export function AppearanceSettings() {
-  const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
-
-  useEffect(() => {
-    loadAppearance().then((loaded) => {
-      setAppearance(loaded);
-      applyAppearance(loaded);
-    });
-  }, []);
-
-  const update = (next: Appearance) => {
-    setAppearance(next);
-    applyAppearance(next);
-    void storeAppearance(next);
-  };
+export function AppearanceSettings({
+  appearance,
+  onChange,
+}: Readonly<{ appearance: Appearance; onChange: (next: Appearance) => void }>) {
+  const update = onChange;
 
   return (
     <div className="card stack" data-testid="appearance-settings">
