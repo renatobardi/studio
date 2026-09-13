@@ -9,9 +9,11 @@ const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
 const CHANNEL_READ_KEY = "studio.identity.channelReadAt";
 
-/** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
+/** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody.
+ * A `nostr` property left null or undefined is no extension: treating it as one
+ * would crash the first read of it (#101). */
 export function hasNip07(): boolean {
-  return typeof window !== "undefined" && "nostr" in window;
+  return typeof window !== "undefined" && (window as { nostr?: unknown }).nostr != null;
 }
 
 /**

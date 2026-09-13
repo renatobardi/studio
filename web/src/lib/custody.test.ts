@@ -13,6 +13,15 @@ describe("hasNip07", () => {
     expect(hasNip07()).toBe(false);
   });
 
+  test("false when window.nostr is present but null or undefined", () => {
+    // @ts-expect-error minimal window stub for this check
+    globalThis.window = { nostr: null };
+    expect(hasNip07()).toBe(false);
+    // @ts-expect-error minimal window stub for this check
+    globalThis.window = { nostr: undefined };
+    expect(hasNip07()).toBe(false);
+  });
+
   test("true when window.nostr is present", () => {
     // @ts-expect-error minimal window stub for this check
     globalThis.window = { nostr: {} };
@@ -33,6 +42,11 @@ describe("extensionSupportsNip44", () => {
 
   test("false with no extension at all", () => {
     stub();
+    expect(extensionSupportsNip44()).toBe(false);
+  });
+
+  test("false, not a throw, when window.nostr is null", () => {
+    stub(null);
     expect(extensionSupportsNip44()).toBe(false);
   });
 
