@@ -14,7 +14,7 @@ import {
 } from "../../lib/attachmentDrafts";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
-import { deliverPending, isDelivered, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
+import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
 import {
   MAX_DM_PHOTO_BYTES,
   encryptFileForDm,
@@ -112,6 +112,13 @@ export function ConversationView({
 
   const canSend = canSendWithDrafts(draft, attachments);
 
+  // Gives up on the rest of a partial delivery: whoever has the Message keeps it, and the composer —
+  // text and photos still in it — is free to send something new.
+  const discardPartial = () => {
+    setPartial(null);
+    setSendError(null);
+  };
+
   const send = () =>
     sendOnce(async () => {
       if (!canSend && partial === null) return;
@@ -125,19 +132,20 @@ export function ConversationView({
           sent: attachments,
         };
         const dm = await deliverPending(attempt.dm, (wrap) => client.publish(wrap));
-        if (isDelivered(dm)) {
+        const outcome = deliveryOutcome(dm);
+        if (outcome === "delivered") {
           setPartial(null);
           setDraft((current) => draftAfterSend(current, attempt.sentDraft));
           // Only what went out: a photo picked while this was publishing stays in the composer.
           for (const attachment of attempt.sent) URL.revokeObjectURL(attachment.previewUrl);
           setAttachments((prev) => prev.filter((attachment) => !attempt.sent.some((s) => s.id === attachment.id)));
-        } else if (dm.delivered.size === 0) {
+        } else if (outcome === "undelivered") {
           // Nobody has it: the composer is still free to change what gets sent.
           setPartial(null);
           setSendError(publishFailureMessage(dm.failure));
         } else {
           setPartial({ ...attempt, dm });
-          setSendError(partialDeliveryMessage(dm));
+          setSendError(partialDeliveryMessage(dm, myPubkey));
         }
       } catch (error) {
         setSendError(publishFailureMessage(error));
@@ -167,6 +175,7 @@ export function ConversationView({
       <AttachmentDraftList
         attachments={attachments}
         testIdPrefix="dm-"
+        locked={partial !== null}
         onRetry={retryAttachment}
         onRemove={removeAttachment}
       />
@@ -208,6 +217,11 @@ export function ConversationView({
         <button className="btn btn-primary" type="submit" disabled={(!canSend && partial === null) || sending}>
           {partial === null ? "Send" : "Retry"}
         </button>
+        {partial !== null && (
+          <button type="button" className="btn btn-outline" disabled={sending} onClick={discardPartial}>
+            Discard
+          </button>
+        )}
       </form>
       <span className="meta" data-testid="dm-attach-limit">
         {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}

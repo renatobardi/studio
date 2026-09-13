@@ -1,8 +1,8 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { publishFailureMessage } from "./relayReasons";
+import { isAlreadyStored, publishFailureMessage } from "./relayReasons";
 
 /** A Direct Message whose gift wraps are signed but not all accepted yet (#106): one wrap per
- * participant plus the sender's own copy. The wraps are kept, not rebuilt — a new rumor on retry
+ * recipient plus the sender's own copy. The wraps are kept, not rebuilt — a new rumor on retry
  * would reach whoever already got the first one as a second Message. */
 export interface PendingDm {
   wraps: VerifiedEvent[];
@@ -16,11 +16,6 @@ export function pendingDm(wraps: VerifiedEvent[]): PendingDm {
   return { wraps, delivered: new Set(), failure: null };
 }
 
-/** The relay already holding a wrap is a lost OK, not a refusal: its recipient has it. */
-function alreadyStored(reason: unknown): boolean {
-  return reason instanceof Error && reason.message.trim().startsWith("duplicate:");
-}
-
 /** Publishes the wraps not yet delivered, each on its own — one refused wrap no longer hides that
  * the others went out. */
 export async function deliverPending(
@@ -32,16 +27,26 @@ export async function deliverPending(
   const delivered = new Set(pending.delivered);
   let failure: unknown = null;
   results.forEach((result, index) => {
-    if (result.status === "fulfilled" || alreadyStored(result.reason)) delivered.add(outstanding[index].id);
+    if (result.status === "fulfilled" || isAlreadyStored(result.reason)) delivered.add(outstanding[index].id);
     else failure ??= result.reason;
   });
   return { wraps: pending.wraps, delivered, failure };
 }
 
-export function isDelivered(pending: PendingDm): boolean {
-  return pending.delivered.size === pending.wraps.length;
+/** `partial` is the one that locks the composer: someone already has this Message, so only the
+ * same wraps may follow. `undelivered` leaves it free — nobody has anything to contradict. */
+export function deliveryOutcome(pending: PendingDm): "delivered" | "undelivered" | "partial" {
+  if (pending.delivered.size === pending.wraps.length) return "delivered";
+  return pending.delivered.size === 0 ? "undelivered" : "partial";
 }
 
-export function partialDeliveryMessage(pending: PendingDm): string {
-  return `Sent ${pending.delivered.size} of ${pending.wraps.length} copies. ${publishFailureMessage(pending.failure)} Retry sends only the rest.`;
+const recipientOf = (wrap: VerifiedEvent) => wrap.tags.find((tag) => tag[0] === "p")?.[1];
+
+export function partialDeliveryMessage(pending: PendingDm, senderPubkey: string): string {
+  const recipients = pending.wraps.filter((wrap) => recipientOf(wrap) !== senderPubkey);
+  const reached = recipients.filter((wrap) => pending.delivered.has(wrap.id)).length;
+  const ownCopy = pending.wraps.find((wrap) => recipientOf(wrap) === senderPubkey);
+  const ownCopyLost = ownCopy !== undefined && !pending.delivered.has(ownCopy.id);
+  const progress = `Delivered to ${reached} of ${recipients.length} recipients${ownCopyLost ? ", but not your own copy for your other devices" : ""}.`;
+  return `${progress} ${publishFailureMessage(pending.failure)} Retry sends only the rest; Discard lets you edit it as a new Message.`;
 }

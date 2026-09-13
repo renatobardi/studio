@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
-import { deliverPending, isDelivered, partialDeliveryMessage, pendingDm } from "./dmDelivery";
+import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm } from "./dmDelivery";
 
 const alice = getPublicKey(generateSecretKey());
 const bob = getPublicKey(generateSecretKey());
@@ -31,12 +31,12 @@ describe("delivering a Direct Message's gift wraps (#106)", () => {
     const relay = flakyRelay(refused);
 
     const first = await deliverPending(pendingDm(wraps()), relay.publish);
-    expect(isDelivered(first)).toBe(false);
+    expect(deliveryOutcome(first)).toBe("partial");
 
     refused.clear();
     const retried = await deliverPending(first, relay.publish);
 
-    expect(isDelivered(retried)).toBe(true);
+    expect(deliveryOutcome(retried)).toBe("delivered");
     expect(relay.published.get(bob)).toBe(1);
     expect(relay.published.get(alice)).toBe(1);
     expect(relay.published.get(carol)).toBe(2);
@@ -48,25 +48,42 @@ describe("delivering a Direct Message's gift wraps (#106)", () => {
 
     const delivered = await deliverPending(pendingDm(wraps()), relay.publish);
 
-    expect(isDelivered(delivered)).toBe(true);
+    expect(deliveryOutcome(delivered)).toBe("delivered");
   });
 
-  test("the sender's own copy failing leaves the Message undelivered — it is how they see it elsewhere (#40)", async () => {
+  test("the sender's own copy failing leaves the Message partly delivered — it is how they see it elsewhere (#40)", async () => {
     const relay = flakyRelay(new Set([alice]));
 
     const attempt = await deliverPending(pendingDm(wraps()), relay.publish);
 
-    expect(isDelivered(attempt)).toBe(false);
+    expect(deliveryOutcome(attempt)).toBe("partial");
     expect(attempt.delivered.size).toBe(2);
   });
 
-  test("a partial delivery says how far it got, why the rest failed, and that Retry sends only the rest", async () => {
+
+  test("nothing accepted is not a partial delivery — nobody has the Message, so the composer is free again", async () => {
+    const relay = flakyRelay(new Set([bob, carol, alice]));
+
+    expect(deliveryOutcome(await deliverPending(pendingDm(wraps()), relay.publish))).toBe("undelivered");
+  });
+
+  test("a partial delivery counts recipients, not wraps, and says why the rest failed and what the way out is", async () => {
     const relay = flakyRelay(new Set([carol]), "restricted: not a member of this workspace");
 
     const attempt = await deliverPending(pendingDm(wraps()), relay.publish);
 
-    expect(partialDeliveryMessage(attempt)).toBe(
-      "Sent 2 of 3 copies. The Workspace refused this request: not a member of this workspace. Retry sends only the rest.",
+    expect(partialDeliveryMessage(attempt, alice)).toBe(
+      "Delivered to 1 of 2 recipients. The Workspace refused this request: not a member of this workspace. Retry sends only the rest; Discard lets you edit it as a new Message.",
+    );
+  });
+
+  test("a lost own copy is named — it is how the sender sees the Message on their other devices (#40)", async () => {
+    const relay = flakyRelay(new Set([alice]));
+
+    const attempt = await deliverPending(pendingDm(wraps()), relay.publish);
+
+    expect(partialDeliveryMessage(attempt, alice)).toStartWith(
+      "Delivered to 2 of 2 recipients, but not your own copy for your other devices.",
     );
   });
 });

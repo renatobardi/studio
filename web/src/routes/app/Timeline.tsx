@@ -257,6 +257,7 @@ export function Timeline({
       <AttachmentDraftList
         attachments={attachments}
         testIdPrefix=""
+        locked={false}
         onRetry={retryAttachment}
         onRemove={removeAttachment}
       />
