@@ -1,0 +1,10 @@
+/* Inter Variable, self-hosted (public/fonts/InterVariable.woff2 — the same binary the Kubo
+   bundle ships, SIL OFL 1.1). The tokens name 'Inter Variable' first, so without this face the
+   whole app silently fell back to whatever 'Inter' the visitor had installed, or to sans-serif. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/InterVariable.woff2') format('woff2-variations'), local('Inter');
+}

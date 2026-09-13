@@ -27,6 +27,7 @@ import {
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Avatar } from "./Avatar";
 import { DmAttachmentImage } from "./DmAttachmentImage";
@@ -200,12 +201,13 @@ export function ConversationView({
         />
         <button
           type="button"
-          className="btn btn-outline"
+          className="btn btn-ghost btn-icon"
           data-testid="dm-attach-button"
+          aria-label="Attach photos"
           disabled={partial !== null}
           onClick={() => fileInputRef.current?.click()}
         >
-          📎
+          <Icon name="paperclip" />
         </button>
         <input
           className="composer-input"

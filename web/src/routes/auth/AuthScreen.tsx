@@ -11,6 +11,7 @@ import { useState } from "react";
 import { auth } from "../../lib/firebase";
 import { mapFirebaseErrorCode } from "../../lib/authErrors";
 import { isEmailVerified } from "../../lib/emailVerification";
+import { Sakura } from "../../components/brand/Sakura";
 
 type AuthStep = "signin" | "signup" | "verify" | "reset" | "sent";
 
@@ -163,7 +164,7 @@ export function AuthScreen({
     <div className="centered-screen">
       <div className="card stack" style={{ width: 352 }}>
         <div className="stack" style={{ gap: 4 }}>
-          <div style={{ fontSize: 24 }}>🌸</div>
+          <Sakura size={32} sw={7} />
           <h1 style={{ fontSize: 18, margin: 0 }}>Studio</h1>
         </div>
 

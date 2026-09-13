@@ -33,6 +33,7 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
@@ -282,11 +283,12 @@ export function Timeline({
         />
         <button
           type="button"
-          className="btn btn-outline"
+          className="btn btn-ghost btn-icon"
           data-testid="attach-button"
+          aria-label="Attach photos"
           onClick={() => fileInputRef.current?.click()}
         >
-          📎
+          <Icon name="paperclip" />
         </button>
         <input
           className="composer-input"

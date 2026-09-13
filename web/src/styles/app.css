@@ -1,15 +1,14 @@
+@import "./fonts.css";
 @import "./tokens/colors.css";
 @import "./tokens/typography.css";
 @import "./tokens/radius.css";
 
-/* Studio runs the Kubo scale one step down: body 11px, form fields/labels 12px, chrome/meta 10px. */
+/* Studio runs the Kubo scale one step down. The prototype's root is 12px (sidebar rows, form
+   fields, labels); Message bodies and most copy are 11px, chrome/meta 10px — each set where the
+   HTML sets it, not by one body size (docs/UI/REFERENCE.md, "Divergências"). */
+html,
 body {
-  font-size: 11px;
-}
-
-.field-label,
-.field input,
-.field select {
+  height: 100%;
   font-size: 12px;
 }
 
@@ -38,6 +37,7 @@ body {
   --density-scale: 1.25;
 }
 
+/* Kubo card: flat, defined by a ring — no border, no shadow. */
 .card {
   background: var(--card);
   border-radius: var(--radius-2xl);
@@ -51,52 +51,117 @@ body {
   gap: calc(12px * var(--density-scale));
 }
 
+/* Form fields as the auth and onboarding screens draw them: 32px pill, 12px text, input/30
+   fill, border that turns into the ring on focus. The 28px rule in the README is for the app's
+   sm controls; the HTML gives every field its own height and this is the one it uses. */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.field-label {
+  gap: 6px;
+  font-size: 11px;
   font-weight: 500;
 }
 
-.field input {
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-4xl);
-  border: 1px solid var(--input);
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+.field-label {
+  font-size: 12px;
+  font-weight: 500;
 }
 
-.field input:focus {
+.field input,
+.field select,
+.field textarea,
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-4xl);
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
   outline: none;
+  transition: box-shadow 150ms, border-color 150ms;
+}
+
+.field textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 12px;
+  border-radius: var(--radius-xl);
+  line-height: 1.5;
+  resize: none;
+}
+
+.field select {
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible,
+.input:focus-visible {
+  border-color: var(--ring);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled,
+.input:disabled {
+  opacity: 0.5;
+}
+
+.field input[aria-invalid="true"],
+.input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.field-hint {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+/* Buttons: Kubo `sm` (28px) by default, `xs` (24px) and icon squares as variants. Hover is the
+   variant's own tint (never opacity on a filled button), press sinks 1px, focus is the 3px ring. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   height: 28px;
   padding: 0 10px;
   border-radius: var(--radius-4xl);
-  border: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--foreground);
   font-size: 11px;
+  font-weight: 500;
   font-family: var(--font-sans);
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
   transition: all 150ms;
+  outline: none;
+  flex-shrink: 0;
 }
 
-.btn:hover {
-  opacity: 0.8;
-}
-
-.btn:active {
+.btn:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: default;
+  pointer-events: none;
 }
 
 .btn-primary {
@@ -104,30 +169,99 @@ body {
   color: var(--primary-foreground);
 }
 
+.btn-primary:hover {
+  background: color-mix(in oklab, var(--primary) 80%, transparent);
+}
+
 .btn-outline {
-  background: transparent;
-  border: 1px solid var(--border);
+  border-color: var(--border);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+.btn-outline:hover,
+.btn-outline.active {
+  background: var(--muted);
+}
+
+.btn-ghost {
   color: var(--foreground);
+}
+
+.btn-ghost:hover,
+.btn-ghost.active {
+  background: var(--muted);
+}
+
+.btn-destructive {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.btn-destructive:hover {
+  background: color-mix(in oklab, var(--destructive) 20%, transparent);
+}
+
+.btn-xs {
+  height: 24px;
+  padding: 0 9px;
+  gap: 4px;
+}
+
+.btn-icon {
+  width: 28px;
+  padding: 0;
+  gap: 0;
+}
+
+.btn-icon.btn-xs {
+  width: 24px;
 }
 
 .btn-block {
   width: 100%;
 }
 
+/* The prototype's text links: a quiet pill that only takes colour on hover. */
 .link {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
   border: none;
-  padding: 0;
-  color: var(--foreground);
-  text-decoration: underline;
+  border-radius: var(--radius-4xl);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
   font-size: 11px;
   cursor: pointer;
+  transition: color 150ms;
+}
+
+.link:hover,
+.link:focus-visible {
+  color: var(--foreground);
+  outline: none;
+}
+
+.link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* An inline text link (underlined, in the copy) as `a` is styled in the prototype. */
+.link-inline {
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .divider-or {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--muted-foreground);
   font-size: 10px;
 }
@@ -137,30 +271,42 @@ body {
   content: "";
   flex: 1;
   height: 1px;
-  background: color-mix(in oklab, var(--border) 50%, transparent);
+  background: color-mix(in oklab, var(--border) 70%, transparent);
 }
 
+/* Destructive is always tinted, never solid red. */
 .error-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   background: color-mix(in oklab, var(--destructive) 10%, transparent);
   color: var(--destructive);
-  border-radius: var(--radius-lg);
-  padding: 8px 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
   font-size: 11px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .error-banner code {
   display: block;
-  font-family: monospace;
+  font-family: ui-monospace, monospace;
   font-size: 10px;
-  margin-top: 4px;
+  color: color-mix(in oklab, var(--destructive) 70%, transparent);
 }
 
 .hint-banner {
-  background: var(--muted);
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
   color: var(--muted-foreground);
-  border-radius: var(--radius-lg);
-  padding: 8px 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
   font-size: 11px;
+  line-height: 1.5;
+}
+
+.separator {
+  height: 1px;
+  background: color-mix(in oklab, var(--border) 45%, transparent);
 }
 
 .onboarding-shell {

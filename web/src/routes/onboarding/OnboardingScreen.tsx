@@ -46,6 +46,7 @@ import {
   type OnboardingStep,
 } from "../../lib/onboardingSteps";
 import { connectAndAuthenticate, publishEvent } from "../../lib/relay";
+import { Sakura } from "../../components/brand/Sakura";
 import { AccountPasswordGate } from "./AccountPasswordGate";
 
 type Step = OnboardingStep | "restore";
@@ -545,7 +546,7 @@ export function OnboardingScreen({
   return (
     <div className="onboarding-shell">
       <div className="onboarding-header">
-        <div style={{ fontSize: 30 }}>🌸</div>
+        <Sakura size={30} sw={7} />
         <div className="onboarding-progress">
           {steps.map((s) => (
             <span key={s} className={`dot${s === step ? " active" : ""}`} />
