@@ -14,8 +14,8 @@ export function createSingleFlight() {
   };
 }
 
-/** What stays in the composer once `sent` went out: only what was typed after pressing Send. A
+/** What stays in the composer once `sent` went out: only what was typed after pressing Send, without the space that separated it. A
  * draft rewritten meanwhile is no longer what was sent, so it is kept whole. */
 export function draftAfterSend(current: string, sent: string): string {
-  return current.startsWith(sent) ? current.slice(sent.length) : current;
+  return current.startsWith(sent) ? current.slice(sent.length).trimStart() : current;
 }

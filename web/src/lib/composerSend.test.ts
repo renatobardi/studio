@@ -42,7 +42,7 @@ describe("a composer's Send (#105)", () => {
   });
 
   test("text typed while the Message was publishing stays in the composer", () => {
-    expect(draftAfterSend("hello and one more thing", "hello")).toBe(" and one more thing");
+    expect(draftAfterSend("hello and one more thing", "hello")).toBe("and one more thing");
   });
 
   test("with nothing typed meanwhile the composer is left empty", () => {
