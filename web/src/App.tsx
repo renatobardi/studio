@@ -93,15 +93,26 @@ export function App() {
       }
 
       let signer = verified ? await getSigner() : null;
-      if (signer && !localIdentityMatches(await signer.getPublicKey(), accountOut?.pubkey ?? null)) {
-        signer = null;
+      // A NIP-07 extension can refuse on resume exactly as it can at
+      // onboarding, and a rejected getPublicKey() here would leave the app on a
+      // blank boot forever. With no Identity to resume, onboarding is where the
+      // refusal is named and can be retried (#75).
+      let ownPubkey: string | null = null;
+      if (signer) {
+        try {
+          const own = await signer.getPublicKey();
+          if (localIdentityMatches(own, accountOut?.pubkey ?? null)) ownPubkey = own;
+          else signer = null;
+        } catch {
+          signer = null;
+        }
       }
 
       // Whoever holds this browser now keeps their own cached media and nobody
       // else's — including the leftovers of an Identity that never signed out
       // cleanly (#39). Best effort: booting the app is not the moment to fail
       // on it, and sign-out is where a failed cleanup gets reported.
-      await pruneMediaCaches(signer ? await signer.getPublicKey() : null).catch(() => {});
+      await pruneMediaCaches(ownPubkey).catch(() => {});
 
       let resumedWorkspace: WorkspaceOut | null = null;
       if (signer) {
