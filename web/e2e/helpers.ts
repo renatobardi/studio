@@ -149,7 +149,19 @@ export async function reachAppViaRestoreWithCredentials(
   // No invite is entered: an Account that already has an Identity opens
   // straight on the restore step, and reconnects through the Workspaces that
   // Identity is already a Member of (#36).
-  await page.getByPlaceholder("Backup passphrase").fill(credentials.backupPassphrase);
+  const passphraseField = page.getByPlaceholder("Backup passphrase");
+  // An Account whose email was never verified is held on the verify step (#96),
+  // and the restore field simply never appears — say so instead of timing out
+  // on a locator 30s later.
+  const verifyGate = page.getByRole("button", { name: "I verified — continue" });
+  await passphraseField.or(verifyGate).first().waitFor({ timeout: 15_000 });
+  if (await verifyGate.isVisible()) {
+    throw new Error(
+      `${credentials.email} is held on the verify step — its email is not verified in Firebase. ` +
+        `Verify it (scripts/ops/verify-e2e-account-two.sh for the second Account) and re-run.`,
+    );
+  }
+  await passphraseField.fill(credentials.backupPassphrase);
   await page.getByRole("button", { name: "Restore" }).click();
 
   await page.getByRole("button", { name: /^Connect/ }).first().click();
