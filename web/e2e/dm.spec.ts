@@ -20,6 +20,7 @@ const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixt
 test.use({ storageState: undefined });
 
 test("a Direct Message with a photo is delivered between two browser contexts", async ({ browser }) => {
+  test.slow(); // three browser contexts, a restore, and two photos decrypted twice over — past 30 s on CD
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
