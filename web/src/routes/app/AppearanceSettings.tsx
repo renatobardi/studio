@@ -24,54 +24,36 @@ export function AppearanceSettings({
 }: Readonly<{ appearance: Appearance; onChange: (next: Appearance) => void }>) {
   const update = onChange;
 
+  const group = <T extends string>(
+    label: string,
+    options: { value: T; label: string }[],
+    value: T,
+    select: (next: T) => void,
+  ) => (
+    <div className="segmented-row">
+      <span className="segmented-label">{label}</span>
+      <span className="segmented" role="radiogroup" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            className={`segmented-option${option.value === value ? " active" : ""}`}
+            aria-checked={option.value === value}
+            onClick={() => select(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+
   return (
-    <div className="card stack" data-testid="appearance-settings">
-      <h2>Appearance</h2>
-      <div className="field">
-        <span className="field-label">Theme</span>
-        <div className="button-group" role="radiogroup" aria-label="Theme">
-          {THEMES.map(({ value, label }) => (
-            <button
-              key={value}
-              className={`btn btn-outline${appearance.theme === value ? " active" : ""}`}
-              aria-pressed={appearance.theme === value}
-              onClick={() => update({ ...appearance, theme: value })}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="field">
-        <span className="field-label">Density</span>
-        <div className="button-group" role="radiogroup" aria-label="Density">
-          {DENSITIES.map(({ value, label }) => (
-            <button
-              key={value}
-              className={`btn btn-outline${appearance.density === value ? " active" : ""}`}
-              aria-pressed={appearance.density === value}
-              onClick={() => update({ ...appearance, density: value })}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="field">
-        <span className="field-label">Font size</span>
-        <div className="button-group" role="radiogroup" aria-label="Font size">
-          {FONT_SCALES.map(({ value, label }) => (
-            <button
-              key={value}
-              className={`btn btn-outline${appearance.fontScale === value ? " active" : ""}`}
-              aria-pressed={appearance.fontScale === value}
-              onClick={() => update({ ...appearance, fontScale: value })}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="settings-segmented" data-testid="appearance-settings">
+      {group("Theme", THEMES, appearance.theme, (theme) => update({ ...appearance, theme }))}
+      {group("Density", DENSITIES, appearance.density, (density) => update({ ...appearance, density }))}
+      {group("Font size", FONT_SCALES, appearance.fontScale, (fontScale) => update({ ...appearance, fontScale }))}
     </div>
   );
 }

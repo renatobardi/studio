@@ -55,26 +55,42 @@ export function ProfileEditor({
   };
 
   return (
-    <div className="card stack" data-testid="profile-editor">
-      <h2>Your profile</h2>
-      <Avatar profile={{ name, picture }} name={name || "?"} />
-      <label className="field">
-        <span className="field-label">Display name</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
-      </label>
-      <label className="field">
-        <span className="field-label">Avatar URL</span>
-        <input value={picture} onChange={(e) => setPicture(e.target.value)} placeholder="https://…" />
-      </label>
-      <label className="field">
-        <span className="field-label">About</span>
-        <textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="A little about you" />
-      </label>
-      {error && <div className="error-banner">{error}</div>}
-      {saved && !saving && <p className="meta">Saved.</p>}
-      <button className="btn btn-primary" disabled={saving} onClick={() => void handleSave()}>
-        {saving ? "Saving…" : "Save"}
-      </button>
-    </div>
+    <section className="settings-section" data-testid="profile-editor">
+      <h3 className="settings-section-label">Profile info</h3>
+      <div className="settings-card">
+        <div className="settings-row">
+          <span className="settings-row-label">Avatar</span>
+          <span className="settings-row-value">
+            <Avatar profile={{ name, picture }} name={name || "?"} size={28} />
+          </span>
+        </div>
+        <label className="settings-row">
+          <span className="settings-row-label">Display name</span>
+          <input className="input settings-row-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
+        </label>
+        <label className="settings-row">
+          <span className="settings-row-label">Avatar URL</span>
+          <input className="input settings-row-input" value={picture} onChange={(e) => setPicture(e.target.value)} placeholder="https://…" />
+        </label>
+        <label className="settings-row">
+          <span className="settings-row-label">Bio</span>
+          <textarea className="settings-row-input settings-row-textarea" value={about} onChange={(e) => setAbout(e.target.value)} placeholder="A little about you" rows={2} />
+        </label>
+        <div className="settings-row settings-row-actions">
+          {error && <span className="error-banner">{error}</span>}
+          {saved && !saving && <span className="meta">Saved.</span>}
+          <button className="btn btn-primary btn-xs" disabled={saving} onClick={() => void handleSave()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+      <h3 className="settings-section-label">Identity</h3>
+      <div className="settings-card">
+        <div className="settings-row">
+          <span className="settings-row-label">Public key</span>
+          <span className="settings-row-value settings-row-mono">{pubkey}</span>
+        </div>
+      </div>
+    </section>
   );
 }

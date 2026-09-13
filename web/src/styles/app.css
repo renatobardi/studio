@@ -18,23 +18,38 @@ body {
 }
 
 .centered-screen {
-  min-height: 100vh;
+  min-height: calc(100vh / var(--shell-zoom));
   display: flex;
   align-items: center;
   justify-content: center;
   background: color-mix(in oklab, var(--muted) 40%, transparent);
 }
 
-/* Density (Settings > Appearance): scales the two spacing primitives every screen is built from.
-   [data-density] lives on <html>, set by src/lib/appearance.ts. */
-:root {
-  --density-scale: 1;
+/* Density (Settings › Appearance, #71): the prototype's explicit hooks, never a substring of a
+   style. `data-row` is a dense row (a Message), `data-list` a list's gap, `data-pane-pad` a
+   pane's breathing room. Compact is the base; comfy and spacious open them up. [data-density]
+   lives on <html>, set by src/lib/appearance.ts — as does the shell zoom for the font scale. */
+[data-density="comfy"] [data-row] {
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
-[data-density="compact"] {
-  --density-scale: 0.75;
+[data-density="comfy"] [data-list] {
+  gap: 5px;
 }
-[data-density="spacious"] {
-  --density-scale: 1.25;
+[data-density="comfy"] [data-pane-pad] {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+[data-density="spacious"] [data-row] {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+[data-density="spacious"] [data-list] {
+  gap: 10px;
+}
+[data-density="spacious"] [data-pane-pad] {
+  padding-top: 20px;
+  padding-bottom: 20px;
 }
 
 /* Kubo card: flat, defined by a ring — no border, no shadow. */
@@ -42,13 +57,13 @@ body {
   background: var(--card);
   border-radius: var(--radius-2xl);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
-  padding: calc(20px * var(--density-scale));
+  padding: 20px;
 }
 
 .stack {
   display: flex;
   flex-direction: column;
-  gap: calc(12px * var(--density-scale));
+  gap: 12px;
 }
 
 /* Form fields as the auth and onboarding screens draw them: 32px pill, 12px text, input/30
@@ -314,7 +329,7 @@ body {
 .auth-screen {
   position: relative;
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100vh / var(--shell-zoom));
   align-items: center;
   justify-content: center;
   overflow-y: auto;
@@ -495,7 +510,7 @@ body {
 .onboarding-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(100vh / var(--shell-zoom));
   min-height: 0;
   overflow: hidden;
   background: var(--background);
@@ -766,8 +781,12 @@ body {
    thing pinned to the viewport. Only the history (and the side panes) scroll; the composer
    stays put at the bottom of its column. */
 
+:root {
+  --shell-zoom: 1;
+}
+
 .app-shell {
-  height: 100vh;
+  height: calc(100vh / var(--shell-zoom));
   display: flex;
   overflow: hidden;
   background: var(--background);
@@ -1631,4 +1650,271 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* Settings (#71): sections on the left in the sidebar palette, the section on the right in a
+   640px column with its title, description and close button, then segmented rows or cards. */
+.settings {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.settings-sections {
+  display: flex;
+  width: 208px;
+  min-width: 176px;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 20px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+}
+
+.settings-title {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-group-label {
+  margin: 0 0 2px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--sidebar-foreground) 60%, transparent);
+}
+
+.settings-section-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--sidebar-foreground);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  transition: background 150ms;
+}
+
+.settings-section-item svg {
+  opacity: 0.8;
+}
+
+.settings-section-item:hover {
+  background: color-mix(in oklab, var(--sidebar-accent) 70%, transparent);
+}
+
+.settings-section-item.active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+}
+
+.settings-content {
+  min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.settings-column {
+  display: flex;
+  width: 100%;
+  max-width: 640px;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+}
+
+.settings-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.settings-section-description {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.settings-segmented {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.segmented-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.segmented-label {
+  min-width: 120px;
+  flex: 1 1 120px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: var(--radius-4xl);
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
+}
+
+.segmented-option {
+  height: 24px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 150ms;
+}
+
+.segmented-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.segmented-option.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-section-label {
+  margin: 0 0 -14px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.settings-card {
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  background: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-top: 1px solid color-mix(in oklab, var(--border) 35%, transparent);
+  font-size: 11px;
+}
+
+.settings-row:first-child {
+  border-top: none;
+}
+
+.settings-row-label {
+  min-width: 120px;
+  flex: 1 1 120px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.settings-row-value,
+.settings-row-input {
+  min-width: 0;
+  flex: 2 1 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.settings-row-input {
+  width: auto;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-4xl);
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  outline: none;
+  transition: box-shadow 150ms, border-color 150ms;
+}
+
+.settings-row-textarea {
+  height: auto;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xl);
+  line-height: 1.5;
+  resize: none;
+}
+
+.settings-row-input:focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.settings-row-mono {
+  font-family: ui-monospace, monospace;
+}
+
+.settings-row-actions {
+  justify-content: flex-end;
 }

@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_APPEARANCE, fontScaleValue, parseAppearance } from "./appearance";
+import { DEFAULT_APPEARANCE, parseAppearance, zoomFor } from "./appearance";
 
-describe("fontScaleValue", () => {
-  test("maps each font scale to a root font-size percentage", () => {
-    expect(fontScaleValue("smaller")).toBe("87.5%");
-    expect(fontScaleValue("default")).toBe("100%");
-    expect(fontScaleValue("larger")).toBe("112.5%");
+/** The prototype scales the whole shell with `zoom` 0.92 / 1 / 1.12 (design/STUDIO.md). A root
+ * font-size did nothing here: every size in the app is in px. */
+describe("zoomFor", () => {
+  test("maps each font scale to the shell's zoom factor", () => {
+    expect(zoomFor("smaller")).toBe("0.92");
+    expect(zoomFor("default")).toBe("1");
+    expect(zoomFor("larger")).toBe("1.12");
+  });
+});
+
+describe("DEFAULT_APPEARANCE", () => {
+  test("starts where the prototype starts: light, compact, default size", () => {
+    expect(DEFAULT_APPEARANCE).toEqual({ theme: "light", density: "compact", fontScale: "default" });
   });
 });
 

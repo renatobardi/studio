@@ -78,6 +78,7 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
   "dm-list": { mount: "app", steps: [{ click: '[data-testid="mode-dms"]' }] },
   admin: { mount: "app", steps: [{ click: '[data-testid="mode-admin"]' }] },
   settings: { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }] },
+  "settings-profile": { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }, { click: "text=Profile" }] },
 };
 
 const params = new URLSearchParams(window.location.search);

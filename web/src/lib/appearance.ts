@@ -10,7 +10,8 @@ export interface Appearance {
   fontScale: FontScale;
 }
 
-export const DEFAULT_APPEARANCE: Appearance = { theme: "light", density: "comfy", fontScale: "default" };
+/** Where the prototype starts (docs/UI/REFERENCE.md): its own default density is compact. */
+export const DEFAULT_APPEARANCE: Appearance = { theme: "light", density: "compact", fontScale: "default" };
 
 const THEMES: Theme[] = ["light", "dark"];
 const DENSITIES: Density[] = ["compact", "comfy", "spacious"];
@@ -18,8 +19,10 @@ const FONT_SCALES: FontScale[] = ["smaller", "default", "larger"];
 
 const STORE_KEY = "studio.appearance";
 
-export function fontScaleValue(scale: FontScale): string {
-  return { smaller: "87.5%", default: "100%", larger: "112.5%" }[scale];
+/** The shell's `zoom` for a font scale — the prototype's 0.92 / 1 / 1.12 (design/STUDIO.md).
+ * Every size in the app is in px, so a root font-size changed nothing; zoom scales it all. */
+export function zoomFor(scale: FontScale): string {
+  return { smaller: "0.92", default: "1", larger: "1.12" }[scale];
 }
 
 /** Validates a stored (possibly stale or corrupt) value, filling in defaults field by field. */
@@ -51,5 +54,9 @@ export function applyAppearance(appearance: Appearance): void {
   const root = document.documentElement;
   root.classList.toggle("dark", appearance.theme === "dark");
   root.dataset.density = appearance.density;
-  root.style.fontSize = fontScaleValue(appearance.fontScale);
+  const zoom = zoomFor(appearance.fontScale);
+  root.style.zoom = zoom;
+  // `100vh` is scaled by the zoom too, so a full-height shell would overflow by that factor;
+  // the shells divide it back out (see app.css).
+  root.style.setProperty("--shell-zoom", zoom);
 }

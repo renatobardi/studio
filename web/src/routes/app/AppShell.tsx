@@ -20,11 +20,9 @@ import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { sidebarGroups, type SidebarMode } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
-import { AppearanceSettings } from "./AppearanceSettings";
 import { ChannelView } from "./ChannelView";
 import { DirectMessagesPane } from "./DirectMessagesPane";
-import { IosInstallHint } from "./IosInstallHint";
-import { ProfileEditor } from "./ProfileEditor";
+import { SettingsView } from "./SettingsView";
 import { Sidebar } from "./Sidebar";
 import { displayName, useProfiles } from "./useProfiles";
 
@@ -278,13 +276,14 @@ export function AppShell({
           </div>
         )}
         {mode === "settings" && pubkey && (
-          <div className="app-scroll">
-            <div className="stack">
-              <IosInstallHint />
-              <ProfileEditor client={client} signer={signer} pubkey={pubkey} />
-              <AppearanceSettings appearance={appearance} onChange={updateAppearance} />
-            </div>
-          </div>
+          <SettingsView
+            client={client}
+            signer={signer}
+            pubkey={pubkey}
+            appearance={appearance}
+            onAppearanceChange={updateAppearance}
+            onClose={() => setMode("channels")}
+          />
         )}
       </main>
     </div>
