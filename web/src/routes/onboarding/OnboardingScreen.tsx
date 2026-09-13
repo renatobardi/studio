@@ -28,6 +28,9 @@ import {
   serverListTemplate,
 } from "../../lib/identity";
 import {
+  EXTENSION_NO_NIP44_MESSAGE,
+  EXTENSION_REFUSED_MESSAGE,
+  extensionSupportsNip44,
   getSigner,
   hasNip07,
   storeIdentity,
@@ -67,6 +70,10 @@ export function OnboardingScreen({
   // (#45). Fixed for the run: an extension appearing mid-flow would change
   // who is being onboarded.
   const [custody] = useState<Custody>(() => (hasNip07() ? "extension" : "local"));
+  // An extension that cannot do NIP-44 is found out here, before the invite —
+  // not on the first Direct Message, long after the only moment where choosing
+  // another custody was still possible (#75).
+  const [nip44Missing] = useState(() => custody === "extension" && !extensionSupportsNip44());
   const steps = stepsFor(custody);
 
   const [step, setStep] = useState<Step>("invite");
@@ -313,7 +320,7 @@ export function OnboardingScreen({
         setPubkey(fresh.publicKey);
       }
       advance("profile");
-    }, "Couldn't read your Identity from your Nostr extension. Try again.");
+    }, custody === "extension" ? EXTENSION_REFUSED_MESSAGE : "Couldn't create your Identity. Try again.");
   };
 
   const handleAvatarNext = () => advance("avatar");
@@ -515,6 +522,25 @@ export function OnboardingScreen({
     user.providerData.map((p) => p.providerId),
     knownPassword,
   );
+
+  // No steps at all under an extension without NIP-44: going on would join a
+  // Workspace with an Identity that cannot read a Direct Message, and turning
+  // the extension off is the one thing that changes the answer (#75).
+  if (nip44Missing) {
+    return (
+      <div className="onboarding-shell">
+        <div className="onboarding-content">
+          <h1 className="onboarding-title">Your Nostr extension can't do NIP-44</h1>
+          <div className="error-banner" data-testid="nip44-unsupported">
+            {EXTENSION_NO_NIP44_MESSAGE}
+          </div>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            Reload
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="onboarding-shell">

@@ -9,10 +9,41 @@ const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
 const CHANNEL_READ_KEY = "studio.identity.channelReadAt";
 
-/** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody. */
+/** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody.
+ * A `nostr` property left null or undefined is no extension: treating it as one
+ * would crash the first read of it (#101). */
 export function hasNip07(): boolean {
-  return typeof window !== "undefined" && "nostr" in window;
+  return typeof window !== "undefined" && (window as { nostr?: unknown }).nostr != null;
 }
+
+/**
+ * Whether the extension in this browser can do NIP-44 — checked at onboarding,
+ * before anything is joined, because Direct Messages (NIP-17) are built on it
+ * and an extension that cannot do it is a dead end this app cannot work
+ * around. Reading `window.nostr.nip44` asks the extension for no permission,
+ * so this never prompts (#75).
+ */
+export function extensionSupportsNip44(): boolean {
+  if (!hasNip07()) return false;
+  const { nip44 } = (window as unknown as { nostr: Nip07Nostr }).nostr;
+  return typeof nip44?.encrypt === "function" && typeof nip44?.decrypt === "function";
+}
+
+/**
+ * What the person is told when the extension refuses — it is the extension
+ * that said no, and approving the request there is the way past it. The
+ * onboarding state already filled in survives, so "try again" is literal (#75).
+ */
+export const EXTENSION_REFUSED_MESSAGE =
+  "Your Nostr extension didn't hand over your Identity — it may have denied the request. Approve it in the extension, then try again.";
+
+/**
+ * The dead end above: joining would produce an Identity that cannot read a
+ * Direct Message. Turning the extension off is the way to local custody;
+ * generating an Identity of our own would leave this person with two (ADR-0005).
+ */
+export const EXTENSION_NO_NIP44_MESSAGE =
+  "Your Nostr extension can't do NIP-44 encryption, which Studio needs for Direct Messages. Update it to a version that supports NIP-44, or turn it off and reload to let Studio hold your key instead.";
 
 /** A NIP-07 extension's `window.nostr` shape for the NIP-44 methods, when it supports them. */
 interface Nip07Nostr extends Signer {

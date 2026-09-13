@@ -187,7 +187,7 @@ jobs:
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
 
-      - name: Playwright smoke (flows 2, 3, 5, 6, 7 & 8; flow 1 self-skips) against the just-deployed studio-test
+      - name: Playwright smoke (flows 2, 3, 5, 6, 7, 8 & 9; flow 1 self-skips) against the just-deployed studio-test
         working-directory: web
         env:
           STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
@@ -204,6 +204,11 @@ jobs:
           STUDIO_TEST_EMAIL_2: ${{ secrets.STUDIO_TEST_EMAIL_2 }}
           STUDIO_TEST_PASSWORD_2: ${{ secrets.STUDIO_TEST_PASSWORD_2 }}
           STUDIO_TEST_BACKUP_PASSPHRASE_2: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE_2 }}
+          # Flow 9 (#75): a third Account whose Identity is the fixed key the fake
+          # NIP-07 extension presents — see scripts/ops/seed-e2e-extension-account.sh.
+          STUDIO_TEST_EXTENSION_EMAIL: ${{ secrets.STUDIO_TEST_EXTENSION_EMAIL }}
+          STUDIO_TEST_EXTENSION_PASSWORD: ${{ secrets.STUDIO_TEST_EXTENSION_PASSWORD }}
+          STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX }}
         run: bun run test:e2e
 
       - name: Upload failure screenshots

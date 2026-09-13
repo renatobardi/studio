@@ -188,3 +188,94 @@ export async function reachAppViaRestore(page: import("@playwright/test").Page):
     backupPassphrase: testBackupPassphrase(),
   });
 }
+
+/**
+ * A third, independently-seeded Account for the NIP-07 flows (#75): the only
+ * one whose Identity is the fixed key below rather than a fresh one minted per
+ * run. Its first run links that key, every later run presents the same one, so
+ * the flow is repeatable — see scripts/ops/seed-e2e-extension-account.mjs.
+ */
+export const testExtensionAccount = {
+  email: () => requiredEnv("STUDIO_TEST_EXTENSION_EMAIL"),
+  password: () => requiredEnv("STUDIO_TEST_EXTENSION_PASSWORD"),
+  privateKeyHex: () => requiredEnv("STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX"),
+};
+
+export interface FakeNip07 {
+  /** The pubkey the fake extension answers with — the Identity under test. */
+  pubkey: string;
+  /** Flip the extension between refusing and approving, mid-test. */
+  setRefusing(refusing: boolean): void;
+}
+
+/**
+ * Installs a fake NIP-07 extension in `page` before any app script runs.
+ *
+ * Chromium under Playwright has no real extension, so `window.nostr` is a thin
+ * shim over Playwright bindings: the signing itself happens in Node with the
+ * run's fixed key, which keeps the signatures real (the relay verifies them)
+ * without bundling a signer into the page. `nip44: false` models the extension
+ * this ticket's second failure path is about — one that cannot encrypt a Direct
+ * Message — and `refusing` models the person denying the permission prompt.
+ */
+export async function installFakeNip07(
+  page: import("@playwright/test").Page,
+  options: { privateKeyHex: string; nip44?: boolean; refusing?: boolean },
+): Promise<FakeNip07> {
+  const { finalizeEvent, getPublicKey, nip44 } = await import("nostr-tools");
+  const secretKey = Uint8Array.from(Buffer.from(options.privateKeyHex, "hex"));
+  const pubkey = getPublicKey(secretKey);
+  const withNip44 = options.nip44 ?? true;
+  let refusing = options.refusing ?? false;
+
+  // What a refusal looks like from the page's side: the extension rejects, it
+  // does not answer with something wrong.
+  const refuse = () => {
+    throw new Error("User rejected the request");
+  };
+
+  await page.exposeFunction("__fakeNip07GetPublicKey", async () => (refusing ? refuse() : pubkey));
+  await page.exposeFunction("__fakeNip07SignEvent", async (template: Parameters<typeof finalizeEvent>[0]) =>
+    refusing ? refuse() : finalizeEvent(template, secretKey),
+  );
+  await page.exposeFunction("__fakeNip07Nip44Encrypt", async (other: string, plaintext: string) =>
+    nip44.encrypt(plaintext, nip44.getConversationKey(secretKey, other)),
+  );
+  await page.exposeFunction("__fakeNip07Nip44Decrypt", async (other: string, ciphertext: string) =>
+    nip44.decrypt(ciphertext, nip44.getConversationKey(secretKey, other)),
+  );
+
+  await page.addInitScript((hasNip44: boolean) => {
+    const bound = window as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    (window as unknown as { nostr: unknown }).nostr = {
+      getPublicKey: () => bound.__fakeNip07GetPublicKey(),
+      signEvent: (template: unknown) => bound.__fakeNip07SignEvent(template),
+      ...(hasNip44
+        ? {
+            nip44: {
+              encrypt: (other: string, plaintext: string) => bound.__fakeNip07Nip44Encrypt(other, plaintext),
+              decrypt: (other: string, ciphertext: string) => bound.__fakeNip07Nip44Decrypt(other, ciphertext),
+            },
+          }
+        : {}),
+    };
+  }, withNip44);
+
+  return {
+    pubkey,
+    setRefusing(next: boolean) {
+      refusing = next;
+    },
+  };
+}
+
+/** Sign in with email/password — the step every flow shares before onboarding. */
+export async function signIn(
+  page: import("@playwright/test").Page,
+  credentials: { email: string; password: string },
+): Promise<void> {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(credentials.email);
+  await page.getByLabel("Password").fill(credentials.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
