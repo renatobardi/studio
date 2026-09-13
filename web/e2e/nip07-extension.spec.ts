@@ -68,12 +68,10 @@ test("an extension without NIP-44 is turned away before anything is joined", asy
 test("first access with an extension onboards on the extension's own Identity", async ({ page }) => {
   const fake = await installFakeNip07(page, { privateKeyHex: testExtensionAccount.privateKeyHex() });
 
-  await signIn(page, credentials());
-  const inviteStep = page.getByRole("heading", { name: "Enter your invite" });
-  await inviteStep.or(page.getByText(/Connected as/)).first().waitFor({ timeout: 15_000 });
+  test.slow(); // opensOnShell waits out the resume before it can call this onboarding
   // Onboarding is a one-time state for any Account: once this one has linked
   // the extension's Identity, only the resume flow below is left to assert.
-  test.skip(!(await inviteStep.isVisible()), "this Account already onboarded — re-seed to exercise first access");
+  test.skip(await opensOnShell(page), "this Account already onboarded — re-seed to exercise first access");
 
   await page.getByPlaceholder("Invite code").fill(testInviteCode());
   await page.getByRole("button", { name: "Continue" }).click();
@@ -98,6 +96,7 @@ test("first access with an extension onboards on the extension's own Identity", 
 });
 
 test("reload, signing and sign-out all go through the extension", async ({ page }) => {
+  test.slow(); // reachApp may have to wait out the resume, then onboard
   const fake = await installFakeNip07(page, { privateKeyHex: testExtensionAccount.privateKeyHex() });
   await reachApp(page, fake.pubkey);
 
@@ -123,11 +122,8 @@ test("reload, signing and sign-out all go through the extension", async ({ page 
 /** Into the app shell with the extension holding the key — by resuming when the
  * Account already linked that Identity, or by onboarding the first time. */
 async function reachApp(page: import("@playwright/test").Page, pubkey: string): Promise<void> {
-  await signIn(page, credentials());
-  const inviteStep = page.getByRole("heading", { name: "Enter your invite" });
   const shell = page.getByText(/Connected as/);
-  await inviteStep.or(shell).first().waitFor({ timeout: 15_000 });
-  if (await shell.isVisible()) return;
+  if (await opensOnShell(page)) return;
 
   await page.getByPlaceholder("Invite code").fill(testInviteCode());
   await page.getByRole("button", { name: "Continue" }).click();
@@ -139,4 +135,27 @@ async function reachApp(page: import("@playwright/test").Page, pubkey: string): 
   await ensureChannelMembership(page.url(), pubkey);
   await page.getByRole("button", { name: "Finish" }).click();
   await expect(shell).toBeVisible();
+}
+
+/**
+ * Signs in and says whether the app resumed a session (true) or stayed on
+ * onboarding (false).
+ *
+ * The invite step is no answer on its own: sign-in shows onboarding at once
+ * and the resume only swaps in the app shell once the boot has asked the
+ * extension who it is and found the Workspace. So the shell is waited for
+ * first, and onboarding is concluded only when it never came — and is then
+ * required to actually be there.
+ */
+async function opensOnShell(page: import("@playwright/test").Page): Promise<boolean> {
+  await signIn(page, credentials());
+  const resumed = await page
+    .getByText(/Connected as/)
+    .waitFor({ timeout: 15_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!resumed) await expect(page.getByRole("heading", { name: "Enter your invite" })).toBeVisible();
+  return resumed;
 }
