@@ -23,11 +23,15 @@ export interface BlobDescriptor {
   type: string;
 }
 
-/** Rejects up front — before any network call — the same shapes the server would reject. */
-export function validateAttachment(file: { type: string; size: number }): void {
+export function validateAttachmentType(file: { type: string }): void {
   if (!file.type.startsWith("image/")) {
     throw new MediaError("unsupported-type", "Only images can be attached.");
   }
+}
+
+/** Rejects up front — before any network call — the same shapes the server would reject. */
+export function validateAttachment(file: { type: string; size: number }): void {
+  validateAttachmentType(file);
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new MediaError("too-large", "Images must be 10 MB or smaller.");
   }

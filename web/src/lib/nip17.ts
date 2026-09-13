@@ -63,11 +63,11 @@ async function sealRumor(signer: Signer, rumor: Rumor, recipientPubkey: string):
 
 /** kind 1059: the seal, encrypted and signed by a throwaway one-time key — the relay and any
  * onlooker see only a random pubkey and ciphertext, never the sender's real Identity. */
-function wrapSeal(seal: VerifiedEvent, recipientPubkey: string, extraTags: string[][]): VerifiedEvent {
+function wrapSeal(seal: VerifiedEvent, recipientPubkey: string): VerifiedEvent {
   const ephemeralKey = generateSecretKey();
   const content = nip44.encrypt(JSON.stringify(seal), nip44.getConversationKey(ephemeralKey, recipientPubkey));
   return finalizeEvent(
-    { kind: GIFT_WRAP, content, created_at: randomPast(), tags: [["p", recipientPubkey], ...extraTags] },
+    { kind: GIFT_WRAP, content, created_at: randomPast(), tags: [["p", recipientPubkey]] },
     ephemeralKey,
   );
 }
@@ -77,10 +77,9 @@ export async function giftWrapForRecipient(
   signer: Signer,
   rumor: Rumor,
   recipientPubkey: string,
-  extraTags: string[][] = [],
 ): Promise<VerifiedEvent> {
   const seal = await sealRumor(signer, rumor, recipientPubkey);
-  return wrapSeal(seal, recipientPubkey, extraTags);
+  return wrapSeal(seal, recipientPubkey);
 }
 
 /** One gift wrap per participant, plus one to the sender's own pubkey — the sender's only way
@@ -90,10 +89,9 @@ export async function giftWrapForAll(
   senderPubkey: string,
   rumor: Rumor,
   participantPubkeys: string[],
-  extraTags: string[][] = [],
 ): Promise<VerifiedEvent[]> {
   const targets = [...new Set([...participantPubkeys, senderPubkey])];
-  return Promise.all(targets.map((pubkey) => giftWrapForRecipient(signer, rumor, pubkey, extraTags)));
+  return Promise.all(targets.map((pubkey) => giftWrapForRecipient(signer, rumor, pubkey)));
 }
 
 /** The inverse of `giftWrapForRecipient`: unwraps a kind 1059 the caller received (its `p` tag

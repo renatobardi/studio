@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { makePng } from "../src/lib/testing/png";
 import { reachAppViaRestore } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
@@ -26,14 +28,18 @@ test("send a Message and see it in the Channel timeline", async ({ page }) => {
   });
 });
 
-test("attach a photo, see the upload progress, and see it rendered inline", async ({ page }) => {
+test("attach photos, see each one's upload progress, and see them rendered inline", async ({ page }) => {
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
 
   await page.getByTestId("channel-list-item").first().click();
 
-  await page.getByTestId("attach-input").setInputFiles(TEST_IMAGE);
-  await expect(page.getByTestId("attachment-preview")).toBeVisible();
+  // #48: more than one photo per Message, one of them the size of a real phone photo.
+  await page.getByTestId("attach-input").setInputFiles([
+    { name: "test-image.png", mimeType: "image/png", buffer: readFileSync(TEST_IMAGE) },
+    { name: "phone-photo.png", mimeType: "image/png", buffer: Buffer.from(makePng(2 * 1024 * 1024)) },
+  ]);
+  await expect(page.getByTestId("attachment-preview")).toHaveCount(2);
   await expect(page.getByTestId("attachment-error")).toHaveCount(0);
 
   const content = `e2e photo ${Date.now()}`;
@@ -42,8 +48,9 @@ test("attach a photo, see the upload progress, and see it rendered inline", asyn
 
   const message = page.getByTestId("timeline-message").filter({ hasText: content });
   await expect(message).toBeVisible({ timeout: 10_000 });
-  await expect(message.getByTestId("attachment-image")).toBeVisible({ timeout: 10_000 });
+  await expect(message.getByTestId("attachment-image")).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.getByTestId("attachment-preview")).toHaveCount(0);
 
-  await message.getByTestId("attachment-image").click();
+  await message.getByTestId("attachment-image").last().click();
   await expect(page.getByTestId("attachment-lightbox")).toBeVisible();
 });
