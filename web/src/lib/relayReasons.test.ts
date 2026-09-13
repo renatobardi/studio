@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { humanRelayReason, publishFailureMessage, relayRejection } from "./relayReasons";
+import { humanRelayReason, isAlreadyStored, publishFailureMessage, relayRejection } from "./relayReasons";
 
 describe("humanRelayReason", () => {
   test("names what the relay refused, keeping its own detail", () => {
@@ -61,5 +61,13 @@ describe("publishFailureMessage", () => {
     expect(publishFailureMessage("not even an error")).toBe(
       "Couldn't send — check your connection and try again.",
     );
+  });
+});
+
+describe("isAlreadyStored", () => {
+  test("a relay that already has the event answered with the NIP-01 duplicate class", () => {
+    expect(isAlreadyStored(new Error("duplicate: already have this event"))).toBe(true);
+    expect(isAlreadyStored(new Error("restricted: not a member of this workspace"))).toBe(false);
+    expect(isAlreadyStored(new Error("connection lost before the relay confirmed the event"))).toBe(false);
   });
 });

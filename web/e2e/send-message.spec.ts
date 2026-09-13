@@ -34,6 +34,9 @@ test("attach photos, see each one's upload progress, and see them rendered inlin
 
   await page.getByTestId("channel-list-item").first().click();
 
+  // #107: the Channel's limit is on screen before anything is picked.
+  await expect(page.getByTestId("attach-limit")).toHaveText("Photos up to 10 MB");
+
   // #48: more than one photo per Message, one of them the size of a real phone photo.
   await page.getByTestId("attach-input").setInputFiles([
     { name: "test-image.png", mimeType: "image/png", buffer: readFileSync(TEST_IMAGE) },

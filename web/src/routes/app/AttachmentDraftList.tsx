@@ -5,12 +5,15 @@ import type { AttachmentDraft } from "../../lib/attachmentDrafts";
 export function AttachmentDraftList<R>({
   attachments,
   testIdPrefix,
+  locked,
   onRetry,
   onRemove,
 }: Readonly<{
   attachments: AttachmentDraft<R>[];
   /** `""` for a Channel, `"dm-"` for a Direct Message — the test ids each flow already had. */
   testIdPrefix: string;
+  /** While a Direct Message is partly delivered its photos are already out: nothing to retry or remove. */
+  locked: boolean;
   onRetry: (attachment: AttachmentDraft<R>) => void;
   onRemove: (attachment: AttachmentDraft<R>) => void;
 }>) {
@@ -30,14 +33,18 @@ export function AttachmentDraftList<R>({
               <span className="error-banner" data-testid={`${testIdPrefix}attachment-error`}>
                 {attachment.message}
               </span>
-              <button type="button" className="link" onClick={() => onRetry(attachment)}>
-                Retry
-              </button>
+              {attachment.retryable && !locked && (
+                <button type="button" className="link" onClick={() => onRetry(attachment)}>
+                  Retry
+                </button>
+              )}
             </>
           )}
-          <button type="button" className="link" onClick={() => onRemove(attachment)}>
-            Remove
-          </button>
+          {!locked && (
+            <button type="button" className="link" onClick={() => onRemove(attachment)}>
+              Remove
+            </button>
+          )}
         </li>
       ))}
     </ul>

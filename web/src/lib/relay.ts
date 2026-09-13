@@ -34,19 +34,30 @@ export function connectAndAuthenticate(relayUrl: string, signer: Signer): Promis
   });
 }
 
-/** Publishes an already-signed event and resolves once the relay accepts it. */
+/** Publishes an already-signed event and resolves once the relay accepts it. A socket that closes
+ * before the relay answers fails the publish: that OK is never coming, and a publish left pending
+ * would hold a composer's Send forever (#105). */
 export function publishEvent(ws: WebSocket, event: VerifiedEvent): Promise<void> {
   return new Promise((resolve, reject) => {
+    const stopListening = () => {
+      ws.removeEventListener("message", onMessage);
+      ws.removeEventListener("close", onClose);
+    };
+    const onClose = () => {
+      stopListening();
+      reject(new Error("connection lost before the relay confirmed the event"));
+    };
     const onMessage = (raw: MessageEvent) => {
       const msg = JSON.parse(raw.data as string);
       if (msg[0] === "OK" && msg[1] === event.id) {
-        ws.removeEventListener("message", onMessage);
+        stopListening();
         const [, , ok, message] = msg as [string, string, boolean, string];
         if (ok) resolve();
         else reject(new Error(message));
       }
     };
     ws.addEventListener("message", onMessage);
+    ws.addEventListener("close", onClose);
     ws.send(JSON.stringify(["EVENT", event]));
   });
 }

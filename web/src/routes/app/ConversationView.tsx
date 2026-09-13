@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
 import {
   addDraft,
+  attachmentLimitLabel,
   canSendWithDrafts,
   failDraft,
+  invalidDraft,
   progressDraft,
   readyDraft,
   readyPayloads,
@@ -10,8 +12,11 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
+import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
 import {
+  MAX_DM_PHOTO_BYTES,
   encryptFileForDm,
   parseDmImetaTags,
   uploadEncryptedBlob,
@@ -55,6 +60,11 @@ export function ConversationView({
 }>) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  // Some recipients already have this Message (#106): until the rest do, Send retries exactly it, and
+  // the composer is locked — an edit would be a different Message for them.
+  const [partial, setPartial] = useState<{ dm: PendingDm; sentDraft: string; sent: AttachmentDraft<ReadyDmPhoto>[] } | null>(null);
+  const sendOnce = useRef(createSingleFlight()).current;
   const [attachments, setAttachments] = useState<AttachmentDraft<ReadyDmPhoto>[]>([]);
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +72,11 @@ export function ConversationView({
   const upload = async (id: string, file: File, previewUrl: string) => {
     try {
       validateDmAttachment(file);
+    } catch (err) {
+      setAttachments((prev) => invalidDraft(prev, id, err instanceof Error ? err.message : "This file can't be attached."));
+      return;
+    }
+    try {
       const encrypted = encryptFileForDm(await file.arrayBuffer(), file.type);
       const [descriptor, dim] = await Promise.all([
         uploadEncryptedBlob(mediaUrl, encrypted, peerPubkeys, signer, (loaded, total) =>
@@ -97,21 +112,48 @@ export function ConversationView({
 
   const canSend = canSendWithDrafts(draft, attachments);
 
-  const send = async () => {
-    if (!canSend) return;
+  // Gives up on the rest of a partial delivery: whoever has the Message keeps it, and the composer —
+  // text and photos still in it — is free to send something new.
+  const discardPartial = () => {
+    setPartial(null);
     setSendError(null);
-    const sent = attachments;
-    try {
-      const wraps = await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(sent));
-      await Promise.all(wraps.map((wrap) => client.publish(wrap)));
-      setDraft("");
-      // Only what went out: a photo picked while this was publishing stays in the composer.
-      for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
-      setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
-    } catch (error) {
-      setSendError(publishFailureMessage(error));
-    }
   };
+
+  const send = () =>
+    sendOnce(async () => {
+      if (!canSend && partial === null) return;
+      setSending(true);
+      setSendError(null);
+      try {
+        // A partially delivered Message is retried as it was signed; only a fresh one is built from the composer.
+        const attempt = partial ?? {
+          dm: pendingDm(await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(attachments))),
+          sentDraft: draft,
+          sent: attachments,
+        };
+        const dm = await deliverPending(attempt.dm, (wrap) => client.publish(wrap));
+        const outcome = deliveryOutcome(dm);
+        if (outcome === "delivered") {
+          setPartial(null);
+          setDraft((current) => draftAfterSend(current, attempt.sentDraft));
+          // Only what went out: a photo picked while this was publishing stays in the composer.
+          for (const attachment of attempt.sent) URL.revokeObjectURL(attachment.previewUrl);
+          const sentIds = new Set(attempt.sent.map((attachment) => attachment.id));
+          setAttachments((prev) => prev.filter((attachment) => !sentIds.has(attachment.id)));
+        } else if (outcome === "undelivered") {
+          // Nobody has it: the composer is still free to change what gets sent.
+          setPartial(null);
+          setSendError(publishFailureMessage(dm.failure));
+        } else {
+          setPartial({ ...attempt, dm });
+          setSendError(partialDeliveryMessage(dm, myPubkey));
+        }
+      } catch (error) {
+        setSendError(publishFailureMessage(error));
+      } finally {
+        setSending(false);
+      }
+    });
 
   return (
     <div className="conversation-view" data-testid="conversation-view">
@@ -134,6 +176,7 @@ export function ConversationView({
       <AttachmentDraftList
         attachments={attachments}
         testIdPrefix="dm-"
+        locked={partial !== null}
         onRetry={retryAttachment}
         onRemove={removeAttachment}
       />
@@ -159,6 +202,7 @@ export function ConversationView({
           type="button"
           className="btn btn-outline"
           data-testid="dm-attach-button"
+          disabled={partial !== null}
           onClick={() => fileInputRef.current?.click()}
         >
           📎
@@ -167,13 +211,22 @@ export function ConversationView({
           className="composer-input"
           value={draft}
           placeholder="Message…"
+          disabled={partial !== null}
           onChange={(e) => setDraft(e.target.value)}
           data-testid="dm-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend}>
-          Send
+        <button className="btn btn-primary" type="submit" disabled={(!canSend && partial === null) || sending}>
+          {partial === null ? "Send" : "Retry"}
         </button>
+        {partial !== null && (
+          <button type="button" className="btn btn-outline" disabled={sending} onClick={discardPartial}>
+            Discard
+          </button>
+        )}
       </form>
+      <span className="meta" data-testid="dm-attach-limit">
+        {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
+      </span>
     </div>
   );
 }

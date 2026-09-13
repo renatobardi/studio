@@ -48,3 +48,9 @@ export function humanRelayReason(reason: string): string {
   const detail = trimmed.slice(separator + 1).trim();
   return detail === "" ? `${lead}.` : `${lead}: ${detail}.`;
 }
+
+/** A publish the relay turned away because it already holds that event (NIP-01 `duplicate:`): the
+ * OK that would have said so was lost, not a refusal — whoever it was for has it (#106). */
+export function isAlreadyStored(error: unknown): boolean {
+  return error instanceof Error && error.message.trim().startsWith("duplicate:");
+}

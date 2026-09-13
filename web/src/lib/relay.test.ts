@@ -219,6 +219,21 @@ describe("RelayClient.publish", () => {
 
     expect(newWs.lastSent("EVENT")).toEqual(["EVENT", { id: "m1" }]);
   });
+
+  test("a socket that drops before the relay's OK fails the publish instead of leaving it pending forever", async () => {
+    const { client, ws } = await connectedClient();
+
+    const publishPromise = client.publish({ id: "m1" } as never);
+    await Promise.resolve();
+    await Promise.resolve();
+    ws.close();
+    const settled = await Promise.race([
+      publishPromise.then(() => "resolved", (error: Error) => error.message),
+      new Promise((r) => setTimeout(() => r("still pending"), 10)),
+    ]);
+
+    expect(settled).toBe("connection lost before the relay confirmed the event");
+  });
 });
 
 describe("RelayClient reconnection", () => {
