@@ -72,7 +72,7 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
     ],
   },
   channel: { mount: "app", steps: [] },
-  "channel-thread": { mount: "app", steps: [{ click: '[data-testid="open-thread"]' }] },
+  "channel-thread": { mount: "app", steps: [{ click: "text=4 replies" }] },
   "channel-members": { mount: "app", steps: [{ click: "text=Members" }] },
   dm: { mount: "app", steps: [{ click: '[data-testid="mode-dms"]' }, { click: '[data-testid="conversation-list-item"]' }] },
   "dm-list": { mount: "app", steps: [{ click: '[data-testid="mode-dms"]' }] },

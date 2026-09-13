@@ -30,7 +30,7 @@ export function ReactionBar({
           </button>
         );
       })}
-      <div className="reaction-picker">
+      <div className="reaction-picker" aria-label="Add a reaction">
         {QUICK_EMOJIS.map((emoji) => (
           <button
             key={emoji}

@@ -10,7 +10,7 @@ import { Timeline } from "./Timeline";
 import { useChannelFeed } from "./useChannelFeed";
 import { useProfiles } from "./useProfiles";
 
-type SidePane = { type: "thread"; root: TargetRef & { content: string } } | { type: "members" } | null;
+type SidePane = { type: "thread"; root: TargetRef & { content: string; created_at?: number } } | { type: "members" } | null;
 
 export function ChannelView({
   client,
@@ -69,19 +69,26 @@ export function ChannelView({
           onLoadOlder={feed.loadOlder}
           profiles={profiles}
           openThreadRootId={sidePane?.type === "thread" ? sidePane.root.id : null}
-          onOpenThread={(root) => setSidePane({ type: "thread", root })}
+          onOpenThread={(root) => {
+            const message = feed.messages.find((m) => m.id === root.id);
+            setSidePane({ type: "thread", root: { ...root, created_at: message?.created_at } });
+          }}
         />
         {sidePane?.type === "thread" && (
           <ThreadPane
             client={client}
             signer={signer}
             channelId={channelId}
+            channelName={channel.name}
             root={sidePane.root}
             allReplies={feed.replies}
             profiles={profiles}
+            onClose={() => setSidePane(null)}
           />
         )}
-        {sidePane?.type === "members" && <MembersPane client={client} channelId={channelId} />}
+        {sidePane?.type === "members" && (
+          <MembersPane client={client} channelId={channelId} onClose={() => setSidePane(null)} />
+        )}
       </div>
     </section>
   );

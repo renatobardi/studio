@@ -20,7 +20,7 @@ export function MemberRow({
   return (
     <button className="channel-list-item" onClick={onClick} data-testid={testId} data-pubkey={pubkey}>
       <span className="member-row">
-        <Avatar profile={profiles.get(pubkey)} name={name} />
+        <Avatar profile={profiles.get(pubkey)} name={name} size={24} />
         <span className="channel-list-name">{name}</span>
       </span>
       {trailing && <span className="meta">{trailing}</span>}

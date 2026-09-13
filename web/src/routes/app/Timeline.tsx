@@ -22,6 +22,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { clockTime, isContinuation } from "../../lib/composer";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
   MAX_UPLOAD_BYTES,
@@ -33,8 +34,8 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
-import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
+import { Composer } from "./Composer";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
@@ -211,67 +212,79 @@ export function Timeline({
           if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
         }}
       >
-      {hasMore && (
-        <button className="btn btn-outline load-older" onClick={loadOlder}>
-          Load older messages
-        </button>
-      )}
-      <ul className="message-list">
-        {sorted.map((message) => {
-          const target: TargetRef = { id: message.id, kind: message.kind, pubkey: message.pubkey };
-          const reactionsForMessage = reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === message.id);
-          const deletionsForMessage = deletions.filter((d) =>
-            d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
-          );
-          const replyCount = countThreadReplies(replies, message.id);
-          return (
-            <li
-              key={message.id}
-              className={`message${message.id === openThreadRootId ? " active" : ""}`}
-              data-testid="timeline-message"
-            >
-              <div className="message-header">
-                <Avatar profile={profiles.get(message.pubkey)} name={displayName(profiles, message.pubkey)} />
-                <span className="message-author">{displayName(profiles, message.pubkey)}</span>
-                <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
-              </div>
-              {message.content && <div className="message-content">{message.content}</div>}
-              {parseImetaTags(message.tags).map((descriptor, index) => (
-                <AttachmentImage key={`${index}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
-              ))}
-              <ReactionBar
-                groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                ownPubkey={pubkey}
-                onAdd={(emoji) => void react(target, emoji)}
-                onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
-              />
-              <button
-                className="link thread-open"
-                onClick={() => onOpenThread({ ...target, content: message.content })}
-                data-testid="open-thread"
+        {hasMore && (
+          <button className="btn btn-outline btn-xs load-older" onClick={loadOlder}>
+            Load older messages
+          </button>
+        )}
+        <ul className="message-list">
+          {sorted.map((message, index) => {
+            const target: TargetRef = { id: message.id, kind: message.kind, pubkey: message.pubkey };
+            const reactionsForMessage = reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === message.id);
+            const deletionsForMessage = deletions.filter((d) =>
+              d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
+            );
+            const replyCount = countThreadReplies(replies, message.id);
+            const continuation = isContinuation(sorted[index - 1], message);
+            const author = displayName(profiles, message.pubkey);
+            return (
+              <li
+                key={message.id}
+                className={`message${message.id === openThreadRootId ? " active" : ""}${continuation ? " continuation" : ""}`}
+                data-row="true"
+                data-testid="timeline-message"
               >
-                {replyCountLabel(replyCount)}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                {continuation ? (
+                  <span className="message-gutter" />
+                ) : (
+                  <Avatar profile={profiles.get(message.pubkey)} name={author} />
+                )}
+                <div className="message-body">
+                  {!continuation && (
+                    <div className="message-header">
+                      <span className="message-author">{author}</span>
+                      <span className="message-time">{clockTime(message.created_at)}</span>
+                    </div>
+                  )}
+                  {message.content && <div className="message-content">{message.content}</div>}
+                  {parseImetaTags(message.tags).map((descriptor, index) => (
+                    <AttachmentImage key={`${index}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                  ))}
+                  <ReactionBar
+                    groups={groupReactions(reactionsForMessage, deletionsForMessage)}
+                    ownPubkey={pubkey}
+                    onAdd={(emoji) => void react(target, emoji)}
+                    onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
+                  />
+                  <div className="thread-open-row">
+                    <button
+                      className="thread-open"
+                      onClick={() => onOpenThread({ ...target, content: message.content })}
+                      data-testid="open-thread"
+                    >
+                      {replyCountLabel(replyCount)}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
-      <div className="composer-region" data-composer="true">
-      {sendError && <div className="error-banner">{sendError}</div>}
-      <AttachmentDraftList
-        attachments={attachments}
-        testIdPrefix=""
-        locked={false}
-        onRetry={retryAttachment}
-        onRemove={removeAttachment}
-      />
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        placeholder="Message the channel…"
+        canSend={canSend && !sending}
+        onAttach={() => fileInputRef.current?.click()}
+        testId="message-composer"
+        attachTestId="attach-button"
+        trailing={
+          <span className="meta" data-testid="attach-limit">
+            {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
+          </span>
+        }
       >
         <input
           ref={fileInputRef}
@@ -284,30 +297,15 @@ export function Timeline({
             if (e.target.files) pickAttachments(e.target.files);
           }}
         />
-        <button
-          type="button"
-          className="btn btn-ghost btn-icon"
-          data-testid="attach-button"
-          aria-label="Attach photos"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Icon name="paperclip" />
-        </button>
-        <input
-          className="composer-input"
-          value={draft}
-          placeholder="Message the channel…"
-          onChange={(e) => setDraft(e.target.value)}
-          data-testid="message-composer"
+        {sendError && <div className="error-banner">{sendError}</div>}
+        <AttachmentDraftList
+          attachments={attachments}
+          testIdPrefix=""
+          locked={false}
+          onRetry={retryAttachment}
+          onRemove={removeAttachment}
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend || sending}>
-          Send
-        </button>
-      </form>
-      <span className="meta" data-testid="attach-limit">
-        {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
-      </span>
-      </div>
+      </Composer>
     </div>
   );
 }

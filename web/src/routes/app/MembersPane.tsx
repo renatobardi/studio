@@ -1,5 +1,6 @@
 import type { VerifiedEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
+import { Icon } from "../../components/icons/Icon";
 import type { RelayClient } from "../../lib/relay";
 import { MemberProfile } from "./MemberProfile";
 import { MemberRow } from "./MemberRow";
@@ -9,7 +10,11 @@ import { useProfiles } from "./useProfiles";
  * control plane re-publishes on every membership change, so the latest one is the roster.
  * Every row opens that Member's profile: reading someone else's kind 0 is not an
  * administrative act, so it is not behind the admin console (#47). */
-export function MembersPane({ client, channelId }: Readonly<{ client: RelayClient; channelId: string }>) {
+export function MembersPane({
+  client,
+  channelId,
+  onClose,
+}: Readonly<{ client: RelayClient; channelId: string; onClose: () => void }>) {
   const [memberPubkeys, setMemberPubkeys] = useState<string[]>([]);
   const [viewing, setViewing] = useState<string | null>(null);
   const { profiles, ensure } = useProfiles(client);
@@ -28,8 +33,13 @@ export function MembersPane({ client, channelId }: Readonly<{ client: RelayClien
 
   return (
     <aside className="side-pane" aria-label="Channel members" data-testid="members-pane">
-      <h2 className="side-pane-title">Members</h2>
-      <div className="side-pane-scroll">
+      <header className="pane-header side-pane-header">
+        <h2 className="side-pane-title">Members</h2>
+        <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close members" title="Close members">
+          <Icon name="x" size={14} />
+        </button>
+      </header>
+      <div className="side-pane-scroll" data-list="true">
       {viewing ? (
         <MemberProfile client={client} pubkey={viewing} onClose={() => setViewing(null)} />
       ) : (

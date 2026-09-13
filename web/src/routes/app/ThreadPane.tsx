@@ -4,23 +4,30 @@ import { buildThreadReply, type TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { Icon } from "../../components/icons/Icon";
+import { clockTime } from "../../lib/composer";
 import { Avatar } from "./Avatar";
+import { Composer } from "./Composer";
 import { displayName, type useProfiles } from "./useProfiles";
 
 export function ThreadPane({
   client,
   signer,
   channelId,
+  channelName,
   root,
   allReplies,
   profiles,
+  onClose,
 }: Readonly<{
   client: RelayClient;
   signer: Signer;
   channelId: string;
-  root: TargetRef & { content: string };
+  channelName: string;
+  root: TargetRef & { content: string; created_at?: number };
   allReplies: VerifiedEvent[];
   profiles: ReturnType<typeof useProfiles>["profiles"];
+  onClose: () => void;
 }>) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -47,49 +54,50 @@ export function ThreadPane({
     .filter((reply) => reply.tags.find((t) => t[0] === "E")?.[1] === root.id)
     .sort((a, b) => a.created_at - b.created_at);
 
+  const row = (key: string, pubkey: string, content: string, createdAt: number | undefined, testId?: string) => {
+    const author = displayName(profiles, pubkey);
+    return (
+      <li key={key} className="message" data-row="true" data-testid={testId}>
+        <Avatar profile={profiles.get(pubkey)} name={author} />
+        <div className="message-body">
+          <div className="message-header">
+            <span className="message-author">{author}</span>
+            {createdAt !== undefined && <span className="message-time">{clockTime(createdAt)}</span>}
+          </div>
+          <div className="message-content">{content}</div>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <aside className="side-pane" aria-label="Thread" data-testid="thread-pane">
-      <h2 className="side-pane-title">Thread</h2>
-      <div className="side-pane-scroll">
-      <div className="thread-root">
-        <div className="message-header">
-          <Avatar profile={profiles.get(root.pubkey)} name={displayName(profiles, root.pubkey)} />
-          <div className="message-author">{displayName(profiles, root.pubkey)}</div>
-        </div>
-        <div className="message-content">{root.content}</div>
-      </div>
-      <ul className="thread-reply-list">
-        {sorted.map((reply) => (
-          <li key={reply.id} data-testid="thread-reply">
-            <div className="message-header">
-              <Avatar profile={profiles.get(reply.pubkey)} name={displayName(profiles, reply.pubkey)} />
-              <div className="message-author">{displayName(profiles, reply.pubkey)}</div>
-            </div>
-            <div className="message-content">{reply.content}</div>
-          </li>
-        ))}
-      </ul>
-      </div>
-      <div className="composer-region" data-composer="true">
-      {sendError && <div className="error-banner">{sendError}</div>}
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <input
-          className="composer-input"
-          value={draft}
-          placeholder="Reply in thread…"
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button className="btn btn-primary" type="submit" disabled={sending || !draft.trim()}>
-          Reply
+      <header className="pane-header side-pane-header">
+        <h2 className="side-pane-title">Thread</h2>
+        <span className="side-pane-context">#{channelName}</span>
+        <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close thread" title="Close thread">
+          <Icon name="x" />
         </button>
-      </form>
+      </header>
+      <div className="side-pane-scroll">
+        <ul className="message-list">{row("root", root.pubkey, root.content, root.created_at)}</ul>
+        <div className="separator thread-rule" />
+        <ul className="message-list">
+          {sorted.map((reply) => row(reply.id, reply.pubkey, reply.content, reply.created_at, "thread-reply"))}
+        </ul>
       </div>
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        placeholder="Reply in thread…"
+        canSend={!sending && draft.trim().length > 0}
+        sendLabel="Reply"
+        hint={false}
+        testId="thread-composer"
+      >
+        {sendError && <div className="error-banner">{sendError}</div>}
+      </Composer>
     </aside>
   );
 }
