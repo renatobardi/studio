@@ -23,6 +23,7 @@ import {
 import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { AttachmentDraftList } from "./AttachmentDraftList";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
@@ -231,33 +232,12 @@ export function Timeline({
         })}
       </ul>
       {sendError && <div className="error-banner">{sendError}</div>}
-      {attachments.length > 0 && (
-        <ul className="attachment-previews">
-          {attachments.map((attachment) => (
-            <li key={attachment.id} className="attachment-preview" data-testid="attachment-preview">
-              <img src={attachment.previewUrl} alt="" className="attachment-preview-thumb" />
-              {attachment.status === "uploading" && (
-                <span className="meta" data-testid="attachment-progress">
-                  Uploading… {Math.round((attachment.loaded / Math.max(attachment.total, 1)) * 100)}%
-                </span>
-              )}
-              {attachment.status === "error" && (
-                <>
-                  <span className="error-banner" data-testid="attachment-error">
-                    {attachment.message}
-                  </span>
-                  <button type="button" className="link" onClick={() => retryAttachment(attachment)}>
-                    Retry
-                  </button>
-                </>
-              )}
-              <button type="button" className="link" onClick={() => removeAttachment(attachment)}>
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AttachmentDraftList
+        attachments={attachments}
+        testIdPrefix=""
+        onRetry={retryAttachment}
+        onRemove={removeAttachment}
+      />
       <form
         className="composer"
         onSubmit={(e) => {
