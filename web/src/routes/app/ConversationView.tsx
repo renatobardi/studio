@@ -12,6 +12,7 @@ import {
 } from "../../lib/attachmentDrafts";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
+import { deliverPending, isDelivered, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
 import {
   encryptFileForDm,
   parseDmImetaTags,
@@ -57,6 +58,9 @@ export function ConversationView({
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // Some recipients already have this Message (#106): until the rest do, Send retries exactly it, and
+  // the composer is locked — an edit would be a different Message for them.
+  const [partial, setPartial] = useState<{ dm: PendingDm; sentDraft: string; sent: AttachmentDraft<ReadyDmPhoto>[] } | null>(null);
   const sendOnce = useRef(createSingleFlight()).current;
   const [attachments, setAttachments] = useState<AttachmentDraft<ReadyDmPhoto>[]>([]);
   const nextAttachmentId = useRef(0);
@@ -102,18 +106,31 @@ export function ConversationView({
 
   const send = () =>
     sendOnce(async () => {
-      if (!canSend) return;
+      if (!canSend && partial === null) return;
       setSending(true);
       setSendError(null);
-      const sent = attachments;
-      const sentDraft = draft;
       try {
-        const wraps = await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(sent));
-        await Promise.all(wraps.map((wrap) => client.publish(wrap)));
-        setDraft((current) => draftAfterSend(current, sentDraft));
-        // Only what went out: a photo picked while this was publishing stays in the composer.
-        for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
-        setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
+        // A partially delivered Message is retried as it was signed; only a fresh one is built from the composer.
+        const attempt = partial ?? {
+          dm: pendingDm(await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(attachments))),
+          sentDraft: draft,
+          sent: attachments,
+        };
+        const dm = await deliverPending(attempt.dm, (wrap) => client.publish(wrap));
+        if (isDelivered(dm)) {
+          setPartial(null);
+          setDraft((current) => draftAfterSend(current, attempt.sentDraft));
+          // Only what went out: a photo picked while this was publishing stays in the composer.
+          for (const attachment of attempt.sent) URL.revokeObjectURL(attachment.previewUrl);
+          setAttachments((prev) => prev.filter((attachment) => !attempt.sent.some((s) => s.id === attachment.id)));
+        } else if (dm.delivered.size === 0) {
+          // Nobody has it: the composer is still free to change what gets sent.
+          setPartial(null);
+          setSendError(publishFailureMessage(dm.failure));
+        } else {
+          setPartial({ ...attempt, dm });
+          setSendError(partialDeliveryMessage(dm));
+        }
       } catch (error) {
         setSendError(publishFailureMessage(error));
       } finally {
@@ -167,6 +184,7 @@ export function ConversationView({
           type="button"
           className="btn btn-outline"
           data-testid="dm-attach-button"
+          disabled={partial !== null}
           onClick={() => fileInputRef.current?.click()}
         >
           📎
@@ -175,11 +193,12 @@ export function ConversationView({
           className="composer-input"
           value={draft}
           placeholder="Message…"
+          disabled={partial !== null}
           onChange={(e) => setDraft(e.target.value)}
           data-testid="dm-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend || sending}>
-          Send
+        <button className="btn btn-primary" type="submit" disabled={(!canSend && partial === null) || sending}>
+          {partial === null ? "Send" : "Retry"}
         </button>
       </form>
     </div>
