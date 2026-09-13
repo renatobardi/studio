@@ -216,6 +216,28 @@ class TestUpload:
 
         assert response.status_code == 413
 
+    async def test_opaque_bytes_exactly_at_the_limit_are_accepted(
+        self, client: AsyncClient, control_repo: ControlPlaneRepository
+    ) -> None:
+        # Ticket #48: the web client sizes its Direct Message photo limit so the
+        # worst-case ciphertext lands at or under this — the boundary itself must pass.
+        sk, pubkey = new_keypair()
+        await _make_workspace_member(control_repo, pubkey)
+        at_limit = b"x" * (10 * 1024 * 1024)
+        sha256 = hashlib.sha256(at_limit).hexdigest()
+
+        response = await client.put(
+            "/media/upload",
+            headers={
+                **blossom_header(sk, pubkey, action="upload", sha256=sha256),
+                "content-type": "application/octet-stream",
+            },
+            content=at_limit,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["size"] == len(at_limit)
+
     async def test_a_sha256_mismatch_is_rejected(
         self, client: AsyncClient, control_repo: ControlPlaneRepository
     ) -> None:

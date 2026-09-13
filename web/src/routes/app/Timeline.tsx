@@ -9,18 +9,27 @@ import {
   groupReactions,
   type TargetRef,
 } from "../../lib/channelEvents";
+import {
+  addDraft,
+  canSendWithDrafts,
+  failDraft,
+  progressDraft,
+  readyDraft,
+  readyPayloads,
+  removeDraft,
+  retryDraft,
+  type AttachmentDraft,
+} from "../../lib/attachmentDrafts";
 import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { AttachmentDraftList } from "./AttachmentDraftList";
 import { AttachmentImage } from "./AttachmentImage";
 import { Avatar } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
-type Attachment =
-  | { status: "uploading"; previewUrl: string; loaded: number; total: number }
-  | { status: "ready"; previewUrl: string; descriptor: BlobDescriptor; dim?: string }
-  | { status: "error"; previewUrl: string; message: string };
+type ReadyAttachment = { descriptor: BlobDescriptor; dim?: string };
 
 /** "WxH" for the imeta `dim` item — best-effort, an image that fails to decode just has no dim. */
 function imageDimensions(url: string): Promise<string | undefined> {
@@ -74,7 +83,8 @@ export function Timeline({
 }>) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
-  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentDraft<ReadyAttachment>[]>([]);
+  const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const heightBeforePage = useRef<number | null>(null);
@@ -94,48 +104,56 @@ export function Timeline({
     onLoadOlder();
   };
 
-  const pickAttachment = async (file: File) => {
-    const previewUrl = URL.createObjectURL(file);
+  const upload = async (id: string, file: File, previewUrl: string) => {
     try {
       validateAttachment(file);
-    } catch (err) {
-      setAttachment({ status: "error", previewUrl, message: err instanceof Error ? err.message : "Couldn't attach that file." });
-      return;
-    }
-    setAttachment({ status: "uploading", previewUrl, loaded: 0, total: file.size });
-    try {
       const [descriptor, dim] = await Promise.all([
         uploadBlob(mediaUrl, file, signer, (loaded, total) =>
-          setAttachment((prev) => (prev?.status === "uploading" ? { ...prev, loaded, total } : prev)),
+          setAttachments((prev) => progressDraft(prev, id, loaded, total)),
         ),
         imageDimensions(previewUrl),
       ]);
-      setAttachment({ status: "ready", previewUrl, descriptor, dim });
+      setAttachments((prev) => readyDraft(prev, id, { descriptor, dim }));
     } catch (err) {
-      setAttachment({ status: "error", previewUrl, message: err instanceof Error ? err.message : "Upload failed." });
+      setAttachments((prev) => failDraft(prev, id, err instanceof Error ? err.message : "Upload failed."));
     }
   };
 
-  const clearAttachment = () => {
-    if (attachment) URL.revokeObjectURL(attachment.previewUrl);
-    setAttachment(null);
+  const pickAttachments = (files: FileList) => {
+    for (const file of Array.from(files)) {
+      const id = String(nextAttachmentId.current++);
+      const previewUrl = URL.createObjectURL(file);
+      setAttachments((prev) => addDraft(prev, { id, file, previewUrl }));
+      void upload(id, file, previewUrl);
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const canSend = draft.trim().length > 0 || attachment?.status === "ready";
+  const retryAttachment = (attachment: AttachmentDraft<ReadyAttachment>) => {
+    setAttachments((prev) => retryDraft(prev, attachment.id));
+    void upload(attachment.id, attachment.file, attachment.previewUrl);
+  };
+
+  const removeAttachment = (attachment: AttachmentDraft<ReadyAttachment>) => {
+    URL.revokeObjectURL(attachment.previewUrl);
+    setAttachments((prev) => removeDraft(prev, attachment.id));
+  };
+
+  const canSend = canSendWithDrafts(draft, attachments);
 
   const send = async () => {
-    const content = draft.trim();
-    if (!canSend || attachment?.status === "uploading") return;
+    if (!canSend) return;
     setSendError(null);
+    const sent = attachments;
     try {
-      const imetaTags =
-        attachment?.status === "ready" ? [buildImetaTag(attachment.descriptor, attachment.dim)] : [];
-      const template = buildMessage(channelId, content, imetaTags);
+      const imetaTags = readyPayloads(sent).map((image) => buildImetaTag(image.descriptor, image.dim));
+      const template = buildMessage(channelId, draft.trim(), imetaTags);
       const signed = await signer.signEvent(template);
       await client.publish(signed);
       setDraft("");
-      clearAttachment();
+      // Only what went out: a photo picked while this was publishing stays in the composer.
+      for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
+      setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
     } catch (error) {
       setSendError(publishFailureMessage(error));
     }
@@ -193,8 +211,8 @@ export function Timeline({
                 <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
               </div>
               {message.content && <div className="message-content">{message.content}</div>}
-              {parseImetaTags(message.tags).map((descriptor) => (
-                <AttachmentImage key={descriptor.sha256} descriptor={descriptor} signer={signer} />
+              {parseImetaTags(message.tags).map((descriptor, index) => (
+                <AttachmentImage key={`${index}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
               ))}
               <ReactionBar
                 groups={groupReactions(reactionsForMessage, deletionsForMessage)}
@@ -214,24 +232,12 @@ export function Timeline({
         })}
       </ul>
       {sendError && <div className="error-banner">{sendError}</div>}
-      {attachment && (
-        <div className="attachment-preview" data-testid="attachment-preview">
-          <img src={attachment.previewUrl} alt="" className="attachment-preview-thumb" />
-          {attachment.status === "uploading" && (
-            <span className="meta" data-testid="attachment-progress">
-              Uploading… {Math.round((attachment.loaded / Math.max(attachment.total, 1)) * 100)}%
-            </span>
-          )}
-          {attachment.status === "error" && (
-            <span className="error-banner" data-testid="attachment-error">
-              {attachment.message}
-            </span>
-          )}
-          <button type="button" className="link" onClick={clearAttachment}>
-            Remove
-          </button>
-        </div>
-      )}
+      <AttachmentDraftList
+        attachments={attachments}
+        testIdPrefix=""
+        onRetry={retryAttachment}
+        onRemove={removeAttachment}
+      />
       <form
         className="composer"
         onSubmit={(e) => {
@@ -243,11 +249,11 @@ export function Timeline({
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="composer-attach-input"
           data-testid="attach-input"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void pickAttachment(file);
+            if (e.target.files) pickAttachments(e.target.files);
           }}
         />
         <button
@@ -265,7 +271,7 @@ export function Timeline({
           onChange={(e) => setDraft(e.target.value)}
           data-testid="message-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend || attachment?.status === "uploading"}>
+        <button className="btn btn-primary" type="submit" disabled={!canSend}>
           Send
         </button>
       </form>

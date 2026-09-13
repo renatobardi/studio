@@ -48,4 +48,6 @@ We decided:
   this change stop being fetchable by their recipients — the sender can re-send them. The only
   deployment holding such rows is `studio-test`, whose data is disposable.
 - The client declares recipients when it uploads an encrypted Direct Message photo. The external
-  `x` tag it still puts on the gift wrap now grants nothing and is removed by issue #48.
+  `x` tag it used to put on the gift wrap granted nothing after this change, and issue #48 removed
+  it: a photo's hash, URL and key now travel only inside the seal. No download depended on it —
+  every fetch this ADR allows is decided from the upload — so its removal needs no migration.

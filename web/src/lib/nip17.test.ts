@@ -81,17 +81,15 @@ describe("giftWrapForRecipient / unwrapGiftWrap", () => {
     await expect(unwrapGiftWrap(localSigner(stranger.secretKey, stranger.publicKey), wrap)).rejects.toThrow();
   });
 
-  test("extra tags (e.g. a blob sha256 for a photo) land on the outer gift wrap", async () => {
+  test("the outer gift wrap carries nothing but its recipient", async () => {
+    // #48: whatever a Direct Message holds — a photo's hash included — stays inside the seal.
     const sender = generateIdentity();
     const recipient = generateIdentity();
-    const rumor = buildDmRumor(sender.publicKey, [recipient.publicKey], "");
+    const rumor = buildDmRumor(sender.publicKey, [recipient.publicKey], "", [["imeta", "x " + "a".repeat(64)]]);
 
-    const wrap = await giftWrapForRecipient(
-      localSigner(sender.secretKey, sender.publicKey), rumor, recipient.publicKey, [["x", "a".repeat(64)]],
-    );
+    const wrap = await giftWrapForRecipient(localSigner(sender.secretKey, sender.publicKey), rumor, recipient.publicKey);
 
-    expect(wrap.tags).toContainEqual(["x", "a".repeat(64)]);
-    expect(wrap.tags).toContainEqual(["p", recipient.publicKey]);
+    expect(wrap.tags).toEqual([["p", recipient.publicKey]]);
   });
 });
 

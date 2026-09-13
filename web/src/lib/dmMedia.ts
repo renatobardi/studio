@@ -1,10 +1,30 @@
-import { nip44 } from "nostr-tools";
+import { nip44, type VerifiedEvent } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Signer } from "./custody";
 import { cacheBlob, readCachedBlob } from "./mediaCache";
-import { MediaError, blossomAuthorizationHeader, buildBlossomAuthEvent, sha256Hex, type BlobDescriptor } from "./media";
+import {
+  MediaError,
+  blossomAuthorizationHeader,
+  buildBlossomAuthEvent,
+  sha256Hex,
+  validateAttachmentType,
+  type BlobDescriptor,
+} from "./media";
+import { buildDmRumor, giftWrapForAll } from "./nip17";
 
-export { validateAttachment } from "./media";
+/** #48: the server's `MAX_UPLOAD_BYTES` applies to the ciphertext it receives, and encrypting a
+ * photo nearly doubles it (base64, NIP-44 padding, base64 again). 5 MB is the largest round
+ * figure whose worst-case ciphertext still fits — so a photo the client lets through is never
+ * refused for overhead it could have predicted. */
+export const MAX_DM_PHOTO_BYTES = 5 * 1024 * 1024;
+
+/** `validateAttachment`, held to the Direct Message photo limit. */
+export function validateDmAttachment(file: { type: string; size: number }): void {
+  validateAttachmentType(file);
+  if (file.size > MAX_DM_PHOTO_BYTES) {
+    throw new MediaError("too-large", "Photos in a Direct Message must be 5 MB or smaller.");
+  }
+}
 
 /** Base64 <-> bytes, without going through `atob`/`btoa`'s Latin1-string round trip for large
  * inputs (an image can be several MB — `String.fromCharCode(...bytes)` blows the call stack). */
@@ -157,4 +177,28 @@ export function parseDmImetaTags(tags: string[][]): DmAttachment[] {
     });
   }
   return attachments;
+}
+
+export interface ReadyDmPhoto {
+  encrypted: EncryptedFile;
+  descriptor: BlobDescriptor;
+  dim?: string;
+}
+
+/** The gift wraps for one Direct Message — a copy per participant plus the sender's own — with
+ * an `imeta` per photo inside the encrypted rumor. Nothing about a photo sits outside the
+ * encryption (#48): an outer `x` grants no access (#38, the upload does) and would only tie
+ * every envelope to the file. */
+export function wrapDmMessage(
+  signer: Signer,
+  myPubkey: string,
+  peerPubkeys: string[],
+  content: string,
+  photos: ReadyDmPhoto[],
+): Promise<VerifiedEvent[]> {
+  const imetaTags = photos.map((photo) =>
+    buildDmImetaTag(photo.descriptor, photo.encrypted.key, photo.encrypted.originalMime, photo.dim),
+  );
+  const rumor = buildDmRumor(myPubkey, peerPubkeys, content, imetaTags);
+  return giftWrapForAll(signer, myPubkey, rumor, peerPubkeys);
 }

@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { makePng } from "../src/lib/testing/png";
 import {
   reachAppViaRestoreWithCredentials,
   testAccount,
@@ -41,8 +43,22 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await pageA.getByTestId("dm-new-conversation").click();
   await pageA.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
 
-  await pageA.getByTestId("dm-attach-input").setInputFiles(TEST_IMAGE);
-  await expect(pageA.getByTestId("dm-attachment-preview")).toBeVisible();
+  // #48: a photo over the Direct Message limit is refused in the composer, naming the limit,
+  // and holds the Message back until it is removed — never refused later by the server.
+  await pageA.getByTestId("dm-attach-input").setInputFiles({
+    name: "too-big.png", mimeType: "image/png", buffer: Buffer.from(makePng(5 * 1024 * 1024 + 1)),
+  });
+  await expect(pageA.getByTestId("dm-attachment-error")).toContainText("5 MB");
+  await expect(pageA.getByRole("button", { name: "Send" })).toBeDisabled();
+  await pageA.getByTestId("dm-attachment-preview").getByRole("button", { name: "Remove" }).click();
+  await expect(pageA.getByTestId("dm-attachment-preview")).toHaveCount(0);
+
+  // Two photos, one of them a real phone photo's size, each encrypted and uploaded on its own.
+  await pageA.getByTestId("dm-attach-input").setInputFiles([
+    { name: "test-image.png", mimeType: "image/png", buffer: readFileSync(TEST_IMAGE) },
+    { name: "phone-photo.png", mimeType: "image/png", buffer: Buffer.from(makePng(2 * 1024 * 1024)) },
+  ]);
+  await expect(pageA.getByTestId("dm-attachment-preview")).toHaveCount(2);
   await expect(pageA.getByTestId("dm-attachment-error")).toHaveCount(0);
 
   const content = `e2e dm ${Date.now()}`;
@@ -51,16 +67,16 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
 
   const sentMessage = pageA.getByTestId("dm-message").filter({ hasText: content });
   await expect(sentMessage).toBeVisible({ timeout: 10_000 });
-  await expect(sentMessage.getByTestId("dm-attachment-image")).toBeVisible({ timeout: 10_000 });
+  await expect(sentMessage.getByTestId("dm-attachment-image")).toHaveCount(2, { timeout: 15_000 });
 
   await pageB.getByTestId("mode-dms").click();
   await pageB.getByTestId("conversation-list-item").first().click();
 
   const receivedMessage = pageB.getByTestId("dm-message").filter({ hasText: content });
   await expect(receivedMessage).toBeVisible({ timeout: 10_000 });
-  await expect(receivedMessage.getByTestId("dm-attachment-image")).toBeVisible({ timeout: 10_000 });
+  await expect(receivedMessage.getByTestId("dm-attachment-image")).toHaveCount(2, { timeout: 15_000 });
 
-  await receivedMessage.getByTestId("dm-attachment-image").click();
+  await receivedMessage.getByTestId("dm-attachment-image").last().click();
   await expect(pageB.getByTestId("dm-attachment-lightbox")).toBeVisible();
 
   // Dismissed before anything else is clicked: the lightbox is `position: fixed; inset: 0`,
@@ -98,7 +114,7 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await expect(pageC.getByTestId("dm-message").filter({ hasText: reply })).toBeVisible({ timeout: 15_000 });
   await expect(
     pageC.getByTestId("dm-message").filter({ hasText: content }).getByTestId("dm-attachment-image"),
-  ).toBeVisible({ timeout: 15_000 });
+  ).toHaveCount(2, { timeout: 15_000 });
 
   await contextB.close();
   await contextC.close();

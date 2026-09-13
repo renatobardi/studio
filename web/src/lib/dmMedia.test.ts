@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { finalizeEvent, getPublicKey } from "nostr-tools";
+import { finalizeEvent, getPublicKey, nip44, type EventTemplate } from "nostr-tools";
+import type { Signer } from "./custody";
 import { generateIdentity } from "./identity";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
+import { makePng } from "./testing/png";
 import {
+  MAX_DM_PHOTO_BYTES,
   buildDmImetaTag,
   fetchDmAttachmentObjectUrl,
   decryptDmAttachmentBytes,
   encryptFileForDm,
   parseDmImetaTags,
+  validateDmAttachment,
+  wrapDmMessage,
   type DmAttachment,
+  type ReadyDmPhoto,
 } from "./dmMedia";
-import { MediaError, sha256Hex, type BlobDescriptor } from "./media";
+import { MAX_UPLOAD_BYTES, MediaError, sha256Hex, validateAttachment, type BlobDescriptor } from "./media";
+import { unwrapGiftWrap } from "./nip17";
 
 describe("encryptFileForDm / decryptDmAttachmentBytes", () => {
   test("round-trips the original bytes", () => {
@@ -46,6 +53,47 @@ describe("encryptFileForDm / decryptDmAttachmentBytes", () => {
 
     // sha256 (what the server records) is computed over the ciphertext, not the plaintext.
     expect(sha256Hex(encrypted.ciphertextBytes.buffer as ArrayBuffer)).not.toBe(sha256Hex(original.buffer as ArrayBuffer));
+  });
+});
+
+describe("the Direct Message photo limit", () => {
+  // #48: the server's 10 MB limit applies to what it receives — the NIP-44 ciphertext of the
+  // base64 of the photo, padded. That nearly doubles it, so a DM photo gets its own, lower
+  // limit: one the client can promise the server will accept.
+  test("a photo over 5 MB is refused before anything is encrypted or uploaded, naming the limit", () => {
+    const refuse = () => validateDmAttachment({ type: "image/jpeg", size: MAX_DM_PHOTO_BYTES + 1 });
+
+    expect(refuse).toThrow(MediaError);
+    expect(refuse).toThrow("5 MB");
+  });
+
+  test("a real photo of exactly 5 MB passes, and its ciphertext still fits the server's limit", () => {
+    const png = makePng(MAX_DM_PHOTO_BYTES);
+    expect(() => validateDmAttachment({ type: "image/png", size: png.length })).not.toThrow();
+
+    const encrypted = encryptFileForDm(png.buffer as ArrayBuffer, "image/png");
+
+    // Ciphertext length only grows with plaintext length, so the largest allowed photo is
+    // the worst case for every photo allowed.
+    expect(encrypted.ciphertextBytes.length).toBeLessThanOrEqual(MAX_UPLOAD_BYTES);
+    expect(decryptDmAttachmentBytes(encrypted.ciphertextBytes.buffer as ArrayBuffer, encrypted.key)).toEqual(png);
+  });
+
+  test.each([
+    ["a small photo", 48 * 1024],
+    ["a phone photo", 2 * 1024 * 1024],
+    ["one just under the limit", MAX_DM_PHOTO_BYTES - 1],
+  ])("%s round-trips through encryption intact", (_, size) => {
+    const png = makePng(size);
+
+    const encrypted = encryptFileForDm(png.buffer as ArrayBuffer, "image/png");
+
+    expect(encrypted.ciphertextBytes.length).toBeLessThanOrEqual(MAX_UPLOAD_BYTES);
+    expect(decryptDmAttachmentBytes(encrypted.ciphertextBytes.buffer as ArrayBuffer, encrypted.key)).toEqual(png);
+  });
+
+  test("the Channel limit is not the Direct Message one: an image of 10 MB is still fine there", () => {
+    expect(() => validateAttachment({ type: "image/png", size: MAX_UPLOAD_BYTES })).not.toThrow();
   });
 });
 
@@ -143,5 +191,70 @@ describe("fetchDmAttachmentObjectUrl", () => {
     stubFetch(false);
 
     await expect(fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", b)).rejects.toThrow(MediaError);
+  });
+});
+
+describe("wrapDmMessage", () => {
+  function localSigner(secretKey: Uint8Array): Signer {
+    return {
+      async getPublicKey() {
+        return getPublicKey(secretKey);
+      },
+      async signEvent(template: EventTemplate) {
+        return finalizeEvent(template, secretKey);
+      },
+      async nip44Encrypt(pubkey: string, plaintext: string) {
+        return nip44.encrypt(plaintext, nip44.getConversationKey(secretKey, pubkey));
+      },
+      async nip44Decrypt(pubkey: string, ciphertext: string) {
+        return nip44.decrypt(ciphertext, nip44.getConversationKey(secretKey, pubkey));
+      },
+    };
+  }
+
+  function readyPhoto(label: string): ReadyDmPhoto {
+    const encrypted = encryptFileForDm(new TextEncoder().encode(label).buffer as ArrayBuffer, "image/jpeg");
+    const sha256 = sha256Hex(encrypted.ciphertextBytes.buffer as ArrayBuffer);
+    return {
+      encrypted,
+      descriptor: { url: `https://studio.test/media/${sha256}`, sha256, size: encrypted.ciphertextBytes.length, type: "application/octet-stream" },
+      dim: "4x3",
+    };
+  }
+
+  const sender = generateIdentity();
+  const peer = generateIdentity();
+  const photos = [readyPhoto("first photo"), readyPhoto("second photo")];
+
+  test("no gift wrap — the sender's own copy included — names a photo's hash outside the encryption", async () => {
+    // #48 (decided with #38): the hash, the reference and the key live only inside the rumor.
+    // An outer `x` grants nothing any more, and it would tie every envelope to the file.
+    const wraps = await wrapDmMessage(localSigner(sender.secretKey), sender.publicKey, [peer.publicKey], "two photos", photos);
+
+    expect(wraps).toHaveLength(2);
+    for (const wrap of wraps) {
+      expect(wrap.tags).toEqual([["p", expect.any(String)]]);
+      for (const photo of photos) expect(JSON.stringify(wrap)).not.toContain(photo.descriptor.sha256);
+    }
+  });
+
+  test("each participant, and the sender on another device, finds one imeta per photo inside", async () => {
+    const wraps = await wrapDmMessage(localSigner(sender.secretKey), sender.publicKey, [peer.publicKey], "two photos", photos);
+
+    for (const identity of [peer, sender]) {
+      const wrap = wraps.find((w) => w.tags[0][1] === identity.publicKey)!;
+      const rumor = await unwrapGiftWrap(localSigner(identity.secretKey), wrap);
+
+      expect(rumor.content).toBe("two photos");
+      expect(parseDmImetaTags(rumor.tags)).toEqual(
+        photos.map((photo) => ({
+          url: photo.descriptor.url,
+          sha256: photo.descriptor.sha256,
+          size: photo.descriptor.size,
+          originalMime: "image/jpeg",
+          key: photo.encrypted.key,
+        })),
+      );
+    }
   });
 });
