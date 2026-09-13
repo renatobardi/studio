@@ -20,6 +20,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
@@ -83,6 +84,8 @@ export function Timeline({
 }>) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const sendOnce = useRef(createSingleFlight()).current;
   const [attachments, setAttachments] = useState<AttachmentDraft<ReadyAttachment>[]>([]);
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,23 +144,28 @@ export function Timeline({
 
   const canSend = canSendWithDrafts(draft, attachments);
 
-  const send = async () => {
-    if (!canSend) return;
-    setSendError(null);
-    const sent = attachments;
-    try {
-      const imetaTags = readyPayloads(sent).map((image) => buildImetaTag(image.descriptor, image.dim));
-      const template = buildMessage(channelId, draft.trim(), imetaTags);
-      const signed = await signer.signEvent(template);
-      await client.publish(signed);
-      setDraft("");
-      // Only what went out: a photo picked while this was publishing stays in the composer.
-      for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
-      setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
-    } catch (error) {
-      setSendError(publishFailureMessage(error));
-    }
-  };
+  const send = () =>
+    sendOnce(async () => {
+      if (!canSend) return;
+      setSending(true);
+      setSendError(null);
+      const sent = attachments;
+      const sentDraft = draft;
+      try {
+        const imetaTags = readyPayloads(sent).map((image) => buildImetaTag(image.descriptor, image.dim));
+        const template = buildMessage(channelId, draft.trim(), imetaTags);
+        const signed = await signer.signEvent(template);
+        await client.publish(signed);
+        setDraft((current) => draftAfterSend(current, sentDraft));
+        // Only what went out: a photo picked while this was publishing stays in the composer.
+        for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
+        setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
+      } catch (error) {
+        setSendError(publishFailureMessage(error));
+      } finally {
+        setSending(false);
+      }
+    });
 
   const react = async (target: TargetRef, emoji: string) => {
     const signed = await signer.signEvent(buildReaction(channelId, target, emoji));
@@ -271,7 +279,7 @@ export function Timeline({
           onChange={(e) => setDraft(e.target.value)}
           data-testid="message-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend}>
+        <button className="btn btn-primary" type="submit" disabled={!canSend || sending}>
           Send
         </button>
       </form>

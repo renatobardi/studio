@@ -10,6 +10,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
 import {
   encryptFileForDm,
@@ -55,6 +56,8 @@ export function ConversationView({
 }>) {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const sendOnce = useRef(createSingleFlight()).current;
   const [attachments, setAttachments] = useState<AttachmentDraft<ReadyDmPhoto>[]>([]);
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,21 +100,26 @@ export function ConversationView({
 
   const canSend = canSendWithDrafts(draft, attachments);
 
-  const send = async () => {
-    if (!canSend) return;
-    setSendError(null);
-    const sent = attachments;
-    try {
-      const wraps = await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(sent));
-      await Promise.all(wraps.map((wrap) => client.publish(wrap)));
-      setDraft("");
-      // Only what went out: a photo picked while this was publishing stays in the composer.
-      for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
-      setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
-    } catch (error) {
-      setSendError(publishFailureMessage(error));
-    }
-  };
+  const send = () =>
+    sendOnce(async () => {
+      if (!canSend) return;
+      setSending(true);
+      setSendError(null);
+      const sent = attachments;
+      const sentDraft = draft;
+      try {
+        const wraps = await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(sent));
+        await Promise.all(wraps.map((wrap) => client.publish(wrap)));
+        setDraft((current) => draftAfterSend(current, sentDraft));
+        // Only what went out: a photo picked while this was publishing stays in the composer.
+        for (const attachment of sent) URL.revokeObjectURL(attachment.previewUrl);
+        setAttachments((prev) => prev.filter((attachment) => !sent.some((s) => s.id === attachment.id)));
+      } catch (error) {
+        setSendError(publishFailureMessage(error));
+      } finally {
+        setSending(false);
+      }
+    });
 
   return (
     <div className="conversation-view" data-testid="conversation-view">
@@ -170,7 +178,7 @@ export function ConversationView({
           onChange={(e) => setDraft(e.target.value)}
           data-testid="dm-composer"
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend}>
+        <button className="btn btn-primary" type="submit" disabled={!canSend || sending}>
           Send
         </button>
       </form>
