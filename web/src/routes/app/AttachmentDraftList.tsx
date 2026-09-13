@@ -30,9 +30,11 @@ export function AttachmentDraftList<R>({
               <span className="error-banner" data-testid={`${testIdPrefix}attachment-error`}>
                 {attachment.message}
               </span>
-              <button type="button" className="link" onClick={() => onRetry(attachment)}>
-                Retry
-              </button>
+              {attachment.retryable && (
+                <button type="button" className="link" onClick={() => onRetry(attachment)}>
+                  Retry
+                </button>
+              )}
             </>
           )}
           <button type="button" className="link" onClick={() => onRemove(attachment)}>

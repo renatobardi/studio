@@ -7,7 +7,8 @@ type DraftBase = { id: string; file: File; previewUrl: string };
 export type AttachmentDraft<Ready> = DraftBase & (
   | { status: "uploading"; loaded: number; total: number }
   | { status: "ready"; ready: Ready }
-  | { status: "error"; message: string }
+  // `retryable` is false for a file that failed validation: another attempt would fail the same way (#107).
+  | { status: "error"; message: string; retryable: boolean }
 );
 
 const base = ({ id, file, previewUrl }: DraftBase): DraftBase => ({ id, file, previewUrl });
@@ -35,12 +36,17 @@ export function readyDraft<R>(drafts: AttachmentDraft<R>[], id: string, ready: R
 }
 
 export function failDraft<R>(drafts: AttachmentDraft<R>[], id: string, message: string): AttachmentDraft<R>[] {
-  return settleUpload(drafts, id, (draft) => ({ ...base(draft), status: "error", message }));
+  return settleUpload(drafts, id, (draft) => ({ ...base(draft), status: "error", message, retryable: true }));
+}
+
+/** A picked file the composer refuses before uploading — not an image, or over the limit. */
+export function invalidDraft<R>(drafts: AttachmentDraft<R>[], id: string, message: string): AttachmentDraft<R>[] {
+  return settleUpload(drafts, id, (draft) => ({ ...base(draft), status: "error", message, retryable: false }));
 }
 
 export function retryDraft<R>(drafts: AttachmentDraft<R>[], id: string): AttachmentDraft<R>[] {
   return drafts.map((draft) =>
-    draft.id === id && draft.status === "error"
+    draft.id === id && draft.status === "error" && draft.retryable
       ? { ...base(draft), status: "uploading", loaded: 0, total: draft.file.size }
       : draft,
   );
@@ -59,4 +65,10 @@ export function canSendWithDrafts<R>(content: string, drafts: AttachmentDraft<R>
 
 export function readyPayloads<R>(drafts: AttachmentDraft<R>[]): R[] {
   return drafts.flatMap((draft) => (draft.status === "ready" ? [draft.ready] : []));
+}
+
+/** The photo limit a composer shows before anything is picked (#107), so it is not first learned
+ * from an error: 10 MB in a Channel, 5 MB in a Direct Message. */
+export function attachmentLimitLabel(maxBytes: number): string {
+  return `Photos up to ${maxBytes / (1024 * 1024)} MB`;
 }

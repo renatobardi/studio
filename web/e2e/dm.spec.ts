@@ -44,11 +44,14 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await pageA.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
 
   // #48: a photo over the Direct Message limit is refused in the composer, naming the limit,
-  // and holds the Message back until it is removed — never refused later by the server.
+  // and holds the Message back until it is removed — never refused later by the server. The
+  // limit is on screen before anything is picked, and a refused file offers no Retry (#107).
+  await expect(pageA.getByTestId("dm-attach-limit")).toHaveText("Photos up to 5 MB");
   await pageA.getByTestId("dm-attach-input").setInputFiles({
     name: "too-big.png", mimeType: "image/png", buffer: Buffer.from(makePng(5 * 1024 * 1024 + 1)),
   });
   await expect(pageA.getByTestId("dm-attachment-error")).toContainText("5 MB");
+  await expect(pageA.getByTestId("dm-attachment-preview").getByRole("button", { name: "Retry" })).toHaveCount(0);
   await expect(pageA.getByRole("button", { name: "Send" })).toBeDisabled();
   await pageA.getByTestId("dm-attachment-preview").getByRole("button", { name: "Remove" }).click();
   await expect(pageA.getByTestId("dm-attachment-preview")).toHaveCount(0);

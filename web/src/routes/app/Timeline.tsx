@@ -11,8 +11,10 @@ import {
 } from "../../lib/channelEvents";
 import {
   addDraft,
+  attachmentLimitLabel,
   canSendWithDrafts,
   failDraft,
+  invalidDraft,
   progressDraft,
   readyDraft,
   readyPayloads,
@@ -21,7 +23,14 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
-import { buildImetaTag, parseImetaTags, uploadBlob, validateAttachment, type BlobDescriptor } from "../../lib/media";
+import {
+  MAX_UPLOAD_BYTES,
+  buildImetaTag,
+  parseImetaTags,
+  uploadBlob,
+  validateAttachment,
+  type BlobDescriptor,
+} from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
 import { AttachmentDraftList } from "./AttachmentDraftList";
@@ -110,6 +119,11 @@ export function Timeline({
   const upload = async (id: string, file: File, previewUrl: string) => {
     try {
       validateAttachment(file);
+    } catch (err) {
+      setAttachments((prev) => invalidDraft(prev, id, err instanceof Error ? err.message : "This file can't be attached."));
+      return;
+    }
+    try {
       const [descriptor, dim] = await Promise.all([
         uploadBlob(mediaUrl, file, signer, (loaded, total) =>
           setAttachments((prev) => progressDraft(prev, id, loaded, total)),
@@ -283,6 +297,9 @@ export function Timeline({
           Send
         </button>
       </form>
+      <span className="meta" data-testid="attach-limit">
+        {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
+      </span>
     </div>
   );
 }

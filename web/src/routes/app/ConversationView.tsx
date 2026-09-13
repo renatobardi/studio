@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
 import {
   addDraft,
+  attachmentLimitLabel,
   canSendWithDrafts,
   failDraft,
+  invalidDraft,
   progressDraft,
   readyDraft,
   readyPayloads,
@@ -14,6 +16,7 @@ import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
 import { deliverPending, isDelivered, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
 import {
+  MAX_DM_PHOTO_BYTES,
   encryptFileForDm,
   parseDmImetaTags,
   uploadEncryptedBlob,
@@ -69,6 +72,11 @@ export function ConversationView({
   const upload = async (id: string, file: File, previewUrl: string) => {
     try {
       validateDmAttachment(file);
+    } catch (err) {
+      setAttachments((prev) => invalidDraft(prev, id, err instanceof Error ? err.message : "This file can't be attached."));
+      return;
+    }
+    try {
       const encrypted = encryptFileForDm(await file.arrayBuffer(), file.type);
       const [descriptor, dim] = await Promise.all([
         uploadEncryptedBlob(mediaUrl, encrypted, peerPubkeys, signer, (loaded, total) =>
@@ -201,6 +209,9 @@ export function ConversationView({
           {partial === null ? "Send" : "Retry"}
         </button>
       </form>
+      <span className="meta" data-testid="dm-attach-limit">
+        {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
+      </span>
     </div>
   );
 }
