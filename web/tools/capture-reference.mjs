@@ -91,7 +91,7 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css
 function serve(dir) {
   return new Promise((ok) => {
     const server = createServer(async (req, res) => {
-      const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
+      const path = normalize(decodeURIComponent(new URL(req.url, "https://x").pathname));
       const file = join(dir, path);
       if (!file.startsWith(dir)) { res.writeHead(403); return res.end(); }
       try {
