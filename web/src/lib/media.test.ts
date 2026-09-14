@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools";
 import { generateIdentity } from "./identity";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
+import { pruneMediaCaches } from "./mediaCache";
+import { stubControllableFetch } from "./testing/controllableFetch";
 import {
   MAX_UPLOAD_BYTES,
   fetchBlobObjectUrl,
@@ -196,5 +198,22 @@ describe("fetchBlobObjectUrl", () => {
     await fetchBlobObjectUrl(url, hash, signer);
 
     expect(calls).toHaveLength(1);
+  });
+
+  test("a sign-out that prunes mid-fetch is not undone by the fetch's late write", async () => {
+    // The race: pruneMediaCaches (sign-out, or the next boot) can finish while a fetch this
+    // Identity started earlier is still in flight. That fetch's cacheBlob must not land after —
+    // it would resurrect exactly the cache the prune just wiped.
+    const { stores } = stubCaches();
+    const signer = signerFor(generateIdentity().secretKey);
+    const fetchControl = stubControllableFetch();
+
+    const pending = fetchBlobObjectUrl(url, hash, signer);
+    await fetchControl.started; // the epoch is captured just before this call
+    await pruneMediaCaches(null);
+    fetchControl.resolve(new Response(bytes.buffer as ArrayBuffer, { status: 200, headers: { "content-type": "image/png" } }));
+    await pending;
+
+    expect(Object.keys(stores)).toEqual([]);
   });
 });

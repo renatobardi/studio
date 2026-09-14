@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cacheBlob, mediaCacheName, pruneMediaCaches, readCachedBlob } from "./mediaCache";
+import { cacheBlob, mediaCacheEpoch, mediaCacheName, pruneMediaCaches, readCachedBlob } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 
 const bytesOf = (...values: number[]) => new Uint8Array(values).buffer as ArrayBuffer;
@@ -67,5 +67,20 @@ describe("the media cache", () => {
     failDeleteOf(mediaCacheName(PUBKEY_A));
 
     await expect(pruneMediaCaches(null)).rejects.toThrow(/cached media/i);
+  });
+
+  test("pruning bumps the epoch, so a write still in flight can tell a prune ran", async () => {
+    // media.ts/dmMedia.ts capture the epoch before their fetch and skip caching if it moved on —
+    // pruning is what invalidates them, so it must actually move the counter every time it runs.
+    stubCaches();
+
+    const before = mediaCacheEpoch();
+    await pruneMediaCaches(null);
+    const afterFirst = mediaCacheEpoch();
+    await pruneMediaCaches(PUBKEY_A);
+    const afterSecond = mediaCacheEpoch();
+
+    expect(afterFirst).toBeGreaterThan(before);
+    expect(afterSecond).toBeGreaterThan(afterFirst);
   });
 });

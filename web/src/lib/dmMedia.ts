@@ -1,7 +1,7 @@
 import { nip44, type VerifiedEvent } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { Signer } from "./custody";
-import { cacheBlob, readCachedBlob } from "./mediaCache";
+import { cacheBlob, mediaCacheEpoch, readCachedBlob } from "./mediaCache";
 import {
   MediaError,
   blossomAuthorizationHeader,
@@ -124,6 +124,7 @@ export async function fetchDmAttachmentObjectUrl(
 }
 
 async function downloadCiphertext(url: string, sha256: string, pubkey: string, signer: Signer): Promise<ArrayBuffer> {
+  const epochAtFetchStart = mediaCacheEpoch();
   const authEvent = await buildBlossomAuthEvent("get", {}, signer);
   const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
@@ -131,7 +132,7 @@ async function downloadCiphertext(url: string, sha256: string, pubkey: string, s
   if (sha256Hex(bytes) !== sha256) {
     throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
   }
-  await cacheBlob(pubkey, url, bytes, "application/octet-stream");
+  if (mediaCacheEpoch() === epochAtFetchStart) await cacheBlob(pubkey, url, bytes, "application/octet-stream");
   return bytes;
 }
 
