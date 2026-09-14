@@ -1,4 +1,4 @@
-export type AppView = "auth" | "onboarding" | "app";
+export type AppView = "loading" | "auth" | "onboarding" | "app";
 
 export interface AuthAccount {
   uid: string;
@@ -21,6 +21,10 @@ export interface RoutingState {
  * but reached no Workspace" is a state an interruption can leave behind
  * (#36). Onboarding is what can finish that; the app shell can only report a
  * dead end.
+ *
+ * Callers show "loading" themselves while an Account/Identity/Workspace
+ * lookup is in flight — this function only ever sees the settled result
+ * (#103).
  */
 export function resolveInitialView({ account, hasIdentity, hasWorkspace }: RoutingState): AppView {
   if (!account) return "auth";
