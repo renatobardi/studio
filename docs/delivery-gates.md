@@ -88,10 +88,12 @@ would only manufacture false assurance.
 `docs/UI/design/**` is not excluded from analysis yet, and it should be: a
 vendored, generated design artefact nothing imports, it accounts for 321 of the
 project's 392 findings on its own — more since #66 vendored the Kubo bundle
-(`_ds_bundle.js`) next to it. The exclusion was written here and then
-withdrawn — the `SonarCloud Code Analysis` check run stopped being posted on
-exactly the branch that carried the properties file, so the file is out while
-that is being pinned down. Tracked in #76.
+(`_ds_bundle.js`) next to it. The exclusion was first written to
+`sonar-project.properties` and withdrawn — the `SonarCloud Code Analysis` check
+run stopped being posted on exactly the branch that carried it. The project is
+on automatic analysis (Autoscan: `navigation/component` reports
+`ciName: Autoscan`), which reads `.sonarcloud.properties`, not the scanner's
+file; that is the file `#110` adds. Tracked in #76.
 
 The project is on the built-in `Sonar way` quality gate, whose conditions are
 all scoped to *new code*. On a pull request that works: new code is the diff,
