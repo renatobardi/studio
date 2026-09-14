@@ -213,7 +213,10 @@ export function AuthScreen({
                 />
               </label>
               {step !== "reset" && (
-                <label className="auth-field">
+                // div, not label: a label wrapping "Forgot password?" makes the button
+                // a second getByLabel("Password") match (#111); the input is already
+                // named via aria-labelledby, so it doesn't need the implicit label.
+                <div className="auth-field">
                   <span className="auth-field-label auth-field-head">
                     <span id="auth-password-label">Password</span>
                     {step === "signin" && (
@@ -236,7 +239,7 @@ export function AuthScreen({
                   {step === "signup" && (
                     <span className="auth-field-hint">Use 8 characters or more. Firebase never stores it in plain text.</span>
                   )}
-                </label>
+                </div>
               )}
             </div>
           )}
