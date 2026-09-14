@@ -46,17 +46,26 @@ class FakeRelay {
     this.requests.push(filters);
     const entry = { filters, onEvent: handlers.onEvent };
     this.open.push(entry);
-    for (const filter of filters) {
-      const page = this.stored
-        .filter((event) => matches(event, filter))
-        .sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id))
-        .slice(0, filter.limit);
-      for (const event of page) handlers.onEvent(event);
-    }
-    handlers.onEose?.();
-    return () => {
+    const deliver = (fs: Filter[]) => {
+      for (const filter of fs) {
+        const page = this.stored
+          .filter((event) => matches(event, filter))
+          .sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id))
+          .slice(0, filter.limit);
+        for (const event of page) handlers.onEvent(event);
+      }
+      handlers.onEose?.();
+    };
+    deliver(filters);
+    const unsubscribe = () => {
       this.open = this.open.filter((candidate) => candidate !== entry);
     };
+    return Object.assign(unsubscribe, {
+      update: (next: Filter[]) => {
+        entry.filters = next;
+        deliver(next);
+      },
+    });
   }
 
   /** A live event reaching every open subscription that asked for it. */
@@ -67,9 +76,14 @@ class FakeRelay {
     }
   }
 
-  /** What every open subscription asked for, as a flat list of filters. */
+  /** What was ever asked for, across every subscribe call, as a flat list of filters. */
   get allFilters(): Filter[] {
     return this.requests.flat();
+  }
+
+  /** What every open subscription is currently asking for, after any `update()` calls. */
+  get openFilters(): Filter[] {
+    return this.open.flatMap((entry) => entry.filters);
   }
 }
 
@@ -132,7 +146,7 @@ describe("ChannelFeed", () => {
       subscribe(filters: Filter[], handlers: { onEvent(e: VerifiedEvent): void; onEose?(): void }) {
         if (filters[0]?.until === undefined) return relay.subscribe(filters, handlers);
         inFlight = () => relay.subscribe(filters, handlers);
-        return () => {};
+        return Object.assign(() => {}, { update: () => {} });
       },
     };
     const feed = new ChannelFeed(stalling, CHANNEL);
@@ -169,6 +183,21 @@ describe("ChannelFeed", () => {
     expect(feed.getSnapshot().reactions.map((r) => r.id)).toEqual(["backdated"]);
   });
 
+  test("widens one root-companions subscription instead of opening one per page", () => {
+    const relay = new FakeRelay(messages(150));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    while (feed.getSnapshot().hasMore) feed.loadOlder();
+
+    const rootSubscribeCalls = relay.requests.filter((filters) =>
+      filters.some((f) => "#E" in f),
+    ).length;
+    expect(rootSubscribeCalls).toBe(1);
+
+    const rootFilter = relay.openFilters.find((f) => "#E" in f);
+    expect(rootFilter?.["#E"]).toHaveLength(150);
+  });
+
   test("asks for a root's companions once, however often the subscription is replayed", () => {
     const relay = new FakeRelay(messages(3));
     const feed = new ChannelFeed(relay, CHANNEL);
@@ -177,6 +206,24 @@ describe("ChannelFeed", () => {
     const asked = rootFilters();
     for (const stored of messages(3)) relay.publish(stored);
     expect(rootFilters()).toBe(asked);
+  });
+
+  test("does not re-notify listeners for a companion redelivered by a widened filter", () => {
+    // react1 targets m015, which is already covered by page 1. Widening the roots
+    // subscription to include page 2's roots redelivers it under the new filter (#91).
+    const relay = new FakeRelay([...messages(60), reaction("react1", "m015", 1016)]);
+    const feed = new ChannelFeed(relay, CHANNEL);
+    let notifications = 0;
+    feed.subscribe(() => (notifications += 1));
+    feed.start();
+    expect(feed.getSnapshot().reactions.map((r) => r.id)).toEqual(["react1"]);
+
+    notifications = 0;
+    feed.loadOlder();
+
+    // 10 new page-2 Messages plus loadOlder's own final emit — not one more for react1.
+    expect(notifications).toBe(11);
+    expect(feed.getSnapshot().reactions.map((r) => r.id)).toEqual(["react1"]);
   });
 
   test("notifies its listener as events arrive, and stops once disposed", () => {
