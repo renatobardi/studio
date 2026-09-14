@@ -12,6 +12,8 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { Icon } from "../../components/icons/Icon";
+import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
 import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
@@ -29,6 +31,8 @@ import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Avatar } from "./Avatar";
+import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
 import { displayName, type useProfiles } from "./useProfiles";
 
@@ -155,37 +159,75 @@ export function ConversationView({
       }
     });
 
+  const peerName = peerPubkeys.map((p) => displayName(profiles, p)).join(", ");
+
   return (
-    <div className="conversation-view" data-testid="conversation-view">
-      <ul className="message-list">
-        {messages.map((message) => (
-          <li key={message.id} className="message" data-testid="dm-message">
-            <div className="message-header">
-              <Avatar profile={profiles.get(message.pubkey)} name={displayName(profiles, message.pubkey)} />
-              <span className="message-author">{displayName(profiles, message.pubkey)}</span>
-              <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
-            </div>
-            {message.content && <div className="message-content">{message.content}</div>}
-            {parseDmImetaTags(message.tags).map((dmAttachment, index) => (
-              <DmAttachmentImage key={`${index}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
-            ))}
-          </li>
-        ))}
-      </ul>
-      {sendError && <div className="error-banner">{sendError}</div>}
-      <AttachmentDraftList
-        attachments={attachments}
-        testIdPrefix="dm-"
-        locked={partial !== null}
-        onRetry={retryAttachment}
-        onRemove={removeAttachment}
-      />
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
+    <section className="conversation-view" data-testid="conversation-view" aria-label={`Direct message with ${peerName}`}>
+      <header className="pane-header conversation-header">
+        <span className="pane-title conversation-title">
+          {peerPubkeys.length === 1 && (
+            <Avatar profile={profiles.get(peerPubkeys[0]!)} name={peerName} size={26} />
+          )}
+          <span className="conversation-title-text">
+            <h1 className="conversation-name">{peerName}</h1>
+            {peerPubkeys.length === 1 && (
+              <span className="conversation-handle">{peerPubkeys[0]!.slice(0, 12)}…</span>
+            )}
+          </span>
+        </span>
+      </header>
+      <div className="timeline-scroll dm-scroll" data-list="true">
+        <p className="dm-notice">
+          <Icon name="lock" size={12} />
+          <span>End-to-end encrypted. The Workspace relay only ever sees sealed envelopes.</span>
+        </p>
+        <ul className="message-list">
+          {messages.map((message, index) => {
+            const continuation = isContinuation(messages[index - 1], message);
+            const author = displayName(profiles, message.pubkey);
+            return (
+              <MessageRow
+                key={message.id}
+                author={author}
+                profile={profiles.get(message.pubkey)}
+                createdAt={message.created_at}
+                content={message.content}
+                continuation={continuation}
+                avatarSize={26}
+                className="dm-message"
+                testId="dm-message"
+              >
+                {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
+                  <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
+                ))}
+              </MessageRow>
+            );
+          })}
+        </ul>
+      </div>
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        placeholder="Message…"
+        canSend={(canSend || partial !== null) && !sending}
+        disabled={partial !== null}
+        sendLabel={partial === null ? "Send" : "Retry"}
+        onAttach={() => fileInputRef.current?.click()}
+        testId="dm-composer"
+        attachTestId="dm-attach-button"
+        trailing={
+          <>
+            <span className="meta" data-testid="dm-attach-limit">
+              {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
+            </span>
+            {partial !== null && (
+              <button type="button" className="btn btn-outline btn-xs" disabled={sending} onClick={discardPartial}>
+                Discard
+              </button>
+            )}
+          </>
+        }
       >
         <input
           ref={fileInputRef}
@@ -198,35 +240,15 @@ export function ConversationView({
             if (e.target.files) pickAttachments(e.target.files);
           }}
         />
-        <button
-          type="button"
-          className="btn btn-outline"
-          data-testid="dm-attach-button"
-          disabled={partial !== null}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          📎
-        </button>
-        <input
-          className="composer-input"
-          value={draft}
-          placeholder="Message…"
-          disabled={partial !== null}
-          onChange={(e) => setDraft(e.target.value)}
-          data-testid="dm-composer"
+        {sendError && <div className="error-banner">{sendError}</div>}
+        <AttachmentDraftList
+          attachments={attachments}
+          testIdPrefix="dm-"
+          locked={partial !== null}
+          onRetry={retryAttachment}
+          onRemove={removeAttachment}
         />
-        <button className="btn btn-primary" type="submit" disabled={(!canSend && partial === null) || sending}>
-          {partial === null ? "Send" : "Retry"}
-        </button>
-        {partial !== null && (
-          <button type="button" className="btn btn-outline" disabled={sending} onClick={discardPartial}>
-            Discard
-          </button>
-        )}
-      </form>
-      <span className="meta" data-testid="dm-attach-limit">
-        {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
-      </span>
-    </div>
+      </Composer>
+    </section>
   );
 }

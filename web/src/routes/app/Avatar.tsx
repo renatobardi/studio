@@ -1,11 +1,20 @@
+import { initials } from "../../lib/sidebar";
 import type { Profile } from "./useProfiles";
 
-/** A Member's avatar: their kind 0 `picture` when set, otherwise the first letter of their
- * display name (matching the initials chip already used in onboarding — see `.avatar` in
- * app.css). */
-export function Avatar({ profile, name }: Readonly<{ profile: Profile | undefined; name: string }>) {
+/** A Member's avatar as the prototype draws it: their kind 0 `picture` when set, otherwise
+ * initials on a muted tile. 32px beside a Message, 26px in a Direct Message, 24px in a list. */
+export function Avatar({
+  profile,
+  name,
+  size = 32,
+}: Readonly<{ profile: Profile | undefined; name: string; size?: number }>) {
+  const style = { width: size, height: size, fontSize: size <= 24 ? 9 : size <= 26 ? 10 : 11 };
   if (profile?.picture) {
-    return <img className="avatar" src={profile.picture} alt="" width={19} height={19} />;
+    return <img className="avatar" src={profile.picture} alt="" width={size} height={size} style={style} />;
   }
-  return <span className="avatar">{name.slice(0, 1).toUpperCase()}</span>;
+  return (
+    <span className="avatar" style={style} aria-hidden="true">
+      {initials(name)}
+    </span>
+  );
 }

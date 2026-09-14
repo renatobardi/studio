@@ -36,6 +36,15 @@ it. Issue #51.
    the two ways an extension fails to cooperate: refusing the request, and not
    doing NIP-44 (#75). Its first-access half self-skips like flow 1, for the
    same reason.
+   Flow 11 (`visual-live.spec.ts`, #73) runs in the same smoke with
+   `STUDIO_VISUAL_CAPTURE=1`: it captures the deployed shell at 1440×900 and
+   390×844, light and dark, into `web/test-results/visual-live/` — uploaded
+   by the screenshots artifact — for comparison by hand against
+   `docs/UI/reference`. Flow 10 (`visual.spec.ts`) compares preview.html
+   against committed baselines and runs only where a dev server exists
+   (`bun run test:visual`), never in CD: the production build has no
+   preview page, and a baseline is accepted by a person, not by a green run
+   (`docs/UI/REFERENCE.md`, "Aceite visual").
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
@@ -78,10 +87,13 @@ would only manufacture false assurance.
 
 `docs/UI/design/**` is not excluded from analysis yet, and it should be: a
 vendored, generated design artefact nothing imports, it accounts for 321 of the
-project's 392 findings on its own. The exclusion was written here and then
-withdrawn — the `SonarCloud Code Analysis` check run stopped being posted on
-exactly the branch that carried the properties file, so the file is out while
-that is being pinned down. Tracked in #76.
+project's 392 findings on its own — more since #66 vendored the Kubo bundle
+(`_ds_bundle.js`) next to it. The exclusion was first written to
+`sonar-project.properties` and withdrawn — the `SonarCloud Code Analysis` check
+run stopped being posted on exactly the branch that carried it. The project is
+on automatic analysis (Autoscan: `navigation/component` reports
+`ciName: Autoscan`), which reads `.sonarcloud.properties`, not the scanner's
+file; that is the file `#110` adds. Tracked in #76.
 
 The project is on the built-in `Sonar way` quality gate, whose conditions are
 all scoped to *new code*. On a pull request that works: new code is the diff,

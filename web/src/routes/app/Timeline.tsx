@@ -22,6 +22,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
   MAX_UPLOAD_BYTES,
@@ -33,10 +34,12 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
+import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { AttachmentImage } from "./AttachmentImage";
-import { Avatar } from "./Avatar";
-import { ReactionBar } from "./ReactionBar";
+import { QuickReactions, ReactionBar } from "./ReactionBar";
 import { displayName, type useProfiles } from "./useProfiles";
 
 type ReadyAttachment = { descriptor: BlobDescriptor; dim?: string };
@@ -59,6 +62,7 @@ function replyCountLabel(count: number): string {
   if (count === 1) return "1 reply";
   return `${count} replies`;
 }
+
 
 export function Timeline({
   client,
@@ -200,74 +204,99 @@ export function Timeline({
   const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
 
   return (
-    <div
-      className="timeline"
-      ref={scrollRef}
-      onScroll={(e) => {
-        // Reaching the top of the timeline pulls in the previous page; the feed ignores a
-        // request while one is already in flight, so scrolling cannot pile them up.
-        if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
-      }}
-    >
-      {hasMore && (
-        <button className="btn btn-outline load-older" onClick={loadOlder}>
-          Load older messages
-        </button>
-      )}
-      <ul className="message-list">
-        {sorted.map((message) => {
-          const target: TargetRef = { id: message.id, kind: message.kind, pubkey: message.pubkey };
-          const reactionsForMessage = reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === message.id);
-          const deletionsForMessage = deletions.filter((d) =>
-            d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
-          );
-          const replyCount = countThreadReplies(replies, message.id);
-          return (
-            <li
-              key={message.id}
-              className={`message${message.id === openThreadRootId ? " active" : ""}`}
-              data-testid="timeline-message"
-            >
-              <div className="message-header">
-                <Avatar profile={profiles.get(message.pubkey)} name={displayName(profiles, message.pubkey)} />
-                <span className="message-author">{displayName(profiles, message.pubkey)}</span>
-                <span className="meta">{new Date(message.created_at * 1000).toLocaleTimeString()}</span>
-              </div>
-              {message.content && <div className="message-content">{message.content}</div>}
-              {parseImetaTags(message.tags).map((descriptor, index) => (
-                <AttachmentImage key={`${index}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
-              ))}
-              <ReactionBar
-                groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                ownPubkey={pubkey}
-                onAdd={(emoji) => void react(target, emoji)}
-                onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
-              />
-              <button
-                className="link thread-open"
-                onClick={() => onOpenThread({ ...target, content: message.content })}
-                data-testid="open-thread"
-              >
-                {replyCountLabel(replyCount)}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {sendError && <div className="error-banner">{sendError}</div>}
-      <AttachmentDraftList
-        attachments={attachments}
-        testIdPrefix=""
-        locked={false}
-        onRetry={retryAttachment}
-        onRemove={removeAttachment}
-      />
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
+    <div className="timeline">
+      <div
+        className="timeline-scroll"
+        ref={scrollRef}
+        onScroll={(e) => {
+          // Reaching the top of the timeline pulls in the previous page; the feed ignores a
+          // request while one is already in flight, so scrolling cannot pile them up.
+          if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
         }}
+      >
+        {hasMore && (
+          <button className="btn btn-outline btn-xs load-older" onClick={loadOlder}>
+            Load older messages
+          </button>
+        )}
+        <ul className="message-list">
+          {sorted.map((message, index) => {
+            const target: TargetRef = { id: message.id, kind: message.kind, pubkey: message.pubkey };
+            const reactionsForMessage = reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === message.id);
+            const deletionsForMessage = deletions.filter((d) =>
+              d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
+            );
+            const replyCount = countThreadReplies(replies, message.id);
+            const continuation = isContinuation(sorted[index - 1], message);
+            const author = displayName(profiles, message.pubkey);
+            return (
+              <MessageRow
+                key={message.id}
+                author={author}
+                profile={profiles.get(message.pubkey)}
+                createdAt={message.created_at}
+                content={message.content}
+                continuation={continuation}
+                className={message.id === openThreadRootId ? "active" : replyCount > 0 ? "has-replies" : ""}
+                testId="timeline-message"
+                actions={
+                  <span className="message-actions">
+                    <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
+                    {replyCount === 0 && (
+                      <button
+                        className="message-action"
+                        onClick={() => onOpenThread({ ...target, content: message.content })}
+                        data-testid="open-thread"
+                        aria-label="Reply in thread"
+                        title="Reply in thread"
+                      >
+                        <Icon name="message-square" size={14} />
+                      </button>
+                    )}
+                  </span>
+                }
+              >
+                {parseImetaTags(message.tags).map((descriptor, position) => (
+                  <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                ))}
+                <ReactionBar
+                  groups={groupReactions(reactionsForMessage, deletionsForMessage)}
+                  ownPubkey={pubkey}
+                  onAdd={(emoji) => void react(target, emoji)}
+                  onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
+                />
+                {/* The thread pill sits under a Message that has replies, as in the prototype;
+                    a Message without any offers "Reply in thread" among its hover actions. */}
+                {replyCount > 0 && (
+                  <div className="thread-open-row">
+                    <button
+                      className="thread-open"
+                      onClick={() => onOpenThread({ ...target, content: message.content })}
+                      data-testid="open-thread"
+                    >
+                      {replyCountLabel(replyCount)}
+                    </button>
+                  </div>
+                )}
+              </MessageRow>
+            );
+          })}
+        </ul>
+      </div>
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        placeholder="Message the channel…"
+        canSend={canSend && !sending}
+        onAttach={() => fileInputRef.current?.click()}
+        testId="message-composer"
+        attachTestId="attach-button"
+        trailing={
+          <span className="meta" data-testid="attach-limit">
+            {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
+          </span>
+        }
       >
         <input
           ref={fileInputRef}
@@ -280,28 +309,15 @@ export function Timeline({
             if (e.target.files) pickAttachments(e.target.files);
           }}
         />
-        <button
-          type="button"
-          className="btn btn-outline"
-          data-testid="attach-button"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          📎
-        </button>
-        <input
-          className="composer-input"
-          value={draft}
-          placeholder="Message the channel…"
-          onChange={(e) => setDraft(e.target.value)}
-          data-testid="message-composer"
+        {sendError && <div className="error-banner">{sendError}</div>}
+        <AttachmentDraftList
+          attachments={attachments}
+          testIdPrefix=""
+          locked={false}
+          onRetry={retryAttachment}
+          onRemove={removeAttachment}
         />
-        <button className="btn btn-primary" type="submit" disabled={!canSend || sending}>
-          Send
-        </button>
-      </form>
-      <span className="meta" data-testid="attach-limit">
-        {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
-      </span>
+      </Composer>
     </div>
   );
 }

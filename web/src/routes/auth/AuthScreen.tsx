@@ -9,10 +9,11 @@ import {
 } from "firebase/auth";
 import { useState } from "react";
 import { auth } from "../../lib/firebase";
+import { authCopy, type AuthStep } from "../../lib/authCopy";
 import { mapFirebaseErrorCode } from "../../lib/authErrors";
 import { isEmailVerified } from "../../lib/emailVerification";
-
-type AuthStep = "signin" | "signup" | "verify" | "reset" | "sent";
+import { Sakura } from "../../components/brand/Sakura";
+import { Icon } from "../../components/icons/Icon";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -159,148 +160,146 @@ export function AuthScreen({
     }
   };
 
+  const copy = authCopy(step);
+  const showForm = step === "signin" || step === "signup" || step === "reset";
+  const showGoogle = step === "signin" || step === "signup";
+  const submit = () => {
+    if (step === "signin") return handleSignIn();
+    if (step === "signup") return handleSignUp();
+    if (step === "reset") return handleReset();
+    if (step === "verify") return handleVerifyContinue();
+    goTo("signin");
+  };
+
   return (
-    <div className="centered-screen">
-      <div className="card stack" style={{ width: 352 }}>
-        <div className="stack" style={{ gap: 4 }}>
-          <div style={{ fontSize: 24 }}>🌸</div>
-          <h1 style={{ fontSize: 18, margin: 0 }}>Studio</h1>
+    <div className="auth-screen" data-screen-label="Sign in">
+      <div className="auth-column">
+        <Sakura size={32} sw={7} />
+        <h1 className="auth-title">{copy.title}</h1>
+        <p className="auth-body">{copy.body}</p>
+
+        <form
+          className="auth-card"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          {notice && (
+            <div className="error-banner" data-testid="sign-out-notice">
+              {notice}
+            </div>
+          )}
+
+          {showForm && (
+            <div className="auth-fields">
+              {step === "signup" && (
+                <label className="auth-field">
+                  <span className="auth-field-label">Name</span>
+                  <input className="input" value={name} placeholder="Your name" onChange={(e) => setName(e.target.value)} />
+                </label>
+              )}
+              <label className="auth-field">
+                <span className="auth-field-label">Email</span>
+                <input
+                  className="input"
+                  type="email"
+                  value={email}
+                  placeholder="you@example.com"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError(null);
+                  }}
+                />
+              </label>
+              {step !== "reset" && (
+                <label className="auth-field">
+                  <span className="auth-field-label auth-field-head">
+                    <span id="auth-password-label">Password</span>
+                    {step === "signin" && (
+                      <button type="button" className="auth-forgot" onClick={() => goTo("reset")}>
+                        Forgot password?
+                      </button>
+                    )}
+                  </span>
+                  <input
+                    className="input"
+                    type="password"
+                    aria-labelledby="auth-password-label"
+                    placeholder={step === "signup" ? "At least 8 characters" : "Your password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError(null);
+                    }}
+                  />
+                  {step === "signup" && (
+                    <span className="auth-field-hint">Use 8 characters or more. Firebase never stores it in plain text.</span>
+                  )}
+                </label>
+              )}
+            </div>
+          )}
+
+          {step === "verify" && (
+            <div className="auth-fields">
+              <div className="auth-panel">
+                <span className="auth-panel-icon">
+                  <Icon name="mail" size={14} />
+                </span>
+                <span className="auth-panel-text">
+                  <span className="auth-panel-title">{pendingUser?.email}</span>
+                  <span className="auth-panel-meta">{resent ? "Link sent again" : "Verification link sent just now"}</span>
+                </span>
+              </div>
+              <button type="button" className="link link-inline auth-resend" onClick={handleResend} disabled={busy}>
+                {resent ? "Link sent again" : "Resend the link"}
+              </button>
+            </div>
+          )}
+
+          {step === "sent" && (
+            <div className="auth-panel auth-panel-plain">
+              <span className="auth-check">
+                <Icon name="check" size={15} />
+              </span>
+              <span className="auth-panel-text">
+                <span className="auth-panel-title">{email}</span>
+                <span className="auth-panel-meta">Reset link sent just now</span>
+              </span>
+            </div>
+          )}
+
+          {error && (
+            <div className="error-banner">
+              {error.message}
+              {error.code && <code>{error.code}</code>}
+            </div>
+          )}
+
+          <div className="auth-actions">
+            <button className="btn btn-primary btn-block" disabled={busy} type="submit">
+              {copy.ctaLabel}
+            </button>
+            {showGoogle && (
+              <div className="auth-actions">
+                <div className="divider-or">or</div>
+                <button type="button" className="btn btn-outline btn-block" onClick={handleGoogle} disabled={busy}>
+                  Continue with Google
+                </button>
+              </div>
+            )}
+          </div>
+        </form>
+
+        <div className="auth-footer">
+          {copy.switchLabel && (
+            <button type="button" className="link" onClick={() => goTo(copy.switchStep)}>
+              {copy.switchLabel}
+            </button>
+          )}
+          <p className="auth-footnote">{copy.footnote}</p>
         </div>
-
-        {notice && (
-          <div className="error-banner" data-testid="sign-out-notice">
-            {notice}
-          </div>
-        )}
-
-        {error && (
-          <div className="error-banner">
-            {error.message}
-            {error.code && <code>{error.code}</code>}
-          </div>
-        )}
-
-        {step === "signin" && (
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSignIn();
-            }}
-          >
-            <label className="field">
-              <span className="field-label">Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label className="field">
-              <span className="field-label">Password</span>
-              <input
-                type="password"
-                placeholder="Your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
-            <button type="button" className="link" onClick={() => goTo("reset")}>
-              Forgot password?
-            </button>
-            <button className="btn btn-primary btn-block" disabled={busy} type="submit">
-              Sign in
-            </button>
-            <div className="divider-or">or</div>
-            <button type="button" className="btn btn-outline btn-block" onClick={handleGoogle} disabled={busy}>
-              Continue with Google
-            </button>
-            <button type="button" className="link" onClick={() => goTo("signup")}>
-              Don't have an account? Create one
-            </button>
-          </form>
-        )}
-
-        {step === "signup" && (
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSignUp();
-            }}
-          >
-            <label className="field">
-              <span className="field-label">Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <label className="field">
-              <span className="field-label">Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label className="field">
-              <span className="field-label">Password</span>
-              <input
-                type="password"
-                placeholder="At least 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <span className="meta">Use 8 characters or more. Firebase never stores it in plain text.</span>
-            </label>
-            <button className="btn btn-primary btn-block" disabled={busy} type="submit">
-              Create account
-            </button>
-            <div className="divider-or">or</div>
-            <button type="button" className="btn btn-outline btn-block" onClick={handleGoogle} disabled={busy}>
-              Continue with Google
-            </button>
-            <button type="button" className="link" onClick={() => goTo("signin")}>
-              Already have an account? Sign in
-            </button>
-          </form>
-        )}
-
-        {step === "verify" && (
-          <div className="stack">
-            <p>Verification link sent to {pendingUser?.email}.</p>
-            <span className="meta">{resent ? "Resent just now" : "Verification link sent just now"}</span>
-            <button className="btn btn-primary btn-block" onClick={handleVerifyContinue} disabled={busy}>
-              I verified — continue
-            </button>
-            <button type="button" className="link" onClick={handleResend} disabled={busy}>
-              Resend the link
-            </button>
-            <button type="button" className="link" onClick={() => goTo("signup")}>
-              Use a different email
-            </button>
-          </div>
-        )}
-
-        {step === "reset" && (
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleReset();
-            }}
-          >
-            <label className="field">
-              <span className="field-label">Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <button className="btn btn-primary btn-block" disabled={busy} type="submit">
-              Send reset link
-            </button>
-            <button type="button" className="link" onClick={() => goTo("signin")}>
-              Back to sign in
-            </button>
-          </form>
-        )}
-
-        {step === "sent" && (
-          <div className="stack">
-            <p>✓ Reset link sent just now.</p>
-            <button className="btn btn-primary btn-block" onClick={() => goTo("signin")}>
-              Back to sign in
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

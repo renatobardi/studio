@@ -21,7 +21,17 @@ bun run lint
 bun test         # pure-logic unit tests (identity, backup crypto, routing, auth error mapping,
                  # channel event builders/grouping, relay client reconnection)
 bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see scripts/ops/seed-e2e-test-account.sh
+bun run test:visual      # flow 10: the MVP screens over preview.html against their baselines (docs/UI/REFERENCE.md)
+bun run capture:reference # re-captures docs/UI/reference from the prototype
 ```
+
+## Preview harness
+
+`preview.html` (dev server only — Vite builds `index.html` alone) mounts the real screens over
+fixed, signed fixtures and a relay that answers from them (`src/preview/`): no Workspace, relay or
+Firebase needed. `?screen=channel|channel-thread|channel-members|dm|settings|auth-signin|onboarding-backup…`,
+plus `theme`, `density` and `fontScale`. It is what flow 10 compares and what anyone checking a
+screen against `docs/UI/reference` opens.
 
 ## Layout
 
@@ -36,18 +46,21 @@ bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see
   (who a Direct Message may be started with).
 - `src/routes/auth/` — sign in/up/verify/reset screens.
 - `src/routes/onboarding/` — the 8-step flow plus the restore-from-backup path.
-- `src/routes/app/` — the Channel experience (ticket #5): `AppShell` (connection + Channel list),
-  `ChannelView` (owns the one subscription per Channel, shared by `Timeline` and the side panes),
-  `Timeline`, `ThreadPane`, `MembersPane` (every row opens that Member's profile),
-  `ReactionBar`, `ConnectionBadge`. Direct Messages start from `MemberPicker`, over the
-  Workspace's member list — there is no pubkey field (#47).
+- `src/routes/app/` — the Channel experience (ticket #5): `AppShell` (connection, the persistent
+  `Sidebar`, appearance), `ChannelView` (owns the one subscription per Channel, shared by
+  `Timeline` and the side panes, and measures its own width for `lib/paneLayout.ts`),
+  `Timeline`, `ThreadPane`, `MembersPane` (every row opens that Member's profile), `Composer`
+  (the multiline ChatInput every conversation shares), `ReactionBar`, `SettingsView`,
+  `ConnectionBadge`. Direct Messages start from `MemberPicker`, over the Workspace's member
+  list — there is no pubkey field (#47).
+- `src/components/` — `brand/Sakura` (the mark) and `icons/Icon` (Lucide glyphs, path data in
+  `icons.ts`).
 
 ## Known gaps
 
-- UI is functionally complete per ticket #4's acceptance criteria and uses the Kubo tokens
-  (`src/styles/tokens/`), but is not a pixel-for-pixel port of `docs/UI/design/Studio.dc.html`
-  (13k lines) — copy and states match the written handoff (`docs/UI/README.md`), not the
-  prototype's exact micro-layout.
+- The MVP screens follow `docs/UI/design/Studio.dc.html` per screen (#65); what the
+  prototype leaves undefined — the sidebar on a phone, the screens it never draws — is listed
+  in `docs/UI/REFERENCE.md` as pending decisions, not guessed.
 - The `backup-options` / `download` / `setup` / `config` step boundaries and the restore entry
   point aren't specified verbatim in the handoff doc; this implementation's split (passphrase
   entry → verify+upload → connect+publish → finish) is a reasonable interpretation, not a

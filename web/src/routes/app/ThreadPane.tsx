@@ -1,26 +1,33 @@
 import type { VerifiedEvent } from "nostr-tools";
 import { useState } from "react";
 import { buildThreadReply, type TargetRef } from "../../lib/channelEvents";
+import { draftAfterSend } from "../../lib/composerSend";
 import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
 import { publishFailureMessage } from "../../lib/relayReasons";
-import { Avatar } from "./Avatar";
+import { Icon } from "../../components/icons/Icon";
+import { Composer } from "./Composer";
+import { MessageRow } from "./MessageRow";
 import { displayName, type useProfiles } from "./useProfiles";
 
 export function ThreadPane({
   client,
   signer,
   channelId,
+  channelName,
   root,
   allReplies,
   profiles,
+  onClose,
 }: Readonly<{
   client: RelayClient;
   signer: Signer;
   channelId: string;
-  root: TargetRef & { content: string };
+  channelName: string;
+  root: TargetRef & { content: string; created_at?: number };
   allReplies: VerifiedEvent[];
   profiles: ReturnType<typeof useProfiles>["profiles"];
+  onClose: () => void;
 }>) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -29,13 +36,15 @@ export function ThreadPane({
   const send = async () => {
     const content = draft.trim();
     if (!content) return;
+    const sentDraft = draft;
     setSending(true);
     setSendError(null);
     try {
       const template = buildThreadReply(channelId, root, content);
       const signed = await signer.signEvent(template);
       await client.publish(signed);
-      setDraft("");
+      // Only what went out: text typed while this was publishing stays in the composer.
+      setDraft((current) => draftAfterSend(current, sentDraft));
     } catch (error) {
       setSendError(publishFailureMessage(error));
     } finally {
@@ -47,45 +56,45 @@ export function ThreadPane({
     .filter((reply) => reply.tags.find((t) => t[0] === "E")?.[1] === root.id)
     .sort((a, b) => a.created_at - b.created_at);
 
+  const row = (event: { id: string; pubkey: string; content: string; created_at?: number }, testId?: string) => (
+    <MessageRow
+      key={event.id}
+      author={displayName(profiles, event.pubkey)}
+      profile={profiles.get(event.pubkey)}
+      createdAt={event.created_at}
+      content={event.content}
+      testId={testId}
+    />
+  );
+
   return (
     <aside className="side-pane" aria-label="Thread" data-testid="thread-pane">
-      <h2 className="side-pane-title">Thread</h2>
-      <div className="thread-root">
-        <div className="message-header">
-          <Avatar profile={profiles.get(root.pubkey)} name={displayName(profiles, root.pubkey)} />
-          <div className="message-author">{displayName(profiles, root.pubkey)}</div>
-        </div>
-        <div className="message-content">{root.content}</div>
-      </div>
-      <ul className="thread-reply-list">
-        {sorted.map((reply) => (
-          <li key={reply.id} data-testid="thread-reply">
-            <div className="message-header">
-              <Avatar profile={profiles.get(reply.pubkey)} name={displayName(profiles, reply.pubkey)} />
-              <div className="message-author">{displayName(profiles, reply.pubkey)}</div>
-            </div>
-            <div className="message-content">{reply.content}</div>
-          </li>
-        ))}
-      </ul>
-      {sendError && <div className="error-banner">{sendError}</div>}
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <input
-          className="composer-input"
-          value={draft}
-          placeholder="Reply in thread…"
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button className="btn btn-primary" type="submit" disabled={sending || !draft.trim()}>
-          Reply
+      <header className="pane-header side-pane-header">
+        <h2 className="side-pane-title">Thread</h2>
+        <span className="side-pane-context">#{channelName}</span>
+        <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close thread" title="Close thread">
+          <Icon name="x" />
         </button>
-      </form>
+      </header>
+      <div className="side-pane-scroll">
+        <ul className="message-list">{row(root)}</ul>
+        <div className="separator thread-rule" />
+        <ul className="message-list">
+          {sorted.map((reply) => row(reply, "thread-reply"))}
+        </ul>
+      </div>
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => void send()}
+        placeholder="Reply in thread…"
+        canSend={!sending && draft.trim().length > 0}
+        sendLabel="Reply"
+        hint={false}
+        testId="thread-composer"
+      >
+        {sendError && <div className="error-banner">{sendError}</div>}
+      </Composer>
     </aside>
   );
 }

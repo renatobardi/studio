@@ -1,0 +1,428 @@
+{
+  "viewports": {
+    "desktop": {
+      "width": 1440,
+      "height": 900
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "deviceScaleFactor": 1,
+  "states": [
+    {
+      "id": "auth-signin",
+      "state": {
+        "view": "auth",
+        "authStep": "signin",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": null,
+        "authErrorCode": null,
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "auth-signin-error",
+      "state": {
+        "view": "auth",
+        "authStep": "signin",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": "That email and password don’t match an account.",
+        "authErrorCode": "auth/invalid-credential",
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "auth-signup",
+      "state": {
+        "view": "auth",
+        "authStep": "signup",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": null,
+        "authErrorCode": null,
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "auth-verify",
+      "state": {
+        "view": "auth",
+        "authStep": "verify",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": null,
+        "authErrorCode": null,
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "auth-reset",
+      "state": {
+        "view": "auth",
+        "authStep": "reset",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": null,
+        "authErrorCode": null,
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "auth-sent",
+      "state": {
+        "view": "auth",
+        "authStep": "sent",
+        "authEmail": "you@example.com",
+        "authPassword": "",
+        "authName": "",
+        "authError": null,
+        "authErrorCode": null,
+        "authGoogleOpen": false,
+        "authResent": false
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-invite",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "invite",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "onboarding-profile",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "profile",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "onboarding-avatar",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "avatar",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-backup",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "backup",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "onboarding-backup-revealed",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "backup",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": true,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-backup-options",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "backup-options",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-download",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "download",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "onboarding-download-created",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "download",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "created",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-download-verified",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "download",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "verified",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-setup",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "setup",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "onboarding-config",
+      "state": {
+        "view": "onboarding",
+        "onboardingStep": "config",
+        "authAccount": {
+          "email": "renato@studio.app",
+          "provider": "password"
+        },
+        "onboardingName": "Renato",
+        "onboardingEmoji": "🌸",
+        "onboardingKeyRevealed": false,
+        "onboardingBackup": "idle",
+        "onboardingAge": false,
+        "onboardingTerms": false,
+        "onboardingPolicyError": null
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    },
+    {
+      "id": "channel",
+      "state": {
+        "view": "channel",
+        "channelId": "eng-platform",
+        "threadId": null,
+        "membersOpen": false,
+        "canvasOpen": false
+      },
+      "after": null,
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "channel-thread",
+      "state": {
+        "view": "channel",
+        "channelId": "eng-platform",
+        "threadId": null,
+        "membersOpen": false,
+        "canvasOpen": false
+      },
+      "after": "openThread",
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "channel-members",
+      "state": {
+        "view": "channel",
+        "channelId": "eng-platform",
+        "threadId": null,
+        "membersOpen": true,
+        "canvasOpen": false
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "dm",
+      "state": {
+        "view": "dm",
+        "dmId": "Ana Petrova",
+        "threadId": null,
+        "membersOpen": false
+      },
+      "after": null,
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "profile",
+      "state": {
+        "view": "profile"
+      },
+      "after": null,
+      "mobile": true,
+      "dark": false
+    },
+    {
+      "id": "settings-appearance",
+      "state": {
+        "view": "settings",
+        "settingsSection": "appearance"
+      },
+      "after": null,
+      "mobile": true,
+      "dark": true
+    },
+    {
+      "id": "settings-profile",
+      "state": {
+        "view": "settings",
+        "settingsSection": "profile"
+      },
+      "after": null,
+      "mobile": false,
+      "dark": false
+    }
+  ]
+}

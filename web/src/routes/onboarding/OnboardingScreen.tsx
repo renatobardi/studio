@@ -46,6 +46,9 @@ import {
   type OnboardingStep,
 } from "../../lib/onboardingSteps";
 import { connectAndAuthenticate, publishEvent } from "../../lib/relay";
+import { Sakura } from "../../components/brand/Sakura";
+import { Icon } from "../../components/icons/Icon";
+import { stepMaxWidth } from "../../lib/onboardingLayout";
 import { AccountPasswordGate } from "./AccountPasswordGate";
 
 type Step = OnboardingStep | "restore";
@@ -528,313 +531,420 @@ export function OnboardingScreen({
   // the extension off is the one thing that changes the answer (#75).
   if (nip44Missing) {
     return (
-      <div className="onboarding-shell">
+      <div className="onboarding-shell" data-screen-label="Onboarding">
         <div className="onboarding-content">
-          <h1 className="onboarding-title">Your Nostr extension can't do NIP-44</h1>
-          <div className="error-banner" data-testid="nip44-unsupported">
-            {EXTENSION_NO_NIP44_MESSAGE}
+          <div className="onboarding-step" style={{ maxWidth: stepMaxWidth("invite") }}>
+            <h1 className="onboarding-title">Your Nostr extension can't do NIP-44</h1>
+            <div className="error-banner onboarding-error" data-testid="nip44-unsupported">
+              {EXTENSION_NO_NIP44_MESSAGE}
+            </div>
+            <div className="onboarding-actions">
+              <button className="btn btn-primary btn-block" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
           </div>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
-            Reload
-          </button>
         </div>
       </div>
     );
   }
 
+  const showBack = step !== "invite" && !(step === "restore" && entry === "restore");
+  const nsec = identity ? nsecFromSecretKey(identity.secretKey) : "";
+
   return (
-    <div className="onboarding-shell">
-      <div className="onboarding-header">
-        <div style={{ fontSize: 30 }}>🌸</div>
-        <div className="onboarding-progress">
+    <div className="onboarding-shell" data-screen-label="Onboarding">
+      <header className="onboarding-header">
+        <Sakura size={30} sw={7} />
+        <span
+          className="onboarding-progress"
+          role="progressbar"
+          aria-label="Onboarding progress"
+          aria-valuemin={1}
+          aria-valuemax={steps.length}
+          aria-valuenow={step === "restore" ? 1 : steps.indexOf(step) + 1}
+          aria-valuetext={step === "restore" ? "Restoring your Identity" : `Step ${steps.indexOf(step) + 1} of ${steps.length}`}
+        >
           {steps.map((s) => (
             <span key={s} className={`dot${s === step ? " active" : ""}`} />
           ))}
-        </div>
-        <div className="account-chip">
-          <span className="avatar">{(user.email ?? "?")[0]?.toUpperCase()}</span>
-          <span>{user.email}</span>
-        </div>
-      </div>
+        </span>
+        <span className="account-chip" title={`Signed in · ${user.email ?? ""}`}>
+          <span className="account-chip-avatar">{(user.email ?? "?")[0]?.toUpperCase()}</span>
+          <span className="account-chip-email">{user.email}</span>
+        </span>
+      </header>
 
       <div className="onboarding-content">
-        {error && <div className="error-banner">{error}</div>}
+        <div className="onboarding-step" style={{ maxWidth: stepMaxWidth(step) }}>
+          {error && <div className="error-banner onboarding-error">{error}</div>}
 
-        {entry === null && !error && <p className="meta">Checking your account…</p>}
+          {entry === null && !error && <p className="onboarding-body">Checking your account…</p>}
 
-        {entry !== null && step === "invite" && (
-          <>
-            <h1 className="onboarding-title">Enter your invite</h1>
-            <div className="onboarding-actions">
-              <input
-                className="field-label"
-                placeholder="Invite code"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-              />
-              <button
-                className="btn btn-primary btn-block"
-                disabled={busy || !inviteCode}
-                onClick={handleInviteNext}
-              >
-                Continue
-              </button>
-              {workspaceName && <span className="meta">Joining {workspaceName}</span>}
-              <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
-                Create a new Workspace instead
-              </button>
-              {custody === "local" && (
-                <button type="button" className="link" onClick={handleGoRestore}>
-                  Restore an existing Identity from Key Backup
+          {entry !== null && step === "invite" && (
+            <>
+              <h1 className="onboarding-title">Enter your invite</h1>
+              <p className="onboarding-body">
+                Paste the invite code a Workspace admin sent you. It decides which Workspace you join first.
+              </p>
+              <div className="onboarding-form">
+                <label className="field">
+                  <span className="field-label">Invite code</span>
+                  <input
+                    placeholder="Invite code"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                  />
+                  {workspaceName && <span className="field-hint">Joining {workspaceName}</span>}
+                </label>
+              </div>
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" disabled={busy || !inviteCode} onClick={handleInviteNext}>
+                  Continue
                 </button>
-              )}
-            </div>
-          </>
-        )}
+                <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
+                  Create a new Workspace instead
+                </button>
+                {custody === "local" && (
+                  <button type="button" className="link" onClick={handleGoRestore}>
+                    Restore an existing Identity from Key Backup
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
-        {step === "restore" && (
-          <>
-            <h1 className="onboarding-title">Restore your Identity</h1>
-            <p className="meta">Enter the passphrase for the Key Backup stored on this account.</p>
-            <div className="onboarding-actions">
+          {step === "restore" && (
+            <>
+              <h1 className="onboarding-title">Restore your Identity</h1>
+              <p className="onboarding-body">Enter the passphrase for the Key Backup stored on this account.</p>
+              <div className="onboarding-form">
+                <label className="field">
+                  <span className="field-label">Backup passphrase</span>
+                  <input
+                    type="password"
+                    placeholder="Backup passphrase"
+                    value={restorePassphrase}
+                    onChange={(e) => setRestorePassphrase(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" disabled={busy} onClick={handleRestore}>
+                  Restore
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === "profile" && (
+            <>
+              <h1 className="onboarding-title">What should we call you?</h1>
+              <p className="onboarding-body">
+                Pick the name people and agents will see in Studio. You can change it anytime.
+              </p>
               <input
-                type="password"
-                placeholder="Backup passphrase"
-                value={restorePassphrase}
-                onChange={(e) => setRestorePassphrase(e.target.value)}
+                className="onboarding-name"
+                placeholder="Your name"
+                aria-label="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleRestore}>
-                Restore
-              </button>
-            </div>
-          </>
-        )}
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" disabled={busy || name.trim().length === 0} onClick={handleProfileNext}>
+                  Continue
+                </button>
+              </div>
+            </>
+          )}
 
-        {step === "profile" && (
-          <>
-            <h1 className="onboarding-title">What should we call you?</h1>
-            <div className="onboarding-actions">
-              <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleProfileNext}>
-                Continue
-              </button>
-            </div>
-          </>
-        )}
+          {step === "avatar" && (
+            <>
+              <h1 className="onboarding-title">Pick an avatar</h1>
+              <p className="onboarding-body">Choose an emoji as your avatar</p>
+              <div className="onboarding-avatar" aria-hidden="true">
+                {emoji}
+              </div>
+              <p className="onboarding-avatar-caption">{name.trim() || "Your avatar"}</p>
+              <div className="onboarding-emoji-picker" role="group" aria-label="Choose an emoji">
+                {EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    className={`onboarding-emoji${e === emoji ? " active" : ""}`}
+                    aria-pressed={e === emoji}
+                    onClick={() => setEmoji(e)}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" onClick={handleAvatarNext}>
+                  Continue
+                </button>
+              </div>
+            </>
+          )}
 
-        {step === "avatar" && (
-          <>
-            <h1 className="onboarding-title">Pick an avatar</h1>
-            <div style={{ display: "flex", gap: 8 }}>
-              {EMOJIS.map((e) => (
+          {step === "backup" && identity && (
+            <>
+              <h1 className="onboarding-title">Your unique identity key has been created</h1>
+              <p className="onboarding-body">
+                This key is your account. Anyone who has it can act as you — treat it like a password.
+              </p>
+              <div className="onboarding-key">
+                <code className={`nsec-reveal${nsecRevealed ? " revealed" : ""}`}>{nsec}</code>
                 <button
-                  key={e}
-                  className="btn"
-                  style={{ fontSize: 20, background: e === emoji ? "var(--accent)" : "transparent" }}
-                  onClick={() => setEmoji(e)}
+                  type="button"
+                  className="btn btn-ghost btn-icon"
+                  aria-label={nsecRevealed ? "Hide private key" : "Reveal private key"}
+                  title={nsecRevealed ? "Hide private key" : "Reveal private key"}
+                  onClick={() => setNsecRevealed((v) => !v)}
                 >
-                  {e}
+                  <Icon name={nsecRevealed ? "eye-off" : "eye"} size={14} />
                 </button>
-              ))}
-            </div>
-            <div className="onboarding-actions">
-              <button className="btn btn-primary btn-block" onClick={handleAvatarNext}>
-                Continue
-              </button>
-            </div>
-          </>
-        )}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-icon"
+                  aria-label="Copy to clipboard"
+                  title="Copy to clipboard"
+                  onClick={() => navigator.clipboard.writeText(nsec)}
+                >
+                  <Icon name="copy" size={14} />
+                </button>
+              </div>
+              <p className="onboarding-notice">
+                <Icon name="info" size={13} />
+                <span>Studio keeps your identity key in this browser, and backs it up next.</span>
+              </p>
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" onClick={handleBackupNext}>
+                  Continue
+                </button>
+              </div>
+            </>
+          )}
 
-        {step === "backup" && identity && (
-          <>
-            <h1 className="onboarding-title">This is your key</h1>
-            <p className="meta">
-              Your Identity is this private key. Anyone who has it can act as you — keep it secret.
-            </p>
-            <div className={`nsec-reveal${nsecRevealed ? " revealed" : ""}`}>
-              {nsecFromSecretKey(identity.secretKey)}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-outline" onClick={() => setNsecRevealed((v) => !v)}>
-                {nsecRevealed ? "Hide" : "Reveal"}
-              </button>
-              <button
-                className="btn btn-outline"
-                onClick={() => navigator.clipboard.writeText(nsecFromSecretKey(identity.secretKey))}
-              >
-                Copy
-              </button>
-            </div>
-            <div className="onboarding-actions">
-              <button className="btn btn-primary btn-block" onClick={handleBackupNext}>
-                Continue
-              </button>
-            </div>
-          </>
-        )}
+          {step === "backup-options" && mustConfirmAccountPassword && (
+            <AccountPasswordGate user={user} onConfirmed={setKnownPassword} />
+          )}
 
-        {step === "backup-options" && mustConfirmAccountPassword && (
-          <AccountPasswordGate user={user} onConfirmed={setKnownPassword} />
-        )}
+          {step === "backup-options" && !mustConfirmAccountPassword && (
+            <>
+              <h1 className="onboarding-title">Backup your key with a password</h1>
+              <p className="onboarding-body">
+                Pick a passphrase you can remember. It locks the backup file — Studio cannot recover it for
+                you, and it must be different from your account password.
+              </p>
+              <div className="onboarding-card">
+                <label className="field">
+                  <span className="field-label">Passphrase</span>
+                  <input
+                    type="password"
+                    placeholder="Backup passphrase"
+                    value={passphrase}
+                    onChange={(e) => setPassphrase(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Confirm passphrase</span>
+                  <input
+                    type="password"
+                    placeholder="Confirm passphrase"
+                    value={passphraseConfirm}
+                    onChange={(e) => setPassphraseConfirm(e.target.value)}
+                  />
+                </label>
+                <span className="onboarding-card-action">
+                  <button className="btn btn-primary btn-xs" disabled={busy} onClick={handleCreateBackup}>
+                    Create backup
+                  </button>
+                </span>
+              </div>
+            </>
+          )}
 
-        {step === "backup-options" && !mustConfirmAccountPassword && (
-          <>
-            <h1 className="onboarding-title">Create a Key Backup</h1>
-            <p className="meta">
-              Choose a passphrase for your Key Backup. It must be different from your account password.
-            </p>
-            <div className="onboarding-actions">
-              <input
-                type="password"
-                placeholder="Backup passphrase"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-              />
-              <input
-                type="password"
-                placeholder="Confirm passphrase"
-                value={passphraseConfirm}
-                onChange={(e) => setPassphraseConfirm(e.target.value)}
-              />
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleCreateBackup}>
-                Create backup
-              </button>
-            </div>
-          </>
-        )}
+          {step === "download" && (
+            <>
+              <h1 className="onboarding-title">
+                {backupState === "verified" ? "Your backup is verified" : "That’s your backup file"}
+              </h1>
+              <p className="onboarding-body">
+                {backupState === "verified"
+                  ? "Your file and passphrase can restore your identity."
+                  : "Now enter your passphrase to prove you can unlock it."}
+              </p>
+              <div className="onboarding-card">
+                <div className="auth-panel">
+                  <Icon name="shield" size={15} />
+                  <span className="auth-panel-text">
+                    <span className="auth-panel-title auth-panel-mono">studio-key-backup.age</span>
+                    <span className="auth-panel-meta">Created just now</span>
+                  </span>
+                </div>
+                {backupState !== "verified" && (
+                  <>
+                    <label className="field">
+                      <span className="field-label">Passphrase</span>
+                      <input
+                        type="password"
+                        placeholder="Backup passphrase"
+                        value={verifyPassphrase}
+                        onChange={(e) => setVerifyPassphrase(e.target.value)}
+                      />
+                    </label>
+                    <span className="onboarding-card-action">
+                      <button className="btn btn-primary btn-xs" disabled={busy} onClick={handleVerifyBackup}>
+                        Verify
+                      </button>
+                    </span>
+                  </>
+                )}
+                {backupState === "verified" && (
+                  <div className="auth-panel auth-panel-plain">
+                    <span className="auth-check">
+                      <Icon name="check" size={15} />
+                    </span>
+                    <span className="auth-panel-text">
+                      <span className="auth-panel-title">✓ Verified</span>
+                      <span className="auth-panel-meta">Your passphrase unlocked the backup.</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="onboarding-actions">
+                <button type="button" className="link" onClick={handleDownload}>
+                  Download backup file (optional)
+                </button>
+              </div>
+            </>
+          )}
 
-        {step === "download" && (
-          <>
-            <h1 className="onboarding-title">Verify your backup</h1>
-            <p className="meta">
-              Enter your passphrase once more to confirm the backup decrypts correctly.
-            </p>
-            <div className="onboarding-actions">
-              <input
-                type="password"
-                placeholder="Backup passphrase"
-                value={verifyPassphrase}
-                onChange={(e) => setVerifyPassphrase(e.target.value)}
-              />
-              <button className="btn btn-primary btn-block" disabled={busy} onClick={handleVerifyBackup}>
-                Verify
-              </button>
-              <button className="btn btn-outline btn-block" onClick={handleDownload}>
-                Download backup file (optional)
-              </button>
-              {backupState === "verified" && <span className="meta">✓ Verified</span>}
-            </div>
-          </>
-        )}
-
-        {step === "setup" && (
-          <>
-            <h1 className="onboarding-title">
-              {workspaceSource === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
-            </h1>
-            <div className="onboarding-actions">
+          {step === "setup" && (
+            <>
+              <h1 className="onboarding-title">
+                {workspaceSource === "create" ? "Name your Workspace" : "Connecting you to your workspace"}
+              </h1>
               {/* A restored Identity is already a Member: it reconnects through
                   its own Workspaces, so no invite is asked for — and none of
                   the invite's limits (expiry, revocation, single use) can
                   stand between someone and their own account (#36). */}
               {mode === "restore" && workspaces.length > 0 ? (
-                workspaces.map((ws) => (
-                  <button
-                    key={ws.slug}
-                    className="btn btn-primary btn-block"
-                    disabled={busy}
-                    onClick={() => handleSetup(ws)}
-                  >
-                    {busy ? "Connecting…" : `Connect to ${ws.name}`}
-                  </button>
-                ))
+                <div className="onboarding-actions">
+                  {workspaces.map((ws) => (
+                    <button
+                      key={ws.slug}
+                      className="btn btn-primary btn-block"
+                      disabled={busy}
+                      onClick={() => handleSetup(ws)}
+                    >
+                      {busy ? "Connecting…" : `Connect to ${ws.name}`}
+                    </button>
+                  ))}
+                </div>
               ) : (
                 <>
                   {mode === "restore" && workspaceSource === "invite" && (
                     <>
-                      <p className="meta">
-                        Your Identity isn't a member of any workspace yet. Enter an invite to join
-                        one, or create your own.
+                      <p className="onboarding-body">
+                        Your Identity isn't a member of any workspace yet. Enter an invite to join one, or
+                        create your own.
                       </p>
-                      <input
-                        className="field-label"
-                        placeholder="Invite code"
-                        value={inviteCode}
-                        onChange={(e) => setInviteCode(e.target.value)}
-                      />
-                      <button type="button" className="link" onClick={chooseToCreateWorkspace}>
-                        Create a new Workspace instead
-                      </button>
+                      <div className="onboarding-form">
+                        <label className="field">
+                          <span className="field-label">Invite code</span>
+                          <input placeholder="Invite code" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} />
+                        </label>
+                      </div>
                     </>
                   )}
                   {workspaceSource === "create" && (
                     <>
-                      <p className="meta">
-                        You'll be its owner. The address is how it appears in links — lowercase
-                        letters, numbers and hyphens.
+                      <p className="onboarding-body">
+                        You'll be its owner. The address is how it appears in links — lowercase letters,
+                        numbers and hyphens.
                       </p>
-                      <input
-                        placeholder="Workspace name"
-                        aria-label="Workspace name"
-                        value={newWorkspace.name}
-                        onChange={(e) => handleWorkspaceNameChange(e.target.value)}
-                      />
-                      <input
-                        placeholder="workspace-address"
-                        aria-label="Workspace address"
-                        value={newWorkspace.slug}
-                        onChange={(e) => {
-                          setSlugEdited(true);
-                          setNewWorkspace((current) => ({ ...current, slug: e.target.value }));
-                        }}
-                      />
+                      <div className="onboarding-form">
+                        <label className="field">
+                          <span className="field-label">Workspace name</span>
+                          <input
+                            placeholder="Workspace name"
+                            value={newWorkspace.name}
+                            onChange={(e) => handleWorkspaceNameChange(e.target.value)}
+                          />
+                        </label>
+                        <label className="field">
+                          <span className="field-label">Workspace address</span>
+                          <input
+                            placeholder="workspace-address"
+                            value={newWorkspace.slug}
+                            onChange={(e) => {
+                              setSlugEdited(true);
+                              setNewWorkspace((current) => ({ ...current, slug: e.target.value }));
+                            }}
+                          />
+                        </label>
+                      </div>
                     </>
                   )}
-                  <button
-                    className="btn btn-primary btn-block"
-                    disabled={
-                      busy ||
-                      (workspaceSource === "create"
-                        ? !newWorkspace.name.trim() || !newWorkspace.slug.trim()
-                        : mode === "restore" && !inviteCode)
-                    }
-                    onClick={() => handleSetup()}
-                  >
-                    {busy ? "Connecting…" : setupActionLabel}
-                  </button>
+                  <div className="onboarding-actions">
+                    <button
+                      className="btn btn-primary btn-block"
+                      disabled={
+                        busy ||
+                        (workspaceSource === "create"
+                          ? !newWorkspace.name.trim() || !newWorkspace.slug.trim()
+                          : mode === "restore" && !inviteCode)
+                      }
+                      onClick={() => handleSetup()}
+                    >
+                      {busy ? "Connecting…" : setupActionLabel}
+                    </button>
+                    {mode === "restore" && workspaceSource === "invite" && (
+                      <button type="button" className="link" onClick={chooseToCreateWorkspace}>
+                        Create a new Workspace instead
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        {step === "config" && workspace && (
-          <>
-            <h1 className="onboarding-title">You're in {workspace.name}</h1>
-            {/* Test-only hook (not sensitive — a Nostr pubkey is a public identifier): lets
-                Playwright grant this run's freshly-restored Identity Channel membership before
-                it needs to publish anything (flows 2 & 3, e2e/helpers.ts's
-                ensureChannelMembership). */}
-            {pubkey && <span data-testid="own-pubkey" hidden>{pubkey}</span>}
-            <div className="onboarding-actions">
-              <button className="btn btn-primary btn-block" onClick={handleFinish}>
-                Finish
-              </button>
-            </div>
-          </>
-        )}
+          {step === "config" && workspace && (
+            <>
+              <h1 className="onboarding-title">You're in {workspace.name}</h1>
+              <p className="onboarding-body">Your Identity is linked to this Workspace. Everything from here on is yours.</p>
+              {/* Test-only hook (not sensitive — a Nostr pubkey is a public identifier): lets
+                  Playwright grant this run's freshly-restored Identity Channel membership before
+                  it needs to publish anything (flows 2 & 3, e2e/helpers.ts's
+                  ensureChannelMembership). */}
+              {pubkey && <span data-testid="own-pubkey" hidden>{pubkey}</span>}
+              <div className="onboarding-actions">
+                <button className="btn btn-primary btn-block" onClick={handleFinish}>
+                  Finish
+                </button>
+              </div>
+            </>
+          )}
 
-        {step !== "invite" && !(step === "restore" && entry === "restore") && (
-          <button type="button" className="link" onClick={goBack}>
-            Back
-          </button>
-        )}
-        {step !== "restore" && isSkippable(step, custody) && (
-          <button type="button" className="link" onClick={() => advance(step)}>
-            Skip
-          </button>
-        )}
+          {step !== "restore" && isSkippable(step, custody) && (
+            <button type="button" className="link" onClick={() => advance(step)}>
+              Skip for now
+            </button>
+          )}
+        </div>
       </div>
+
+      {showBack && (
+        <div className="onboarding-footer">
+          <button type="button" className="link onboarding-back" onClick={goBack}>
+            <Icon name="chevron-right" size={14} style={{ transform: "rotate(180deg)" }} />
+            <span>Back</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

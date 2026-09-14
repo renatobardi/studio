@@ -209,13 +209,17 @@ jobs:
           STUDIO_TEST_EXTENSION_EMAIL: ${{ secrets.STUDIO_TEST_EXTENSION_EMAIL }}
           STUDIO_TEST_EXTENSION_PASSWORD: ${{ secrets.STUDIO_TEST_EXTENSION_PASSWORD }}
           STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX }}
+          # Flow 11 (#73): capture the deployed shell at both viewports and themes; the
+          # PNGs ride the artifact below and are compared by hand against docs/UI/reference.
+          STUDIO_VISUAL_CAPTURE: "1"
         run: bun run test:e2e
 
-      - name: Upload failure screenshots
+      - name: Upload screenshots (failures, and flow 11's visual captures)
         # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
         # the typed characters a trace.zip would record. See git history for why trace.zip
         # itself must never be uploaded from this public repo's CI.
-        if: failure()
+        # always(): flow 11 writes its captures on a green run too.
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-screenshots
