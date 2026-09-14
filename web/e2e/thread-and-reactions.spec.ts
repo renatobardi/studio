@@ -18,6 +18,8 @@ test("thread reply and reaction", async ({ page }) => {
   const rootMessage = page.getByTestId("timeline-message").filter({ hasText: rootContent });
   await expect(rootMessage).toBeVisible({ timeout: 10_000 });
 
+  // Hover actions only accept pointer events while the row is hovered.
+  await rootMessage.hover();
   await rootMessage.getByTestId("open-thread").click();
   await expect(page.getByTestId("thread-pane")).toBeVisible();
 
@@ -30,6 +32,7 @@ test("thread reply and reaction", async ({ page }) => {
   });
   await expect(rootMessage.getByTestId("open-thread")).toHaveText("1 reply");
 
+  await rootMessage.hover();
   await rootMessage.getByTestId("reaction-add").filter({ hasText: "🔥" }).click();
   const fireChip = rootMessage.getByTestId("reaction-chip").filter({ hasText: "🔥" });
   await expect(fireChip).toContainText("1");
