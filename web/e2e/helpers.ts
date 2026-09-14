@@ -158,7 +158,8 @@ export async function reachAppViaRestoreWithCredentials(
   if (await verifyGate.isVisible()) {
     throw new Error(
       `${credentials.email} is held on the verify step — its email is not verified in Firebase. ` +
-        `Verify it (scripts/ops/verify-e2e-account-two.sh for the second Account) and re-run.`,
+        `CD's "Ensure e2e test Accounts" step (studio_api.ensure_e2e_accounts, issue #50) should ` +
+        `have fixed this before the smoke ran — check that step's log.`,
     );
   }
   await passphraseField.fill(credentials.backupPassphrase);
