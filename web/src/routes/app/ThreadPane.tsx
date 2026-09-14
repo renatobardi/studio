@@ -1,6 +1,7 @@
 import type { VerifiedEvent } from "nostr-tools";
 import { useState } from "react";
 import { buildThreadReply, type TargetRef } from "../../lib/channelEvents";
+import { draftAfterSend } from "../../lib/composerSend";
 import type { RelayClient } from "../../lib/relay";
 import type { Signer } from "../../lib/custody";
 import { publishFailureMessage } from "../../lib/relayReasons";
@@ -35,13 +36,15 @@ export function ThreadPane({
   const send = async () => {
     const content = draft.trim();
     if (!content) return;
+    const sentDraft = draft;
     setSending(true);
     setSendError(null);
     try {
       const template = buildThreadReply(channelId, root, content);
       const signed = await signer.signEvent(template);
       await client.publish(signed);
-      setDraft("");
+      // Only what went out: text typed while this was publishing stays in the composer.
+      setDraft((current) => draftAfterSend(current, sentDraft));
     } catch (error) {
       setSendError(publishFailureMessage(error));
     } finally {

@@ -54,13 +54,11 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
     await shot(viewport, "dm-list");
     await page.getByTestId("mode-settings").click();
     await shot(viewport, "settings-appearance");
-    if (viewport === "desktop") {
-      await toggleTheme();
-      await shot(viewport, "settings-appearance-dark");
-      await page.getByTestId("channel-list-item").first().click();
-      await shot(viewport, "channel-dark");
-      await toggleTheme();
-    }
+    await toggleTheme();
+    await shot(viewport, "settings-appearance-dark");
+    await page.getByTestId("channel-list-item").first().click();
+    await shot(viewport, "channel-dark");
+    await toggleTheme();
   }
 
   await writeFile(

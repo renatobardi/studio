@@ -218,7 +218,8 @@ jobs:
         # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
         # the typed characters a trace.zip would record. See git history for why trace.zip
         # itself must never be uploaded from this public repo's CI.
-        if: failure()
+        # always(): flow 11 writes its captures on a green run too.
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-screenshots

@@ -556,7 +556,15 @@ export function OnboardingScreen({
     <div className="onboarding-shell" data-screen-label="Onboarding">
       <header className="onboarding-header">
         <Sakura size={30} sw={7} />
-        <span className="onboarding-progress" role="progressbar" aria-label="Onboarding progress">
+        <span
+          className="onboarding-progress"
+          role="progressbar"
+          aria-label="Onboarding progress"
+          aria-valuemin={1}
+          aria-valuemax={steps.length}
+          aria-valuenow={step === "restore" ? 1 : steps.indexOf(step) + 1}
+          aria-valuetext={step === "restore" ? "Restoring your Identity" : `Step ${steps.indexOf(step) + 1} of ${steps.length}`}
+        >
           {steps.map((s) => (
             <span key={s} className={`dot${s === step ? " active" : ""}`} />
           ))}

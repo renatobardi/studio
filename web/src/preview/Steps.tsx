@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export type Step = { click: string } | { type: [selector: string, text: string] };
+export type Step = { click: string } | { type: [selector: string, text: string] } | { waitFor: string };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -21,6 +21,12 @@ export function Steps({ steps }: Readonly<{ steps: Step[] }>) {
     (async () => {
       for (const step of steps) {
         if (cancelled) return;
+        if ("waitFor" in step) {
+          // A click's handler may still be awaiting (encrypting a backup, linking an Identity):
+          // the next screen is what says it finished.
+          await find(step.waitFor);
+          continue;
+        }
         const target = await find("click" in step ? step.click : step.type[0]);
         // StrictMode runs this effect twice; a click that lands after the first run was
         // cancelled would toggle the pane it just opened.

@@ -63,6 +63,8 @@ export function AppShell({
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const { profiles: ownProfiles, ensure: ensureOwnProfile } = useProfiles(client);
+  /** A choice made before the stored value came back wins over it. */
+  const appearanceTouched = useRef(false);
 
   const selectedRef = useRef<string | null>(null);
   const readAtRef = useRef<ReadState>({});
@@ -88,12 +90,14 @@ export function AppShell({
 
   useEffect(() => {
     loadAppearance().then((loaded) => {
+      if (appearanceTouched.current) return;
       setAppearance(loaded);
       applyAppearance(loaded);
     });
   }, []);
 
   const updateAppearance = (next: Appearance) => {
+    appearanceTouched.current = true;
     setAppearance(next);
     applyAppearance(next);
     void storeAppearance(next);

@@ -54,12 +54,21 @@ export class FakeRelayClient {
         }
       }
     };
+    // StrictMode subscribes, unsubscribes and subscribes again in one tick: a delivery queued
+    // for the first, closed subscription must not reach it.
+    let closed = false;
     queueMicrotask(() => {
+      if (closed) return;
       emit(filters);
       handlers.onEose?.();
     });
-    const handle = (() => {}) as SubscriptionHandle;
-    handle.update = (next: Filter[]) => queueMicrotask(() => emit(next));
+    const handle = (() => {
+      closed = true;
+    }) as SubscriptionHandle;
+    handle.update = (next: Filter[]) =>
+      queueMicrotask(() => {
+        if (!closed) emit(next);
+      });
     return handle;
   }
 

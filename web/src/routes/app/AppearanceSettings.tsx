@@ -31,14 +31,13 @@ export function AppearanceSettings({
   ) => (
     <div className="segmented-row">
       <span className="segmented-label">{label}</span>
-      <span className="segmented" role="radiogroup" aria-label={label}>
+      <span className="segmented" role="group" aria-label={label}>
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
-            role="radio"
             className={`segmented-option${option.value === value ? " active" : ""}`}
-            aria-checked={option.value === value}
+            aria-pressed={option.value === value}
             onClick={() => select(option.value)}
           >
             {option.label}

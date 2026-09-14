@@ -1324,12 +1324,22 @@ button.sidebar-group-label:hover {
   background: var(--background);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 150ms;
 }
 
 .message:hover .message-actions,
 .message:focus-within .message-actions {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* No hover on touch: the actions stay visible rather than being a hidden hit target. */
+@media (hover: none) {
+  .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .reaction-picker {

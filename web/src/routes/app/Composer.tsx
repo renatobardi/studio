@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Icon } from "../../components/icons/Icon";
 import { sendsOnKey } from "../../lib/composer";
 
@@ -47,15 +47,21 @@ export function Composer({
   const resize = () => {
     const el = textareaRef.current;
     if (!el) return;
+    // Empty: the stylesheet's minimum height rules, not the wrapped placeholder's.
+    if (el.value === "") {
+      el.style.height = "";
+      return;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   };
 
+  // The draft is cleared by whoever publishes it, whenever that finishes: follow the value.
+  useLayoutEffect(resize, [value]);
+
   const send = () => {
     if (!canSend) return;
     onSend();
-    // The textarea shrinks back once the draft is cleared; measure after React commits.
-    requestAnimationFrame(resize);
   };
 
   return (

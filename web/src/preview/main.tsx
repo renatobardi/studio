@@ -34,6 +34,7 @@ const ONBOARDING_TO = (() => {
     { type: [PASSPHRASE_FIELD, PASSPHRASE] },
     { type: ['input[placeholder="Confirm passphrase"]', PASSPHRASE] },
     { click: "text=Create backup" },
+    { waitFor: "text=Verify" },
   ];
   return { profile, avatar, backup, backupOptions, download };
 })();
@@ -53,7 +54,7 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
   "onboarding-download": { mount: "onboarding", steps: ONBOARDING_TO.download },
   "onboarding-setup": {
     mount: "onboarding",
-    steps: [...ONBOARDING_TO.download, { type: [PASSPHRASE_FIELD, PASSPHRASE] }, { click: "text=Verify" }],
+    steps: [...ONBOARDING_TO.download, { type: [PASSPHRASE_FIELD, PASSPHRASE] }, { click: "text=Verify" }, { waitFor: "text=Connect" }],
   },
   channel: { mount: "app", steps: [] },
   "channel-thread": { mount: "app", steps: [{ click: "text=4 replies" }] },
