@@ -11,7 +11,7 @@ test("restore Identity from Key Backup on a fresh browser, with no invite", asyn
   await page.goto("/");
 
   await page.getByLabel("Email").fill(testAccount.email());
-  await page.getByLabel("Password").fill(testAccount.password());
+  await page.getByLabel("Password", { exact: true }).fill(testAccount.password());
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // An Account that already has an Identity opens straight on restore: no
