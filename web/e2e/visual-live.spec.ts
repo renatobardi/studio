@@ -41,12 +41,13 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
     await shot(viewport, "channel");
     const thread = page.getByTestId("open-thread").first();
     if (await thread.isVisible()) {
+      await page.getByTestId("timeline-message").filter({ has: thread }).first().hover();
       await thread.click();
       await expect(page.getByTestId("thread-pane")).toBeVisible();
       await shot(viewport, "channel-thread");
       await page.getByRole("button", { name: "Close thread" }).click();
     }
-    await page.getByRole("button", { name: "Channel members" }).click();
+    await page.getByRole("button", { name: "Members", exact: true }).click();
     await expect(page.getByTestId("members-pane")).toBeVisible();
     await shot(viewport, "channel-members");
     await page.getByRole("button", { name: "Close members" }).click();

@@ -143,7 +143,7 @@ export async function reachAppViaRestoreWithCredentials(
   await page.goto("/");
 
   await page.getByLabel("Email").fill(credentials.email);
-  await page.getByLabel("Password").fill(credentials.password);
+  await page.getByLabel("Password", { exact: true }).fill(credentials.password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // No invite is entered: an Account that already has an Identity opens
@@ -276,6 +276,6 @@ export async function signIn(
 ): Promise<void> {
   await page.goto("/");
   await page.getByLabel("Email").fill(credentials.email);
-  await page.getByLabel("Password").fill(credentials.password);
+  await page.getByLabel("Password", { exact: true }).fill(credentials.password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
