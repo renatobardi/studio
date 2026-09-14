@@ -7,13 +7,14 @@ import {
   olderMessagesFilters,
   rootCompanionFilters,
 } from "./channelPagination";
+import type { SubscriptionHandle } from "./relay";
 
 /** All `ChannelFeed` needs of a `RelayClient` — and all a test has to stand in for. */
 export interface FeedClient {
   subscribe(
     filters: Filter[],
     handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void },
-  ): () => void;
+  ): SubscriptionHandle;
 }
 
 export interface FeedSnapshot {
@@ -41,6 +42,7 @@ export class ChannelFeed {
   private hasMore = false;
   private loadingOlder = false;
   private readonly coveredRoots = new Set<string>();
+  private rootsHandle: SubscriptionHandle | null = null;
   private readonly disposers: (() => void)[] = [];
   private readonly listeners = new Set<() => void>();
   private snapshot: FeedSnapshot | null = null;
@@ -83,6 +85,7 @@ export class ChannelFeed {
     return () => {
       for (const dispose of this.disposers.splice(0)) dispose();
       this.coveredRoots.clear();
+      this.rootsHandle = null;
     };
   }
 
@@ -131,24 +134,40 @@ export class ChannelFeed {
     return () => this.listeners.delete(listener);
   };
 
+  /** Skips the map write and the listener notification for an id already held — events are
+   * immutable, and each widen of the roots subscription (#91) replays every companion matching
+   * the new filter, not just the ones the new page added. */
   private apply(event: VerifiedEvent): void {
-    if (event.kind === 9) this.messages.set(event.id, event);
-    else if (event.kind === 1111) this.replies.set(event.id, event);
-    else if (event.kind === 7) this.reactions.set(event.id, event);
-    else if (event.kind === 5) this.deletions.set(event.id, event);
+    let map: Map<string, VerifiedEvent>;
+    if (event.kind === 9) map = this.messages;
+    else if (event.kind === 1111) map = this.replies;
+    else if (event.kind === 7) map = this.reactions;
+    else if (event.kind === 5) map = this.deletions;
     else return;
+    if (map.has(event.id)) return;
+    map.set(event.id, event);
     this.emit();
   }
 
-  /** One subscription per page of roots, opened once — a replayed page (a reconnect
-   * re-issues every open subscription) must not open it again. */
+  /** One subscription for every root covered so far, widened as each page loads — scrollback N
+   * pages deep must not cost N open subscriptions (#91). A replayed page (a reconnect re-issues
+   * every open subscription) must not widen it again.
+   *
+   * The relay clamps every filter's `limit` at MAX_LIMIT=500 (api/src/studio_api/nostr/relay.py),
+   * regardless of what is asked. Before this widened into one subscription, that ceiling applied
+   * per page — now it is shared across every root covered so far, so a channel active enough to
+   * push total companions past 500 will have the oldest of them silently dropped. Tracked as a
+   * follow-up, not fixed here (#119). */
   private coverRoots(page: VerifiedEvent[]): void {
     const roots = page.map((event) => event.id).filter((id) => !this.coveredRoots.has(id));
     if (roots.length === 0) return;
     for (const id of roots) this.coveredRoots.add(id);
-    this.disposers.push(
-      this.client.subscribe(rootCompanionFilters(roots), { onEvent: (event) => this.apply(event) }),
-    );
+    const filters = rootCompanionFilters([...this.coveredRoots]);
+    if (this.rootsHandle !== null) this.rootsHandle.update(filters);
+    else {
+      this.rootsHandle = this.client.subscribe(filters, { onEvent: (event) => this.apply(event) });
+      this.disposers.push(this.rootsHandle);
+    }
   }
 
   private emit(): void {
