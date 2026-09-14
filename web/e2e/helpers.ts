@@ -101,18 +101,26 @@ async function ownerRequest<T>(url: string, method: string, body?: unknown): Pro
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }
 
-/** Adds `pubkey` as a member of the Workspace's first Channel, using the fixed owner/admin
+/** The one Channel every flow that calls `ensureChannelMembership` shares — seeded once into
+ * studio-test outside this repo, same as the test Accounts themselves. */
+const SHARED_CHANNEL_NAME = "e2e";
+
+/** Adds `pubkey` as a member of the Workspace's shared "e2e" Channel, using the fixed owner/admin
  * identity above. Idempotent — adding an existing member is a no-op server-side
- * (`ControlPlaneRepository.add_channel_member`). */
+ * (`ControlPlaneRepository.add_channel_member`).
+ *
+ * Picked by name, not list position: `list_channels_for` has no `ORDER BY`, and
+ * channel-access.spec.ts leaves private `e2e-access-*` Channels behind (deletion doesn't exist
+ * yet) that can otherwise land ahead of "e2e" and misdirect every later flow's membership. */
 export async function ensureChannelMembership(pageURL: string, pubkey: string): Promise<void> {
   const apiBase = new URL(pageURL).origin;
   const slug = testWorkspaceSlug();
   const listUrl = `${apiBase}/api/workspaces/${slug}/channels`;
   const listResponse = await fetch(listUrl, { headers: { Authorization: await ownerAuthProof(listUrl, "GET") } });
   if (!listResponse.ok) throw new Error(`list channels failed: ${listResponse.status}`);
-  const channels = (await listResponse.json()) as { id: string }[];
-  const channel = channels[0];
-  if (!channel) throw new Error(`Workspace ${slug} has no Channel for flows 2/3 to use`);
+  const channels = (await listResponse.json()) as { id: string; name: string }[];
+  const channel = channels.find((candidate) => candidate.name === SHARED_CHANNEL_NAME);
+  if (!channel) throw new Error(`Workspace ${slug} has no Channel named "${SHARED_CHANNEL_NAME}" for flows to use`);
 
   const addUrl = `${apiBase}/api/workspaces/${slug}/channels/${channel.id}/members`;
   const addResponse = await fetch(addUrl, {
