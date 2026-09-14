@@ -7,7 +7,7 @@ test("onboarding through verified Key Backup", async ({ page }) => {
   await page.goto("/");
 
   await page.getByLabel("Email").fill(testAccount.email());
-  await page.getByLabel("Password").fill(testAccount.password());
+  await page.getByLabel("Password", { exact: true }).fill(testAccount.password());
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // First-time onboarding is a one-time state for any Account: once it has an
