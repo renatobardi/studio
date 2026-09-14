@@ -16,6 +16,16 @@ export function mediaCacheName(pubkey: string): string {
   return PREFIX + pubkey;
 }
 
+let epoch = 0;
+
+/** Bumped by every `pruneMediaCaches` call. A write captured under an older
+ * epoch is stale — a prune ran while its fetch was still in flight, and
+ * writing it back would resurrect a cache sign-out (or the next boot's
+ * reconciliation) just wiped. See fetchBlobObjectUrl / downloadCiphertext. */
+export function mediaCacheEpoch(): number {
+  return epoch;
+}
+
 function isMediaCache(name: string): boolean {
   // `NAME` with no pubkey is the origin-wide cache this replaced: left by an
   // older build of the app, and nobody's to read.
@@ -61,6 +71,7 @@ export async function cacheBlob(pubkey: string, url: string, bytes: ArrayBuffer,
  * this device, and sign-out must not report a cleanup it did not get.
  */
 export async function pruneMediaCaches(keep: string | null): Promise<void> {
+  epoch += 1;
   if (typeof caches === "undefined") return;
   const kept = keep === null ? null : mediaCacheName(keep);
   const failed: string[] = [];

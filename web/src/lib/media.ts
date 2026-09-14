@@ -1,7 +1,7 @@
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import type { VerifiedEvent } from "nostr-tools";
 import type { Signer } from "./custody";
-import { cacheBlob, readCachedBlob } from "./mediaCache";
+import { cacheBlob, mediaCacheEpoch, readCachedBlob } from "./mediaCache";
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -134,6 +134,7 @@ export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Si
     return URL.createObjectURL(new Blob([cached.bytes], { type: cached.contentType || "application/octet-stream" }));
   }
 
+  const epochAtFetchStart = mediaCacheEpoch();
   const authEvent = await buildBlossomAuthEvent("get", {}, signer);
   const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
@@ -141,6 +142,6 @@ export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Si
   const actual = sha256Hex(bytes);
   if (actual !== sha256) throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
   const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-  await cacheBlob(pubkey, url, bytes, contentType);
+  if (mediaCacheEpoch() === epochAtFetchStart) await cacheBlob(pubkey, url, bytes, contentType);
   return URL.createObjectURL(new Blob([bytes], { type: contentType }));
 }

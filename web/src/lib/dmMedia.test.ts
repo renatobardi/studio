@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate } from "nostr-tools";
 import type { Signer } from "./custody";
 import { generateIdentity } from "./identity";
+import { pruneMediaCaches } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
+import { stubControllableFetch } from "./testing/controllableFetch";
 import { makePng } from "./testing/png";
 import {
   MAX_DM_PHOTO_BYTES,
@@ -191,6 +193,22 @@ describe("fetchDmAttachmentObjectUrl", () => {
     stubFetch(false);
 
     await expect(fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", b)).rejects.toThrow(MediaError);
+  });
+
+  test("a sign-out that prunes mid-fetch is not undone by the fetch's late write", async () => {
+    // Same race as media.ts's fetchBlobObjectUrl: a prune finishing while downloadCiphertext's
+    // fetch is still in flight must not let that fetch's cacheBlob resurrect the wiped cache.
+    const { stores } = stubCaches();
+    const signer = signerFor(generateIdentity().secretKey);
+    const fetchControl = stubControllableFetch();
+
+    const pending = fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", signer);
+    await fetchControl.started; // the epoch is captured just before this call
+    await pruneMediaCaches(null);
+    fetchControl.resolve(new Response(ciphertext.buffer as ArrayBuffer, { status: 200 }));
+    await pending;
+
+    expect(Object.keys(stores)).toEqual([]);
   });
 });
 
