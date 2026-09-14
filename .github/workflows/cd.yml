@@ -177,6 +177,18 @@ jobs:
           done
           echo "::error::studio-test never became ready after deploy" && exit 1
 
+      - name: Ensure e2e test Accounts exist and are verified (idempotent — issue #50)
+        # Runs on the host, reusing FIREBASE_CREDENTIALS_PATH and STUDIO_TEST_*
+        # already in the container's own environment (studio-test's /opt/app/.env
+        # — see scripts/ops/add-e2e-account-env.sh) — no secret crosses this
+        # step's own command line. Before the smoke, not after: a stale password
+        # or an unverified email must fail the deploy here, not time out a spec.
+        env:
+          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
+            "lxc exec studio-test -- bash -lc 'cd /opt/app && docker compose exec -T api python -m studio_api.ensure_e2e_accounts'"
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Install
@@ -200,12 +212,15 @@ jobs:
           STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
           STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
           # Flows 4 & 8 (tickets #7/#45): a second, independently-seeded Account — see
-          # e2e/helpers.ts's testAccountTwo and scripts/ops/seed-e2e-test-account-2.mjs.
+          # e2e/helpers.ts's testAccountTwo. Existence/verification is ensured by the
+          # "Ensure e2e test Accounts" step above, not a one-off ops script anymore.
           STUDIO_TEST_EMAIL_2: ${{ secrets.STUDIO_TEST_EMAIL_2 }}
           STUDIO_TEST_PASSWORD_2: ${{ secrets.STUDIO_TEST_PASSWORD_2 }}
           STUDIO_TEST_BACKUP_PASSPHRASE_2: ${{ secrets.STUDIO_TEST_BACKUP_PASSPHRASE_2 }}
           # Flow 9 (#75): a third Account whose Identity is the fixed key the fake
-          # NIP-07 extension presents — see scripts/ops/seed-e2e-extension-account.sh.
+          # NIP-07 extension presents. Its existence/verification is also covered by
+          # the "Ensure e2e test Accounts" step above; the key itself still links on
+          # first sign-in, which no seed script can precompute.
           STUDIO_TEST_EXTENSION_EMAIL: ${{ secrets.STUDIO_TEST_EXTENSION_EMAIL }}
           STUDIO_TEST_EXTENSION_PASSWORD: ${{ secrets.STUDIO_TEST_EXTENSION_PASSWORD }}
           STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_EXTENSION_PRIVATE_KEY_HEX }}

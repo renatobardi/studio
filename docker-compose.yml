@@ -38,6 +38,14 @@ services:
       # Optional: path to a Firebase service-account JSON file. Omit to run
       # with Firebase auth unconfigured — NIP-98 callers are unaffected.
       FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      # Optional: only read by `python -m studio_api.ensure_e2e_accounts`, which
+      # CD runs before the Playwright smoke (issue #50) — unset on studio-prd.
+      STUDIO_TEST_EMAIL: ${STUDIO_TEST_EMAIL:-}
+      STUDIO_TEST_PASSWORD: ${STUDIO_TEST_PASSWORD:-}
+      STUDIO_TEST_EMAIL_2: ${STUDIO_TEST_EMAIL_2:-}
+      STUDIO_TEST_PASSWORD_2: ${STUDIO_TEST_PASSWORD_2:-}
+      STUDIO_TEST_EXTENSION_EMAIL: ${STUDIO_TEST_EXTENSION_EMAIL:-}
+      STUDIO_TEST_EXTENSION_PASSWORD: ${STUDIO_TEST_EXTENSION_PASSWORD:-}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
