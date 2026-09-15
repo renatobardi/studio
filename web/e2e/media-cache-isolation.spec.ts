@@ -28,6 +28,7 @@ async function signOut(page: import("@playwright/test").Page): Promise<void> {
 }
 
 test("cached media neither survives sign-out nor crosses to the next Identity", async ({ page }) => {
+  test.slow(); // three restores and two photo sends — a pass on CD already took 29.4 s of the default 30 s
   // Every blob fetch, split at the handover: what A downloaded, and what B
   // had to go and download for itself.
   const servedToA: string[] = [];
