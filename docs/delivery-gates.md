@@ -108,6 +108,36 @@ So the required check does gate pull requests, which is where the ruleset uses
 it — but `main` itself carries no gate status, and the two gaps above are
 tracked in #76. `scripts/ops/check-sonar-gate.sh` reports the current state.
 
+## e2e test Accounts
+
+The smoke signs in as three Firebase password Accounts in the `studio-oute`
+project: `STUDIO_TEST_EMAIL`, `STUDIO_TEST_EMAIL_2` and
+`STUDIO_TEST_EXTENSION_EMAIL`, each with its `*_PASSWORD`. Every value lives
+in two places that must agree:
+
+- **GitHub secrets**, which Playwright signs in with. The first two pairs are
+  `studio-test` Environment secrets; the extension pair is a repository
+  secret. An Environment secret shadows a repository secret of the same name,
+  so a value written to the other scope changes nothing.
+- **`/opt/app/.env` inside the `studio-test` container**, passed through by
+  `docker-compose.yml` to the `api` service. Before the smoke, `cd.yml` runs
+  `python -m studio_api.ensure_e2e_accounts` there, which creates or resets
+  each Account to that password with a verified email (#50). With no pairs in
+  `.env` the step logs `nothing to seed` and does nothing — it does not fail.
+
+GitHub secrets are write-only, so a lost password cannot be read back — and
+does not need to be. These passwords are used by the smoke alone; they are
+unrelated to the Key Backup passphrases and to the Identities. To rotate or
+recover them, generate new passwords and write the same values to both
+places, then restart `api` so it reads the new `.env`
+(`docker compose up -d api`). The next deploy — or running
+`ensure_e2e_accounts` by hand — resets Firebase to match. The repository
+owner keeps a script that does all of this in `scripts/ops/` (gitignored, as
+every ops script is).
+
+Keep the emails: an Account is keyed by its Firebase uid, and a new email is
+a new Account with no Identity linked to it.
+
 ## Production
 
 There is no `studio-prd` deployment yet. When it exists it gets a `deploy-prd`
@@ -120,4 +150,6 @@ lives in the `renatobardi/lab` repo (`install-app.sh`), not here.
 Repository settings, rulesets, Actions secrets and the SonarCloud organisation
 are owned by the repository owner. CD's own credentials (`TS_AUTHKEY_DEV`,
 `STUDIO_CD_SSH_KEY`, `STUDIO_TEST_*`) live in the `studio-test` GitHub
-Environment and are referenced by name only — never checked in.
+Environment, except `STUDIO_TEST_EXTENSION_*`, `STUDIO_TEST_OWNER_PRIVATE_KEY_HEX`
+and `STUDIO_TEST_WORKSPACE_SLUG`, which are repository secrets. All are
+referenced by name only — never checked in.
