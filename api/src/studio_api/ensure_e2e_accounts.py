@@ -6,6 +6,11 @@ already carries FIREBASE_CREDENTIALS_PATH: `python -m studio_api.ensure_e2e_acco
 Password and email_verified are forced on every run, existing or not: the
 Admin SDK cannot read back a stored password to compare it, and re-seeding
 studio-test's Firebase project must not silently leave a stale one behind.
+
+The onboarding Account is the exception: it is deleted and created again on
+every run. Flow 1 (onboarding.spec.ts) asserts first access, which an Account
+only has once — and the API keys Accounts by Firebase uid, so a new uid is a
+never-onboarded Account.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ ACCOUNT_ENV_PAIRS = [
     ("STUDIO_TEST_EMAIL_2", "STUDIO_TEST_PASSWORD_2"),
     ("STUDIO_TEST_EXTENSION_EMAIL", "STUDIO_TEST_EXTENSION_PASSWORD"),
 ]
+ONBOARDING_ENV_PAIR = ("STUDIO_TEST_ONBOARDING_EMAIL", "STUDIO_TEST_ONBOARDING_PASSWORD")
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,8 @@ class AuthClient(Protocol):
 
     def update_user(self, uid: str, password: str) -> None: ...
 
+    def delete_user(self, uid: str) -> None: ...
+
 
 def ensure_account(client: AuthClient, email: str, password: str) -> str:
     """Returns a one-line description of what happened, for logging."""
@@ -49,6 +57,17 @@ def ensure_account(client: AuthClient, email: str, password: str) -> str:
     return f"{email} already exists — reset password + verified"
 
 
+def recreate_account(client: AuthClient, email: str, password: str) -> str:
+    """Returns a one-line description of what happened, for logging."""
+    existing = client.get_user_by_email(email)
+    if existing is None:
+        client.create_user(email, password)
+        return f"created {email} (verified, never onboarded)"
+    client.delete_user(existing.uid)
+    client.create_user(email, password)
+    return f"{email} recreated (verified, never onboarded)"
+
+
 def accounts_from_env(env: dict[str, str]) -> list[tuple[str, str]]:
     """Returns [(email, password), ...] for every pair with both vars set."""
     pairs = []
@@ -57,6 +76,11 @@ def accounts_from_env(env: dict[str, str]) -> list[tuple[str, str]]:
         if email and password:
             pairs.append((email, password))
     return pairs
+
+
+def onboarding_account_from_env(env: dict[str, str]) -> tuple[str, str] | None:
+    email, password = env.get(ONBOARDING_ENV_PAIR[0]), env.get(ONBOARDING_ENV_PAIR[1])
+    return (email, password) if email and password else None
 
 
 class _FirebaseAuthClient:
@@ -84,6 +108,11 @@ class _FirebaseAuthClient:
 
         auth.update_user(uid, app=self._app, password=password, email_verified=True)
 
+    def delete_user(self, uid: str) -> None:
+        from firebase_admin import auth
+
+        auth.delete_user(uid, app=self._app)
+
 
 def main() -> None:
     credentials_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
@@ -92,7 +121,8 @@ def main() -> None:
         sys.exit(1)
 
     pairs = accounts_from_env(dict(os.environ))
-    if not pairs:
+    onboarding = onboarding_account_from_env(dict(os.environ))
+    if not pairs and onboarding is None:
         print("no STUDIO_TEST_*EMAIL*/PASSWORD* pairs set in the environment — nothing to seed")
         return
 
@@ -103,6 +133,8 @@ def main() -> None:
     client = _FirebaseAuthClient(app)
     for email, password in pairs:
         print(ensure_account(client, email, password))
+    if onboarding is not None:
+        print(recreate_account(client, *onboarding))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { makePng } from "../src/lib/testing/png";
 import {
+  ownerApi,
   reachAppViaRestoreWithCredentials,
   testAccount,
   testAccountTwo,
@@ -12,6 +13,7 @@ import {
 } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
+const MEDIA_PATH = /\/media\/[0-9a-f]{64}/;
 
 // Flow 4 (ticket #7): a Direct Message between two Workspace Members, with a photo — NIP-17
 // gift-wrapped end to end, so the relay only ever sees ciphertext and the `p`-tagged recipient.
@@ -73,12 +75,24 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   await expect(sentMessage).toBeVisible({ timeout: 10_000 });
   await expect(sentMessage.getByTestId("dm-attachment-image")).toHaveCount(2, { timeout: 15_000 });
 
+  // The blob URLs B fetches for this run's photos — asked for again below by someone the upload
+  // never named.
+  const fetchedMedia = new Set<string>();
+  pageB.on("request", (request) => {
+    if (MEDIA_PATH.test(new URL(request.url()).pathname)) fetchedMedia.add(request.url());
+  });
+
   await pageB.getByTestId("mode-dms").click();
   await pageB.getByTestId("conversation-list-item").first().click();
 
   const receivedMessage = pageB.getByTestId("dm-message").filter({ hasText: content });
   await expect(receivedMessage).toBeVisible({ timeout: 10_000 });
   await expect(receivedMessage.getByTestId("dm-attachment-image")).toHaveCount(2, { timeout: 15_000 });
+
+  // A third party with no part in the conversation is refused the photos, even as a Workspace
+  // admin holding a valid signature (#38): access comes only from the recipients the upload named.
+  expect(fetchedMedia.size).toBeGreaterThanOrEqual(2);
+  for (const mediaUrl of fetchedMedia) expect(await ownerApi.mediaGetStatus(mediaUrl)).toBe(403);
 
   await receivedMessage.getByTestId("dm-attachment-image").last().click();
   await expect(pageB.getByTestId("dm-attachment-lightbox")).toBeVisible();

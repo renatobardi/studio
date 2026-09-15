@@ -1,16 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { reachAppViaRestore } from "./helpers";
+import { reachAppViaRestore, sharedChannelItem } from "./helpers";
 
 // Flow 3: open a Thread on a Message, reply in it, then add and remove a
-// Reaction on the root Message. Assumes the test account is already a
-// Channel Member of at least one Channel.
+// Reaction on the root Message, in the shared "e2e" Channel reachAppViaRestore
+// makes the Identity a Member of.
 test.use({ storageState: undefined });
 
 test("thread reply and reaction", async ({ page }) => {
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
 
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
 
   const rootContent = `e2e thread root ${Date.now()}`;
   await page.getByTestId("message-composer").fill(rootContent);

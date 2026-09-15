@@ -4,7 +4,13 @@ gets its password and verified flag forced to match, and a pair with either
 env var unset is skipped rather than guessed at.
 """
 
-from studio_api.ensure_e2e_accounts import ExistingUser, accounts_from_env, ensure_account
+from studio_api.ensure_e2e_accounts import (
+    ExistingUser,
+    accounts_from_env,
+    ensure_account,
+    onboarding_account_from_env,
+    recreate_account,
+)
 
 
 class _FakeAuthClient:
@@ -12,6 +18,7 @@ class _FakeAuthClient:
         self.existing = existing or {}
         self.created: list[tuple[str, str]] = []
         self.updated: list[tuple[str, str]] = []
+        self.deleted: list[str] = []
 
     def get_user_by_email(self, email: str) -> ExistingUser | None:
         return self.existing.get(email)
@@ -21,6 +28,9 @@ class _FakeAuthClient:
 
     def update_user(self, uid: str, password: str) -> None:
         self.updated.append((uid, password))
+
+    def delete_user(self, uid: str) -> None:
+        self.deleted.append(uid)
 
 
 class TestEnsureAccount:
@@ -50,6 +60,44 @@ class TestEnsureAccount:
         ensure_account(client, "a@example.com", "pw")
 
         assert client.updated == [("uid-1", "pw")]
+
+
+class TestRecreateAccount:
+    # Flow 1 asserts first access, which an Account only has once: a new uid is
+    # a new, never-onboarded Account (the API keys Accounts by Firebase uid).
+    def test_deletes_an_existing_account_before_creating_it_again(self) -> None:
+        client = _FakeAuthClient({"o@example.com": ExistingUser(uid="uid-old", email_verified=True)})
+
+        result = recreate_account(client, "o@example.com", "pw")
+
+        assert client.deleted == ["uid-old"]
+        assert client.created == [("o@example.com", "pw")]
+        assert client.updated == []
+        assert "recreated" in result
+
+    def test_creates_a_missing_account_without_deleting_anything(self) -> None:
+        client = _FakeAuthClient()
+
+        recreate_account(client, "o@example.com", "pw")
+
+        assert client.deleted == []
+        assert client.created == [("o@example.com", "pw")]
+
+
+class TestOnboardingAccountFromEnv:
+    def test_returns_the_pair_when_both_vars_are_set(self) -> None:
+        env = {"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com", "STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}
+
+        assert onboarding_account_from_env(env) == ("o@example.com", "pw")
+
+    def test_returns_none_when_either_var_is_missing(self) -> None:
+        assert onboarding_account_from_env({"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com"}) is None
+        assert onboarding_account_from_env({"STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}) is None
+
+    def test_is_not_one_of_the_accounts_that_keep_their_uid(self) -> None:
+        env = {"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com", "STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}
+
+        assert accounts_from_env(env) == []
 
 
 class TestAccountsFromEnv:

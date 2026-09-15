@@ -21,11 +21,17 @@ it. Issue #51.
    `studio-test` container at the exact validated SHA (`git checkout --force
    --detach`), rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails
    if it is not that SHA. The deployed SHA goes to the run's job summary.
-6. **Post-deploy Playwright smoke** (flows 2, 3, 5, 6, 7, 8 & 9) runs against what was
+6. **Post-deploy Playwright smoke** (flows 1–9) runs against what was
    just deployed, from the specs of that same commit. Flow 1 (first-time
-   onboarding) skips itself once the seeded Account has an Identity: an
-   Account is onboarded once and never again (#36), so on a fixed test
-   account that flow has nothing left to assert. Flow 6 covers the repeatable
+   onboarding) signs in as an Account that has no Identity on every run:
+   an Account is onboarded once and never again (#36), so CD deletes and
+   creates that one Account again before the smoke (see "e2e test Accounts"
+   below). It redeems a single-use Invite, then restores on a fresh browser
+   without being asked for the Invite it just exhausted, and finally removes
+   its Identity from the Workspace. Flow 4 also has a Workspace admin who is
+   no party to the Direct Message ask for its photos, and be refused. Flow 5
+   restores onto a fresh browser and finds the Channel Message written
+   before it. Flow 6 covers the repeatable
    half — signing in on a new browser restores the same Identity. Flow 7
    drives a second client through the REST control plane: another admin's
    Channel and membership changes must land in the running app with no
@@ -110,19 +116,21 @@ tracked in #76. `scripts/ops/check-sonar-gate.sh` reports the current state.
 
 ## e2e test Accounts
 
-The smoke signs in as three Firebase password Accounts in the `studio-oute`
-project: `STUDIO_TEST_EMAIL`, `STUDIO_TEST_EMAIL_2` and
-`STUDIO_TEST_EXTENSION_EMAIL`, each with its `*_PASSWORD`. Every value lives
-in two places that must agree:
+The smoke signs in as four Firebase password Accounts in the `studio-oute`
+project: `STUDIO_TEST_EMAIL`, `STUDIO_TEST_EMAIL_2`,
+`STUDIO_TEST_EXTENSION_EMAIL` and `STUDIO_TEST_ONBOARDING_EMAIL`, each with
+its `*_PASSWORD`. Every value lives in two places that must agree:
 
-- **GitHub secrets**, which Playwright signs in with. The first two pairs are
-  `studio-test` Environment secrets; the extension pair is a repository
-  secret. An Environment secret shadows a repository secret of the same name,
+- **GitHub secrets**, which Playwright signs in with. The extension pair is a
+  repository secret; the other three pairs are `studio-test` Environment
+  secrets. An Environment secret shadows a repository secret of the same name,
   so a value written to the other scope changes nothing.
 - **`/opt/app/.env` inside the `studio-test` container**, passed through by
   `docker-compose.yml` to the `api` service. Before the smoke, `cd.yml` runs
   `python -m studio_api.ensure_e2e_accounts` there, which creates or resets
-  each Account to that password with a verified email (#50). With no pairs in
+  each Account to that password with a verified email (#50). The onboarding
+  Account is deleted and created instead — a new uid is a new Account, so
+  flow 1 always meets first access; only flow 1 may sign in as it. With no pairs in
   `.env` the step logs `nothing to seed` and does nothing — it does not fail.
 
 GitHub secrets are write-only, so a lost password cannot be read back — and
@@ -135,8 +143,8 @@ places, then restart `api` so it reads the new `.env`
 owner keeps a script that does all of this in `scripts/ops/` (gitignored, as
 every ops script is).
 
-Keep the emails: an Account is keyed by its Firebase uid, and a new email is
-a new Account with no Identity linked to it.
+Keep the emails of the first three: an Account is keyed by its Firebase uid,
+and a new email is a new Account with no Identity linked to it.
 
 ## Production
 

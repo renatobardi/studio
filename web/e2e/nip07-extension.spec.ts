@@ -4,6 +4,7 @@ import { generateSecretKey } from "nostr-tools";
 import {
   ensureChannelMembership,
   installFakeNip07,
+  sharedChannelItem,
   signIn,
   testExtensionAccount,
   testInviteCode,
@@ -105,7 +106,7 @@ test("reload, signing and sign-out all go through the extension", async ({ page 
   await page.reload();
   await expect(page.getByText(/Connected as/)).toBeVisible({ timeout: 15_000 });
 
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
   const content = `e2e extension message ${Date.now()}`;
   await page.getByTestId("message-composer").fill(content);
   await page.getByTestId("message-composer").press("Enter");

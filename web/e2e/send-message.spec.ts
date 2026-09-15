@@ -3,21 +3,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { makePng } from "../src/lib/testing/png";
-import { reachAppViaRestore } from "./helpers";
+import { reachAppViaRestore, sharedChannelItem } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
 
 // Flow 2: sign in, open a Channel, send a Message with a photo attached, see
-// both appear in the timeline (ticket #6). Assumes the test account is
-// already a Channel Member of at least one Channel (seeded alongside the
-// Workspace invite — see scripts/ops/seed-e2e-test-account.sh).
+// both appear in the timeline (ticket #6), in the Workspace's shared "e2e"
+// Channel — reachAppViaRestore makes the Identity a Member of it first.
 test.use({ storageState: undefined });
 
 test("send a Message and see it in the Channel timeline", async ({ page }) => {
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
 
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
 
   const content = `e2e message ${Date.now()}`;
   await page.getByTestId("message-composer").fill(content);
@@ -32,7 +31,7 @@ test("attach photos, see each one's upload progress, and see them rendered inlin
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
 
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
 
   // #107: the Channel's limit is on screen before anything is picked.
   await expect(page.getByTestId("attach-limit")).toHaveText("Photos up to 10 MB");

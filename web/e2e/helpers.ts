@@ -1,7 +1,7 @@
 /**
  * These flows run against a real deployed studio-test stack (real Firebase
- * project, real relay). Credentials come from env, seeded by
- * scripts/ops/seed-e2e-test-account.sh — see that script for what it creates.
+ * project, real relay). Credentials come from env — GitHub secrets in CD; the Accounts
+ * themselves are kept by `studio_api.ensure_e2e_accounts` (docs/delivery-gates.md).
  *
  * Flows 2 & 3 (ticket #5) additionally need STUDIO_TEST_WORKSPACE_SLUG and
  * STUDIO_TEST_OWNER_PRIVATE_KEY_HEX — a Workspace owner/admin identity's
@@ -12,7 +12,7 @@
  */
 export function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var ${name} — see scripts/ops/seed-e2e-test-account.sh`);
+  if (!value) throw new Error(`Missing required env var ${name} — see docs/delivery-gates.md, "e2e test Accounts"`);
   return value;
 }
 
@@ -33,6 +33,14 @@ export const testAccountTwo = {
   password: () => requiredEnv("STUDIO_TEST_PASSWORD_2"),
 };
 export const testBackupPassphraseTwo = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE_2");
+
+/** Flow 1's Account: CD deletes and creates it again before every smoke
+ * (`studio_api.ensure_e2e_accounts`), so it always arrives with no Identity and first access
+ * has something to assert. Only flow 1 may sign in as it. */
+export const testOnboardingAccount = {
+  email: () => requiredEnv("STUDIO_TEST_ONBOARDING_EMAIL"),
+  password: () => requiredEnv("STUDIO_TEST_ONBOARDING_PASSWORD"),
+};
 
 /** A Workspace owner/admin identity used only to grant the just-onboarded test Identity Channel
  * membership (see `ensureChannelMembership`) — never used to sign in through the UI. Redeeming
@@ -86,7 +94,40 @@ export const ownerApi = {
     const slug = testWorkspaceSlug();
     await ownerRequest(`${apiBase}/api/workspaces/${slug}/channels/${channelId}/members/${pubkey}`, "DELETE");
   },
+  /** A single-use Invite that expires within the hour: flow 1 spends it, and is left holding an
+   * exhausted Invite to prove restore never asks for one. */
+  async createSingleUseInvite(apiBase: string): Promise<{ code: string }> {
+    return ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/invites`, "POST", {
+      max_uses: 1,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    });
+  },
+  async removeWorkspaceMember(apiBase: string, pubkey: string): Promise<void> {
+    await ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/members/${pubkey}`, "DELETE");
+  },
+  /** The status a media GET answers the owner with, signed the way the app signs one (a Blossom
+   * `get` authorization, BUD-01) — the owner is a Workspace admin, but no DM photo names it. */
+  async mediaGetStatus(mediaUrl: string): Promise<number> {
+    const { finalizeEvent } = await import("nostr-tools");
+    const now = Math.floor(Date.now() / 1000);
+    const event = finalizeEvent(
+      { kind: 24242, created_at: now, tags: [["t", "get"], ["expiration", String(now + 300)]], content: "" },
+      Uint8Array.from(Buffer.from(ownerPrivateKeyHex(), "hex")),
+    );
+    const response = await fetch(mediaUrl, {
+      headers: { Authorization: `Nostr ${Buffer.from(JSON.stringify(event)).toString("base64")}` },
+      redirect: "manual",
+    });
+    return response.status;
+  },
 };
+
+/** The preview anyone can read of an Invite: whether it still admits somebody, and why not. */
+export async function previewInvite(apiBase: string, code: string): Promise<{ valid: boolean; reason: string | null }> {
+  const response = await fetch(`${apiBase}/api/invites/${code}`);
+  if (!response.ok) throw new Error(`preview invite failed: ${response.status}`);
+  return (await response.json()) as { valid: boolean; reason: string | null };
+}
 
 async function ownerRequest<T>(url: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -104,6 +145,12 @@ async function ownerRequest<T>(url: string, method: string, body?: unknown): Pro
 /** The one Channel every flow that calls `ensureChannelMembership` shares — seeded once into
  * studio-test outside this repo, same as the test Accounts themselves. */
 const SHARED_CHANNEL_NAME = "e2e";
+
+/** That shared Channel's entry in the sidebar, by exact name: the list has no order to rely on,
+ * and channel-access.spec.ts leaves `e2e-access-*` Channels behind that a substring would match. */
+export function sharedChannelItem(page: import("@playwright/test").Page) {
+  return page.getByTestId("channel-list-item").filter({ hasText: new RegExp(`^${SHARED_CHANNEL_NAME}$`) });
+}
 
 /** Adds `pubkey` as a member of the Workspace's shared "e2e" Channel, using the fixed owner/admin
  * identity above. Idempotent — adding an existing member is a no-op server-side
@@ -202,7 +249,7 @@ export async function reachAppViaRestore(page: import("@playwright/test").Page):
  * A third, independently-seeded Account for the NIP-07 flows (#75): the only
  * one whose Identity is the fixed key below rather than a fresh one minted per
  * run. Its first run links that key, every later run presents the same one, so
- * the flow is repeatable — see scripts/ops/seed-e2e-extension-account.mjs.
+ * the flow is repeatable.
  */
 export const testExtensionAccount = {
   email: () => requiredEnv("STUDIO_TEST_EXTENSION_EMAIL"),

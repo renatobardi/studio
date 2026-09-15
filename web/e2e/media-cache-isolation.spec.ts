@@ -7,6 +7,7 @@ import {
   testAccountTwo,
   testBackupPassphrase,
   testBackupPassphraseTwo,
+  sharedChannelItem,
 } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
@@ -65,7 +66,7 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   servedToA.length = 0; // from here on, everything recorded is A's own doing
 
   // --- A attaches a photo to a Channel Message.
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
   await page.getByTestId("attach-input").setInputFiles(TEST_IMAGE);
   await expect(page.getByTestId("attachment-preview")).toBeVisible();
   const channelContent = `e2e cache ${Date.now()}`;
@@ -109,7 +110,7 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   });
   expect(await page.evaluate((name) => caches.has(name), `studio-media-v1-${pubkeyA}`)).toBe(false);
 
-  await page.getByTestId("channel-list-item").first().click();
+  await sharedChannelItem(page).click();
   await expect(
     page.getByTestId("timeline-message").filter({ hasText: channelContent }).getByTestId("attachment-image"),
   ).toBeVisible({ timeout: 15_000 });
