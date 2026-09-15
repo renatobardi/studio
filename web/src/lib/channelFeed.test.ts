@@ -192,8 +192,22 @@ describe("ChannelFeed", () => {
     feed.start();
     while (feed.getSnapshot().hasMore) feed.loadOlder();
 
-    expect(relay.allFilters.filter((f) => "#E" in f).length).toBe(3);
+    expect(relay.allFilters.filter((f) => "#E" in f).length).toBe(150 / PAGE_SIZE);
     expect(relay.openFilters.filter((f) => "#E" in f)).toEqual([]);
+  });
+
+  test("closes a root-companions fetch still in flight when disposed", () => {
+    const relay = new FakeRelay(messages(3));
+    let closed = false;
+    const stalling = {
+      subscribe(filters: Filter[], handlers: { onEvent(e: VerifiedEvent): void; onEose?(): void }) {
+        if (!filters.some((f) => "#E" in f)) return relay.subscribe(filters, handlers);
+        return Object.assign(() => (closed = true), { update: () => {} });
+      },
+    };
+    const dispose = new ChannelFeed(stalling, CHANNEL).start();
+    dispose();
+    expect(closed).toBe(true);
   });
 
   test("a companion published after its page loaded still arrives", () => {

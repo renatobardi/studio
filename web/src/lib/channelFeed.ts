@@ -42,6 +42,7 @@ export class ChannelFeed {
   private hasMore = false;
   private loadingOlder = false;
   private readonly coveredRoots = new Set<string>();
+  private readonly pendingRootFetches = new Set<() => void>();
   private readonly disposers: (() => void)[] = [];
   private readonly listeners = new Set<() => void>();
   private snapshot: FeedSnapshot | null = null;
@@ -83,6 +84,8 @@ export class ChannelFeed {
     // which under StrictMode outlives a start()/dispose() pair.
     return () => {
       for (const dispose of this.disposers.splice(0)) dispose();
+      for (const close of this.pendingRootFetches) close();
+      this.pendingRootFetches.clear();
       this.coveredRoots.clear();
     };
   }
@@ -162,10 +165,13 @@ export class ChannelFeed {
       onEvent: (event) => this.apply(event),
       onEose: () => {
         finished = true;
-        unsubscribe?.();
+        if (unsubscribe === null) return;
+        this.pendingRootFetches.delete(unsubscribe);
+        unsubscribe();
       },
     });
     if (finished) unsubscribe();
+    else this.pendingRootFetches.add(unsubscribe);
   }
 
   private emit(): void {
