@@ -60,7 +60,7 @@ test("first access onboards through a verified Key Backup, and restore skips the
 
   try {
     // The Invite admitted exactly one person, and this was it.
-    expect(await previewInvite(apiBase, invite.code)).toEqual({ valid: false, reason: "exhausted" });
+    expect(await previewInvite(apiBase, invite.code)).toMatchObject({ valid: false, reason: "exhausted" });
     await first.close();
 
     // --- A fresh browser: the Account opens on restore, with no Invite to get past.

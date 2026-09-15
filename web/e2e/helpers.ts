@@ -123,10 +123,13 @@ export const ownerApi = {
 };
 
 /** The preview anyone can read of an Invite: whether it still admits somebody, and why not. */
-export async function previewInvite(apiBase: string, code: string): Promise<{ valid: boolean; reason: string | null }> {
+export async function previewInvite(
+  apiBase: string,
+  code: string,
+): Promise<{ workspace_name: string; valid: boolean; reason: string | null }> {
   const response = await fetch(`${apiBase}/api/invites/${code}`);
   if (!response.ok) throw new Error(`preview invite failed: ${response.status}`);
-  return (await response.json()) as { valid: boolean; reason: string | null };
+  return (await response.json()) as { workspace_name: string; valid: boolean; reason: string | null };
 }
 
 async function ownerRequest<T>(url: string, method: string, body?: unknown): Promise<T> {
