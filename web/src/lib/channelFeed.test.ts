@@ -33,9 +33,12 @@ function matches(event: VerifiedEvent, filter: Filter): boolean {
   return true;
 }
 
-/** Stands in for the relay: the same newest-first, id-broken order and inclusive `until` that
- * `build_query` in api/src/studio_api/nostr/store.py runs (ADR-0004), and subscriptions that
- * stay open for whatever is published next. */
+/** The relay's per-filter ceiling (MAX_LIMIT in api/src/studio_api/nostr/limits.py). */
+const MAX_LIMIT = 500;
+
+/** Stands in for the relay: the same newest-first, id-broken order, inclusive `until` and
+ * clamped `limit` that `build_query` in api/src/studio_api/nostr/store.py runs (ADR-0004), and
+ * subscriptions that stay open for whatever is published next. */
 class FakeRelay {
   readonly requests: Filter[][] = [];
   private open: { filters: Filter[]; onEvent: (event: VerifiedEvent) => void }[] = [];
@@ -51,7 +54,7 @@ class FakeRelay {
         const page = this.stored
           .filter((event) => matches(event, filter))
           .sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id))
-          .slice(0, filter.limit);
+          .slice(0, Math.min(filter.limit ?? MAX_LIMIT, MAX_LIMIT));
         for (const event of page) handlers.onEvent(event);
       }
       handlers.onEose?.();
@@ -183,19 +186,37 @@ describe("ChannelFeed", () => {
     expect(feed.getSnapshot().reactions.map((r) => r.id)).toEqual(["backdated"]);
   });
 
-  test("widens one root-companions subscription instead of opening one per page", () => {
+  test("leaves no root-companions subscription open, however deep the scrollback", () => {
     const relay = new FakeRelay(messages(150));
     const feed = new ChannelFeed(relay, CHANNEL);
     feed.start();
     while (feed.getSnapshot().hasMore) feed.loadOlder();
 
-    const rootSubscribeCalls = relay.requests.filter((filters) =>
-      filters.some((f) => "#E" in f),
-    ).length;
-    expect(rootSubscribeCalls).toBe(1);
+    expect(relay.allFilters.filter((f) => "#E" in f).length).toBe(150 / PAGE_SIZE);
+    expect(relay.openFilters.filter((f) => "#E" in f)).toEqual([]);
+  });
 
-    const rootFilter = relay.openFilters.find((f) => "#E" in f);
-    expect(rootFilter?.["#E"]).toHaveLength(150);
+  test("closes a root-companions fetch still in flight when disposed", () => {
+    const relay = new FakeRelay(messages(3));
+    let closed = false;
+    const stalling = {
+      subscribe(filters: Filter[], handlers: { onEvent(e: VerifiedEvent): void; onEose?(): void }) {
+        if (!filters.some((f) => "#E" in f)) return relay.subscribe(filters, handlers);
+        return Object.assign(() => (closed = true), { update: () => {} });
+      },
+    };
+    const dispose = new ChannelFeed(stalling, CHANNEL).start();
+    dispose();
+    expect(closed).toBe(true);
+  });
+
+  test("a companion published after its page loaded still arrives", () => {
+    const relay = new FakeRelay(messages(60));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    feed.loadOlder();
+    relay.publish(reaction("late", "m000", 9000));
+    expect(feed.getSnapshot().reactions.map((r) => r.id)).toEqual(["late"]);
   });
 
   test("asks for a root's companions once, however often the subscription is replayed", () => {
@@ -208,9 +229,19 @@ describe("ChannelFeed", () => {
     expect(rootFilters()).toBe(asked);
   });
 
-  test("does not re-notify listeners for a companion redelivered by a widened filter", () => {
-    // react1 targets m015, which is already covered by page 1. Widening the roots
-    // subscription to include page 2's roots redelivers it under the new filter (#91).
+  test("an older page's companions get their own budget, however many the newer pages hold", () => {
+    // Page 1's roots alone hold more Reactions than the relay's per-filter ceiling, all newer
+    // than page 2's. Sharing one filter across both pages crowded page 2's out (#119).
+    const crowd = Array.from({ length: MAX_LIMIT }, (_, i) => reaction(`c${i}`, "m059", 5000 + i));
+    const relay = new FakeRelay([...messages(60), ...crowd, reaction("old", "m000", 1001)]);
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    feed.loadOlder();
+    expect(feed.getSnapshot().reactions.map((r) => r.id)).toContain("old");
+  });
+
+  test("does not re-notify listeners for a companion already held", () => {
+    // react1 targets m015, which page 1 already covered: loading page 2 must not bring it back.
     const relay = new FakeRelay([...messages(60), reaction("react1", "m015", 1016)]);
     const feed = new ChannelFeed(relay, CHANNEL);
     let notifications = 0;

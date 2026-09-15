@@ -31,8 +31,8 @@ export interface FeedSnapshot {
  * Messages (kind 9) have a subscription to themselves — sharing one with Reactions let a
  * burst of them fill the page and leave the Channel looking empty. The Thread Replies (1111),
  * Reactions (7) and deletions (5) arrive on their own subscriptions: one Channel-wide for
- * whatever is published next, and one per page of loaded Messages, addressed by those
- * Messages' ids so no count depends on an author's `created_at`.
+ * whatever is published next, and a one-shot fetch per page of loaded Messages, addressed by
+ * those Messages' ids so no count depends on an author's `created_at`.
  */
 export class ChannelFeed {
   private readonly messages = new Map<string, VerifiedEvent>();
@@ -42,7 +42,7 @@ export class ChannelFeed {
   private hasMore = false;
   private loadingOlder = false;
   private readonly coveredRoots = new Set<string>();
-  private rootsHandle: SubscriptionHandle | null = null;
+  private readonly pendingRootFetches = new Set<() => void>();
   private readonly disposers: (() => void)[] = [];
   private readonly listeners = new Set<() => void>();
   private snapshot: FeedSnapshot | null = null;
@@ -84,8 +84,9 @@ export class ChannelFeed {
     // which under StrictMode outlives a start()/dispose() pair.
     return () => {
       for (const dispose of this.disposers.splice(0)) dispose();
+      for (const close of this.pendingRootFetches) close();
+      this.pendingRootFetches.clear();
       this.coveredRoots.clear();
-      this.rootsHandle = null;
     };
   }
 
@@ -135,8 +136,7 @@ export class ChannelFeed {
   };
 
   /** Skips the map write and the listener notification for an id already held — events are
-   * immutable, and each widen of the roots subscription (#91) replays every companion matching
-   * the new filter, not just the ones the new page added. */
+   * immutable, and the same companion can reach the feed through more than one subscription. */
   private apply(event: VerifiedEvent): void {
     let map: Map<string, VerifiedEvent>;
     if (event.kind === 9) map = this.messages;
@@ -149,25 +149,29 @@ export class ChannelFeed {
     this.emit();
   }
 
-  /** One subscription for every root covered so far, widened as each page loads — scrollback N
-   * pages deep must not cost N open subscriptions (#91). A replayed page (a reconnect re-issues
-   * every open subscription) must not widen it again.
-   *
-   * The relay clamps every filter's `limit` at MAX_LIMIT=500 (api/src/studio_api/nostr/relay.py),
-   * regardless of what is asked. Before this widened into one subscription, that ceiling applied
-   * per page — now it is shared across every root covered so far, so a channel active enough to
-   * push total companions past 500 will have the oldest of them silently dropped. Tracked as a
-   * follow-up, not fixed here (#119). */
+  /** Fetches the Replies and Reactions of a page's roots, then closes — the relay clamps each
+   * filter's `limit` at MAX_LIMIT=500 (api/src/studio_api/nostr/limits.py), so every page asks on
+   * its own rather than sharing one ever-widening filter whose ceiling the newest pages would
+   * exhaust (#119). Nothing stays open per page (#91): whatever targets these roots from now on
+   * reaches the Channel-wide companion subscription. A replayed page (a reconnect re-issues every
+   * open subscription) must not ask again. */
   private coverRoots(page: VerifiedEvent[]): void {
     const roots = page.map((event) => event.id).filter((id) => !this.coveredRoots.has(id));
     if (roots.length === 0) return;
     for (const id of roots) this.coveredRoots.add(id);
-    const filters = rootCompanionFilters([...this.coveredRoots]);
-    if (this.rootsHandle !== null) this.rootsHandle.update(filters);
-    else {
-      this.rootsHandle = this.client.subscribe(filters, { onEvent: (event) => this.apply(event) });
-      this.disposers.push(this.rootsHandle);
-    }
+    let unsubscribe: (() => void) | null = null;
+    let finished = false;
+    unsubscribe = this.client.subscribe(rootCompanionFilters(roots), {
+      onEvent: (event) => this.apply(event),
+      onEose: () => {
+        finished = true;
+        if (unsubscribe === null) return;
+        this.pendingRootFetches.delete(unsubscribe);
+        unsubscribe();
+      },
+    });
+    if (finished) unsubscribe();
+    else this.pendingRootFetches.add(unsubscribe);
   }
 
   private emit(): void {
