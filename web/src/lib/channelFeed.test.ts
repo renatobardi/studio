@@ -192,7 +192,7 @@ describe("ChannelFeed", () => {
     feed.start();
     while (feed.getSnapshot().hasMore) feed.loadOlder();
 
-    expect(relay.allFilters.filter((f) => "#E" in f).length).toBe(150 / PAGE_SIZE);
+    expect(relay.allFilters.filter((f) => "#E" in f)).toHaveLength(150 / PAGE_SIZE);
     expect(relay.openFilters.filter((f) => "#E" in f)).toEqual([]);
   });
 
