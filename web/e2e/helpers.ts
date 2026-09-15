@@ -105,6 +105,21 @@ export const ownerApi = {
   async removeWorkspaceMember(apiBase: string, pubkey: string): Promise<void> {
     await ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/members/${pubkey}`, "DELETE");
   },
+  /** The status a media GET answers the owner with, signed the way the app signs one (a Blossom
+   * `get` authorization, BUD-01) — the owner is a Workspace admin, but no DM photo names it. */
+  async mediaGetStatus(mediaUrl: string): Promise<number> {
+    const { finalizeEvent } = await import("nostr-tools");
+    const now = Math.floor(Date.now() / 1000);
+    const event = finalizeEvent(
+      { kind: 24242, created_at: now, tags: [["t", "get"], ["expiration", String(now + 300)]], content: "" },
+      Uint8Array.from(Buffer.from(ownerPrivateKeyHex(), "hex")),
+    );
+    const response = await fetch(mediaUrl, {
+      headers: { Authorization: `Nostr ${Buffer.from(JSON.stringify(event)).toString("base64")}` },
+      redirect: "manual",
+    });
+    return response.status;
+  },
 };
 
 /** The preview anyone can read of an Invite: whether it still admits somebody, and why not. */
