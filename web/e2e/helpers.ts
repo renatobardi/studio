@@ -34,6 +34,14 @@ export const testAccountTwo = {
 };
 export const testBackupPassphraseTwo = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE_2");
 
+/** Flow 1's Account: CD deletes and creates it again before every smoke
+ * (`studio_api.ensure_e2e_accounts`), so it always arrives with no Identity and first access
+ * has something to assert. Only flow 1 may sign in as it. */
+export const testOnboardingAccount = {
+  email: () => requiredEnv("STUDIO_TEST_ONBOARDING_EMAIL"),
+  password: () => requiredEnv("STUDIO_TEST_ONBOARDING_PASSWORD"),
+};
+
 /** A Workspace owner/admin identity used only to grant the just-onboarded test Identity Channel
  * membership (see `ensureChannelMembership`) — never used to sign in through the UI. Redeeming
  * an Invite only grants Workspace membership (`repository.py`'s `redeem_invite`); flows 2 & 3
@@ -86,7 +94,25 @@ export const ownerApi = {
     const slug = testWorkspaceSlug();
     await ownerRequest(`${apiBase}/api/workspaces/${slug}/channels/${channelId}/members/${pubkey}`, "DELETE");
   },
+  /** A single-use Invite that expires within the hour: flow 1 spends it, and is left holding an
+   * exhausted Invite to prove restore never asks for one. */
+  async createSingleUseInvite(apiBase: string): Promise<{ code: string }> {
+    return ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/invites`, "POST", {
+      max_uses: 1,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    });
+  },
+  async removeWorkspaceMember(apiBase: string, pubkey: string): Promise<void> {
+    await ownerRequest(`${apiBase}/api/workspaces/${testWorkspaceSlug()}/members/${pubkey}`, "DELETE");
+  },
 };
+
+/** The preview anyone can read of an Invite: whether it still admits somebody, and why not. */
+export async function previewInvite(apiBase: string, code: string): Promise<{ valid: boolean; reason: string | null }> {
+  const response = await fetch(`${apiBase}/api/invites/${code}`);
+  if (!response.ok) throw new Error(`preview invite failed: ${response.status}`);
+  return (await response.json()) as { valid: boolean; reason: string | null };
+}
 
 async function ownerRequest<T>(url: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
