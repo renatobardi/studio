@@ -43,8 +43,9 @@ export default defineConfig({
     toHaveScreenshot: { maxDiffPixelRatio: 0.002, threshold: 0.2, animations: "disabled", caret: "hide" },
   },
   fullyParallel: false,
-  // restore.spec.ts needs onboarding.spec.ts's Key Backup to already exist
-  // for the same test account — must run in file order, one worker.
+  // One worker: the flows share the same few seeded Accounts and Identities
+  // against one deployment, and two of them signed in at once as the same
+  // Account would race each other. No flow depends on another having run.
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
