@@ -1,13 +1,30 @@
 import { expect, test } from "@playwright/test";
-import { testAccount, testBackupPassphrase } from "./helpers";
+import { reachAppViaRestore, sharedChannelItem, testAccount, testBackupPassphrase } from "./helpers";
 
 // Flow 5: fresh browser context (no local IndexedDB state), sign in, restore
-// the Identity from the server-held Key Backup, and reconnect to the relay.
-// Depends on a Key Backup already existing for this account — run
-// onboarding.spec.ts against the same account first.
+// the Identity from the server-held Key Backup, reconnect to the relay, and
+// find the Channel history written before the restore. Needs the Account's
+// Key Backup to exist already — it does on every seeded test Account.
 test.use({ storageState: undefined });
 
-test("restore Identity from Key Backup on a fresh browser, with no invite", async ({ page }) => {
+test("restore Identity from Key Backup on a fresh browser, with no invite, and see earlier history", async ({
+  browser,
+}) => {
+  // --- History to come back to, written by this Identity in a browser that is then thrown away.
+  const earlier = await browser.newContext();
+  const earlierPage = await earlier.newPage();
+  await reachAppViaRestore(earlierPage);
+  await sharedChannelItem(earlierPage).click();
+  const history = `e2e history before restore ${Date.now()}`;
+  await earlierPage.getByTestId("message-composer").fill(history);
+  await earlierPage.getByTestId("message-composer").press("Enter");
+  await expect(earlierPage.getByTestId("timeline-message").filter({ hasText: history })).toBeVisible({
+    timeout: 10_000,
+  });
+  await earlier.close();
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
   await page.goto("/");
 
   await page.getByLabel("Email").fill(testAccount.email());
@@ -28,4 +45,9 @@ test("restore Identity from Key Backup on a fresh browser, with no invite", asyn
   await page.getByRole("button", { name: "Finish" }).click();
 
   await expect(page.getByText(/Connected as/)).toBeVisible();
+
+  // Nothing of it was left in this browser: it can only have come back from the relay.
+  await sharedChannelItem(page).click();
+  await expect(page.getByTestId("timeline-message").filter({ hasText: history })).toBeVisible({ timeout: 15_000 });
+  await context.close();
 });
