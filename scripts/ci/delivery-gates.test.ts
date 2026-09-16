@@ -148,3 +148,65 @@ describe('ci.yml sonar job', () => {
     ])
   })
 })
+
+// Promotion to studio-prd (issue #54). Nothing is built for production that
+// studio-test did not already run and smoke-test: the only input is a SHA, and
+// the gate asks GitHub for proof that CD deployed exactly that SHA to
+// studio-test and its smoke passed.
+const promotePath = '.github/workflows/promote.yml'
+const promote = (await Bun.file(`${repoRoot}${promotePath}`).exists())
+  ? await read(promotePath)
+  : ({ jobs: {} } as Workflow)
+
+describe('promote.yml', () => {
+  const promoteTriggers = (promote.on ?? promote[true as unknown as string] ?? {}) as Record<
+    string,
+    { inputs?: Record<string, { required?: boolean }> } | undefined
+  >
+  const noJob: Job = { steps: [] }
+  const promoteGate = promote.jobs.gate ?? noJob
+  const deployPrd = promote.jobs['deploy-prd'] ?? noJob
+  const everyRun = Object.values(promote.jobs)
+    .flatMap((job) => job.steps.map((step) => step.run ?? ''))
+    .join('\n')
+
+  test('runs only when a person dispatches it with a SHA', () => {
+    expect(Object.keys(promoteTriggers)).toEqual(['workflow_dispatch'])
+    expect(promoteTriggers.workflow_dispatch?.inputs?.sha?.required).toBe(true)
+  })
+
+  test('never splices the typed SHA into a shell script', () => {
+    // A dispatch input is free text: `${{ inputs.sha }}` inside `run:` is
+    // script injection. It reaches the shell through env, and is checked there.
+    expect(everyRun).not.toContain('inputs.sha')
+    expect(commandsOf(promoteGate)).toContain('[0-9a-f]{40}')
+  })
+
+  test('promotes only a SHA whose studio-test deploy and smoke succeeded', () => {
+    const commands = commandsOf(promoteGate)
+    expect(commands).toContain('workflows/cd.yml/runs?head_sha=')
+    // A CD run can succeed with deploy-dev skipped (a superseded SHA stands
+    // down) — the run's conclusion alone proves nothing was deployed.
+    expect(commands).toContain('deploy-dev')
+  })
+
+  test('deploys that exact SHA to studio-prd, behind its own Environment', () => {
+    expect(deployPrd.needs).toEqual(['gate'])
+    expect(deployPrd.environment).toBe('studio-prd')
+    const commands = commandsOf(deployPrd)
+    expect(commands).toContain('lxc exec studio-prd')
+    expect(commands).toContain('--detach $DEPLOY_SHA')
+    expect(commands).not.toMatch(/(?:reset --hard|checkout)[^\n]*origin\/main/)
+  })
+
+  test('verifies the commit running on studio-prd and that it answers over HTTPS', () => {
+    const commands = commandsOf(deployPrd)
+    expect(commands).toContain('rev-parse HEAD')
+    expect(commands).toContain('GITHUB_STEP_SUMMARY')
+    expect(commands).toContain('/api/ready')
+  })
+
+  test('never seeds or resets e2e Accounts on production', () => {
+    expect(everyRun).not.toContain('ensure_e2e_accounts')
+  })
+})
