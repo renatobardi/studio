@@ -124,7 +124,7 @@ describe('ci.yml sonar job', () => {
 
   test('scans only after both suites ran, and takes their coverage', () => {
     expect(sonar.needs).toEqual(['test', 'web'])
-    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.python.coverage.reportPaths=api/coverage.xml')
+    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.python.coverage.reportPaths=api/coverage/coverage.xml')
     expect(`${scan?.with?.args ?? ''}`).toContain(
       'sonar.javascript.lcov.reportPaths=web/coverage/lcov.info',
     )

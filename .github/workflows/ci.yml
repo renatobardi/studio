@@ -39,19 +39,23 @@ jobs:
       - name: Run test suite against the Compose stack
         # Coverage lands on the runner through an ad-hoc mount: the suite runs
         # inside the container, and the `sonar` job needs the report out here.
+        # The container runs as a non-root user of its own, so the directory it
+        # writes into has to be writable by anyone.
         run: |
-          docker compose --profile test run --rm -v "$PWD/api:/out" test \
+          mkdir -p api/coverage && chmod 777 api/coverage
+          docker compose --profile test run --rm -v "$PWD/api/coverage:/out" test \
             uv run pytest -q --cov --cov-report=xml:/out/coverage.xml
-          # coverage.py writes paths relative to the container's /app; Sonar
-          # resolves them against the checkout, where the api/ prefix exists.
-          sed -i 's|<source>/app</source>|<source>.</source>|; s|filename="src/|filename="api/src/|g' \
-            api/coverage.xml
+          # coverage.py names files relative to the package root it measured;
+          # Sonar resolves them against the checkout, where that root is
+          # api/src/studio_api.
+          sed -i 's|<source>src/studio_api</source>|<source>.</source>|; s|filename="|filename="api/src/studio_api/|g' \
+            api/coverage/coverage.xml
 
       - name: Publish API coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-api
-          path: api/coverage.xml
+          path: api/coverage/coverage.xml
 
       - name: Start the full stack for the interop smoke
         run: |
@@ -120,6 +124,10 @@ jobs:
         working-directory: web
         run: bun run test:coverage
 
+      - name: Point the coverage at the files as the repository has them
+        # bun names files relative to web/; Sonar resolves them from the root.
+        run: sed -i 's|^SF:|SF:web/|' web/coverage/lcov.info
+
       - name: Publish web coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -158,7 +166,7 @@ jobs:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: coverage-api
-          path: api
+          path: api/coverage
 
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
@@ -175,6 +183,6 @@ jobs:
             -Dsonar.projectKey=renatobardi_studio
             -Dsonar.organization=renatobardi
             -Dsonar.exclusions=docs/UI/design/**
-            -Dsonar.python.coverage.reportPaths=api/coverage.xml
+            -Dsonar.python.coverage.reportPaths=api/coverage/coverage.xml
             -Dsonar.javascript.lcov.reportPaths=web/coverage/lcov.info
             -Dsonar.qualitygate.wait=true

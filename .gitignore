@@ -19,5 +19,5 @@ __pycache__/
 *.egg-info/
 
 # Coverage reports, produced by CI for the Sonar scan (#76) — never committed.
-api/coverage.xml
+api/coverage/
 web/coverage/
