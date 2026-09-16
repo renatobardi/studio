@@ -33,6 +33,27 @@ router = APIRouter(prefix="/api")
 _MANAGE_ROLES = ("owner", "admin")
 
 
+# --- Documented error answers ---------------------------------------------------
+#
+# What a client must be ready for, written where OpenAPI can carry it (#76).
+# Most of these are raised by the helpers below rather than in the endpoint
+# body, but a caller sees them from the endpoint all the same.
+
+# The reasons are shared constants; the `responses=` dicts that carry them are
+# written out at each endpoint. A dict built by spreading another one is opaque
+# to the reader of the decorator — and to python:S8415, which is how the gate
+# tells a documented error answer from an undocumented one.
+
+NO_IDENTITY = "this Account has no linked Identity yet"
+NOT_A_MEMBER = "not a Workspace Member"
+NOT_A_MANAGER = "requires the Workspace owner or an admin"
+NOT_A_CHANNEL_MANAGER = "requires a Channel admin or a Workspace admin"
+NOT_A_CHANNEL_MEMBER = "not a Channel Member"
+ONLY_AN_ACCOUNT = "only a Firebase-authenticated caller has an Account"
+ONLY_AN_ACCOUNT_BACKUP = "only a Firebase-authenticated caller has a Key Backup"
+REFUSED_BY_RULES = "a change the Workspace's own rules refuse"
+
+
 def get_repo(request: Request) -> ControlPlaneRepository:
     return request.app.state.repo  # type: ignore[no-any-return]
 
@@ -42,14 +63,14 @@ async def _caller_pubkey(caller: CallerIdentity, repo: ControlPlaneRepository) -
         return caller.pubkey
     account = await repo.get_account(caller.uid)
     if account is None or account.pubkey is None:
-        raise HTTPException(400, "this Account has no linked Identity yet")
+        raise HTTPException(400, NO_IDENTITY)
     return account.pubkey
 
 
 async def _require_workspace_member(repo: ControlPlaneRepository, slug: str, pubkey: str) -> str:
     role = await repo.get_workspace_role(slug, pubkey)
     if role is None:
-        raise HTTPException(403, "not a Workspace Member")
+        raise HTTPException(403, NOT_A_MEMBER)
     return role
 
 
@@ -58,7 +79,7 @@ async def _require_workspace_manager(
 ) -> None:
     role = await repo.get_workspace_role(slug, pubkey)
     if role not in _MANAGE_ROLES:
-        raise HTTPException(403, "requires the Workspace owner or an admin")
+        raise HTTPException(403, NOT_A_MANAGER)
 
 
 async def _require_channel_manager(
@@ -68,7 +89,7 @@ async def _require_channel_manager(
         return
     if await repo.get_channel_role(channel_id, pubkey) == "admin":
         return
-    raise HTTPException(403, "requires a Channel admin or a Workspace admin")
+    raise HTTPException(403, NOT_A_CHANNEL_MANAGER)
 
 
 async def _require_channel_member(
@@ -78,7 +99,7 @@ async def _require_channel_member(
         return
     if await repo.get_channel_role(channel_id, pubkey) is not None:
         return
-    raise HTTPException(403, "not a Channel Member")
+    raise HTTPException(403, NOT_A_CHANNEL_MEMBER)
 
 
 _ERROR_STATUS: dict[type[ControlPlaneError], int] = {
@@ -92,29 +113,6 @@ _ERROR_STATUS: dict[type[ControlPlaneError], int] = {
 
 def _control_error_to_http(error: ControlPlaneError) -> HTTPException:
     return HTTPException(_ERROR_STATUS.get(type(error), 400), str(error))
-
-
-_Responses = dict[int | str, dict[str, Any]]
-
-# --- Documented error answers ---------------------------------------------------
-#
-# What a client must be ready for, written where OpenAPI can carry it (#76).
-# Most of these are raised by the helpers above rather than in the endpoint
-# body, but a caller sees them from the endpoint all the same.
-
-_NO_IDENTITY: _Responses = {400: {"description": "this Account has no linked Identity yet"}}
-_NOT_A_MEMBER: _Responses = {403: {"description": "not a Workspace Member"}}
-_NOT_A_MANAGER: _Responses = {403: {"description": "requires the Workspace owner or an admin"}}
-_NOT_A_CHANNEL_MANAGER: _Responses = {403: {"description": "requires a Channel admin or a Workspace admin"}}
-_NOT_A_CHANNEL_MEMBER: _Responses = {403: {"description": "not a Channel Member"}}
-_ONLY_AN_ACCOUNT = "only a Firebase-authenticated caller has an Account"
-_NOT_AN_ACCOUNT: _Responses = {403: {"description": _ONLY_AN_ACCOUNT}}
-_REFUSED_BY_RULES: _Responses = {
-    400: {"description": "a change the Workspace's own rules refuse"}
-}
-
-_MANAGER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MANAGER}
-_MEMBER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MEMBER}
 
 
 # --- Account ----------------------------------------------------------------
@@ -132,14 +130,14 @@ class LinkIdentityBody(BaseModel):
     `u`/`method` tags matching this endpoint."""
 
 
-@router.get("/account", responses={**_NOT_AN_ACCOUNT})
+@router.get("/account", responses={403: {"description": ONLY_AN_ACCOUNT}})
 async def get_account(
     request: Request,
     caller: CallerIdentity = Depends(require_caller),
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> AccountOut:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, _ONLY_AN_ACCOUNT)
+        raise HTTPException(403, ONLY_AN_ACCOUNT)
     account = await repo.get_account(caller.uid)
     if account is None:
         account = await repo.create_account(uid=caller.uid, email=caller.email, provider="firebase")
@@ -149,8 +147,8 @@ async def get_account(
 @router.post(
     "/account/link-identity",
     responses={
-        **_NOT_AN_ACCOUNT,
         400: {"description": "the proof does not verify against this request"},
+        403: {"description": ONLY_AN_ACCOUNT},
         409: {"description": "this Account is already linked to a different Identity"},
     },
 )
@@ -161,7 +159,7 @@ async def link_identity(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> AccountOut:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, _ONLY_AN_ACCOUNT)
+        raise HTTPException(403, ONLY_AN_ACCOUNT)
     try:
         pubkey = verify_nip98(
             body.proof,  # type: ignore[arg-type]
@@ -190,8 +188,8 @@ class KeyBackupBody(BaseModel):
 @router.put(
     "/account/key-backup",
     responses={
-        403: {"description": "only a Firebase-authenticated caller has a Key Backup"},
         400: {"description": "no Identity is linked to this Account yet"},
+        403: {"description": ONLY_AN_ACCOUNT_BACKUP},
     },
 )
 async def put_key_backup(
@@ -200,7 +198,7 @@ async def put_key_backup(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> dict[str, str]:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, "only a Firebase-authenticated caller has a Key Backup")
+        raise HTTPException(403, ONLY_AN_ACCOUNT_BACKUP)
     # A Key Backup belongs to the Account's Identity, and that link is
     # immutable (link_identity refuses a second pubkey). Requiring it here is
     # what stops a second onboarding from storing a backup of a fresh key over
@@ -216,7 +214,7 @@ async def put_key_backup(
 @router.get(
     "/account/key-backup",
     responses={
-        403: {"description": "only a Firebase-authenticated caller has a Key Backup"},
+        403: {"description": ONLY_AN_ACCOUNT_BACKUP},
         404: {"description": "no Key Backup on file"},
     },
 )
@@ -225,7 +223,7 @@ async def get_key_backup(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> KeyBackupBody:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, "only a Firebase-authenticated caller has a Key Backup")
+        raise HTTPException(403, ONLY_AN_ACCOUNT_BACKUP)
     blob = await repo.get_key_backup(caller.uid)
     if blob is None:
         raise HTTPException(404, "no Key Backup on file")
@@ -267,7 +265,7 @@ def _workspace_out(request: Request, workspace: Workspace, role: str) -> Workspa
     )
 
 
-@router.get("/workspaces", responses={**_NO_IDENTITY})
+@router.get("/workspaces", responses={400: {"description": NO_IDENTITY}})
 async def list_workspaces(
     request: Request,
     caller: CallerIdentity = Depends(require_caller),
@@ -283,7 +281,7 @@ async def list_workspaces(
 @router.post(
     "/workspaces",
     responses={
-        **_NO_IDENTITY,
+        400: {"description": NO_IDENTITY},
         409: {"description": "that Workspace slug is already taken"},
     },
 )
@@ -305,7 +303,11 @@ async def create_workspace(
 
 @router.get(
     "/workspaces/{slug}",
-    responses={**_MEMBER_ENDPOINT, 404: {"description": "no such Workspace"}},
+    responses={
+        400: {"description": NO_IDENTITY},
+        403: {"description": NOT_A_MEMBER},
+        404: {"description": "no such Workspace"},
+    },
 )
 async def get_workspace(
     slug: str,
@@ -367,7 +369,7 @@ class WorkspaceMemberOut(BaseModel):
     role: str
 
 
-@router.post("/workspaces/{slug}/invites", responses={**_MANAGER_ENDPOINT})
+@router.post("/workspaces/{slug}/invites", responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MANAGER}})
 async def create_invite(
     slug: str,
     body: CreateInviteBody,
@@ -390,7 +392,7 @@ async def create_invite(
     return _invite_out(invite, now=int(time.time()))
 
 
-@router.get("/workspaces/{slug}/invites", responses={**_MANAGER_ENDPOINT})
+@router.get("/workspaces/{slug}/invites", responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MANAGER}})
 async def list_invites(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -403,7 +405,10 @@ async def list_invites(
     return [_invite_out(i, now=now) for i in invites]
 
 
-@router.delete("/workspaces/{slug}/invites/{code}", responses={**_MANAGER_ENDPOINT})
+@router.delete(
+    "/workspaces/{slug}/invites/{code}",
+    responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MANAGER}},
+)
 async def revoke_invite(
     slug: str,
     code: str,
@@ -455,7 +460,7 @@ async def redeem_invite(
 # --- Workspace Members ---------------------------------------------------------
 
 
-@router.get("/workspaces/{slug}/members", responses={**_MEMBER_ENDPOINT})
+@router.get("/workspaces/{slug}/members", responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MEMBER}})
 async def list_workspace_members(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -473,7 +478,10 @@ class SetRoleBody(BaseModel):
 
 @router.patch(
     "/workspaces/{slug}/members/{member_pubkey}",
-    responses={**_MANAGER_ENDPOINT, **_REFUSED_BY_RULES},
+    responses={
+        400: {"description": REFUSED_BY_RULES},
+        403: {"description": NOT_A_MANAGER},
+    },
 )
 async def set_workspace_member_role(
     slug: str,
@@ -495,7 +503,10 @@ async def set_workspace_member_role(
 
 @router.delete(
     "/workspaces/{slug}/members/{member_pubkey}",
-    responses={**_MANAGER_ENDPOINT, **_REFUSED_BY_RULES},
+    responses={
+        400: {"description": REFUSED_BY_RULES},
+        403: {"description": NOT_A_MANAGER},
+    },
 )
 async def remove_workspace_member(
     slug: str,
@@ -549,7 +560,7 @@ class ChannelMemberOut(BaseModel):
     role: str
 
 
-@router.post("/workspaces/{slug}/channels", responses={**_MANAGER_ENDPOINT})
+@router.post("/workspaces/{slug}/channels", responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MANAGER}})
 async def create_channel(
     slug: str,
     body: CreateChannelBody,
@@ -565,7 +576,7 @@ async def create_channel(
     return ChannelOut(id=channel.id, name=channel.name, about=channel.about, private=channel.private)
 
 
-@router.get("/workspaces/{slug}/channels", responses={**_MEMBER_ENDPOINT})
+@router.get("/workspaces/{slug}/channels", responses={400: {"description": NO_IDENTITY}, 403: {"description": NOT_A_MEMBER}})
 async def list_channels(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -585,7 +596,10 @@ async def list_channels(
 
 @router.post(
     "/workspaces/{slug}/channels/{channel_id}/members",
-    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER, **_REFUSED_BY_RULES},
+    responses={
+        400: {"description": REFUSED_BY_RULES},
+        403: {"description": NOT_A_CHANNEL_MANAGER},
+    },
 )
 async def add_channel_member(
     slug: str,
@@ -605,7 +619,10 @@ async def add_channel_member(
 
 @router.get(
     "/workspaces/{slug}/channels/{channel_id}/members",
-    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MEMBER},
+    responses={
+        400: {"description": NO_IDENTITY},
+        403: {"description": NOT_A_CHANNEL_MEMBER},
+    },
 )
 async def list_channel_members(
     slug: str,
@@ -621,7 +638,10 @@ async def list_channel_members(
 
 @router.delete(
     "/workspaces/{slug}/channels/{channel_id}/members/{member_pubkey}",
-    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER},
+    responses={
+        400: {"description": NO_IDENTITY},
+        403: {"description": NOT_A_CHANNEL_MANAGER},
+    },
 )
 async def remove_channel_member(
     slug: str,
