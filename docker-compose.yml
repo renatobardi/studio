@@ -53,6 +53,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-studio-media}
+      # uvicorn honours X-Forwarded-Proto only from these addresses (default:
+      # 127.0.0.1). The api publishes no port — only Caddy, on this Compose
+      # network, can reach it — so the scheme Caddy forwards is taken as-is.
+      FORWARDED_ALLOW_IPS: "*"
     volumes:
       # The Firebase service-account JSON, by host path — never its content.
       # /dev/null stands in when unset, so Compose never creates a directory

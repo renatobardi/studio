@@ -68,6 +68,9 @@ jobs:
           done
           echo "::error::api never became ready" && exit 1
 
+      - name: Behind a TLS-terminating proxy, the api sees https (issue #54)
+        run: scripts/ci/forwarded-scheme.sh
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
       - name: Interop smoke (nostr-tools authenticates, publishes, reads back)
