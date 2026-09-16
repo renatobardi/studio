@@ -46,6 +46,20 @@ class ObjectStorage:
             ContentType=content_type,
         )
 
+    async def get_object(self, key: str) -> bytes | None:
+        """The stored bytes, or None when the bucket has no such object. Only
+        the restore audit reads a blob back through the API (issue #53) —
+        clients are handed a presigned URL and fetch from MinIO directly."""
+
+        def _get() -> bytes | None:
+            try:
+                response = self._client.get_object(Bucket=self._bucket, Key=key)
+            except ClientError:
+                return None
+            return response["Body"].read()
+
+        return await asyncio.to_thread(_get)
+
     async def presigned_get_url(self, key: str, *, expires_in: int, public_endpoint_url: str) -> str:
         """Presigns with a client pointed at `public_endpoint_url`, not the internal endpoint
         this instance connects with — the browser receiving this URL isn't on the Docker
