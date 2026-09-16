@@ -124,5 +124,6 @@ canal `incident-review-…`, membro "Maximiliana …").
 
 ## Sonar
 
-`docs/UI/design/**` ainda não está excluído da análise (ver `docs/delivery-gates.md`); o bundle
-vendorado aumenta esse ruído. Exclusão fica para o ticket que já a menciona.
+`docs/UI/design/**` está excluído da análise — nos argumentos do scanner em `ci.yml` e, para a
+análise automática, em `.sonarcloud.properties` (ver `docs/delivery-gates.md`). O bundle
+vendorado não conta mais como ruído no gate.

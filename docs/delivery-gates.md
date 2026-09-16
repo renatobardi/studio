@@ -89,30 +89,55 @@ reports `Review skipped: manual review required for this OSS repository` and
 still marks the check green — a green that carries no review, so requiring it
 would only manufacture false assurance.
 
-## Known limits of the Sonar gate
+## The Sonar gate
 
-`docs/UI/design/**` is not excluded from analysis yet, and it should be: a
-vendored, generated design artefact nothing imports, it accounts for 321 of the
-project's 392 findings on its own — more since #66 vendored the Kubo bundle
-(`_ds_bundle.js`) next to it. The exclusion was first written to
-`sonar-project.properties` and withdrawn — the `SonarCloud Code Analysis` check
-run stopped being posted on exactly the branch that carried it. The project is
-on automatic analysis (Autoscan: `navigation/component` reports
-`ciName: Autoscan`), which reads `.sonarcloud.properties`, not the scanner's
-file; that is the file `#110` adds. Tracked in #76.
+The scan runs in CI (`ci.yml`, job `sonar`), not as SonarCloud's automatic
+analysis, and `sonar.qualitygate.wait=true` makes the gate's verdict that
+job's conclusion: a gate that fails turns the run red, rather than depending
+on a check run being posted. The job needs both suites first (`needs: [test,
+web]`), because what it adds over automatic analysis is their coverage —
+`api/coverage/coverage.xml` from pytest-cov and `web/coverage/lcov.info` from
+`bun test --coverage`, both rewritten to the paths the checkout has before
+they are uploaded.
 
-The project is on the built-in `Sonar way` quality gate, whose conditions are
-all scoped to *new code*. On a pull request that works: new code is the diff,
-the gate computes, and it does fail — PR #77 was rejected on
-`new_security_rating` 3 against a threshold of 1. On `main` it reports
-`Not computed`, because the project has **no New Code definition** set
-(Administration > New Code): with no reference period there is nothing for the
-conditions to measure. Coverage is uploaded by nothing either, so the coverage
-condition never participates.
+Why the move (#76): automatic analysis measures no coverage at all, so every
+pull request reported 0.0% on new code — PR #95 did, on a commit that added
+41 unit tests written for the two modules it introduced. The `Sonar way`
+gate's `new_coverage < 80` condition therefore never participated, and
+turning it on under automatic analysis would have failed every pull request
+ever opened.
 
-So the required check does gate pull requests, which is where the ruleset uses
-it — but `main` itself carries no gate status, and the two gaps above are
-tracked in #76. `scripts/ops/check-sonar-gate.sh` reports the current state.
+What the gate does reject is real, and predates this: PR #77 was rejected on
+`new_security_rating`, and #110 on duplication and security. On `main` it
+still reports `Not computed` until a **New Code definition** is set
+(Administration > New Code) — every `Sonar way` condition is scoped to new
+code, and on a pull request new code is the diff, which is why pull requests
+compute and `main` does not.
+
+Configuration that is not in this repository:
+
+- **Automatic analysis must stay off.** It and a CI scan are exclusive; with
+  both on, the scan is rejected.
+- **`SONAR_TOKEN`** is an Actions secret. It is never written to a file here.
+- **The `sonar` job is a required check on `main`**, alongside `test`, `web`
+  and `gates`.
+- **Exclusions**: `docs/UI/design/**` — a vendored, generated design artefact
+  nothing imports, once 321 of the project's 392 findings — is excluded in the
+  scanner arguments in `ci.yml`. `.sonarcloud.properties` keeps the same
+  exclusion for automatic analysis, which is what reads that file. A
+  `sonar-project.properties` has its own history here: while one existed, the
+  `SonarCloud Code Analysis` check run stopped being posted on exactly the
+  branch that carried it (#51, #110), which is why the exclusion is not
+  written there.
+
+`scripts/ops/` (gitignored) holds the scripts that apply the configuration
+above and that report the current state.
+
+### Findings that stay open on purpose
+
+Every Sonar finding outside the vendored bundle was either fixed (#76) or
+justified in `docs/sonar-triage.md` and marked in SonarCloud with that
+justification. Nothing is left merely ignored.
 
 ## e2e test Accounts
 
