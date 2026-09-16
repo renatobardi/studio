@@ -7,8 +7,8 @@
 # and never `origin/main`, which moves under a deploy when two commits land
 # close together. See docs/delivery-gates.md.
 #
-# No studio-prd yet — when it exists, add a `deploy-prd` job gated by
-# workflow_dispatch + digest promotion, same shape as kubo/cd.yml.
+# studio-prd is not deployed from here: promote.yml puts a SHA on it only
+# after this workflow's deploy-dev succeeded on that SHA (issue #54).
 #
 # studio-test lives in an LXC container ("studio-test") on oute-server,
 # provisioned by lab's install-app skill (git checkout in /opt/app, plain

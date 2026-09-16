@@ -1,0 +1,155 @@
+# Promote — put on studio-prd a commit that studio-test already runs and whose
+# smoke already passed there. Issue #54; see docs/production.md.
+#
+# Dispatch-only, with the SHA as the single input: production never follows
+# main by itself, and nothing is built for it that CD has not already built,
+# deployed and smoke-tested on studio-test. Rolling back is the same dispatch
+# with an older SHA that also passed.
+#
+# studio-prd lives in its own LXC container ("studio-prd") on oute-server,
+# provisioned the same way as studio-test (git checkout in /opt/app, plain
+# `docker compose up -d --build`), public at https://studio.oute.pro through
+# the host's Nginx/Certbot. Its credentials live in the `studio-prd` GitHub
+# Environment, whose required reviewer is what stands between a dispatch and
+# production — see docs/production.md, "GitHub".
+
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full commit SHA already deployed and smoke-tested on studio-test
+        required: true
+        type: string
+
+# Nothing by default: each job asks for what it uses, so production's deploy
+# job never holds a token grant it has no use for.
+permissions: {}
+
+jobs:
+  gate:
+    if: github.repository == 'renatobardi/studio'
+    runs-on: ubuntu-latest
+    permissions:
+      # Reads CD's runs and jobs for this SHA.
+      actions: read
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+    steps:
+      - name: Refuse a SHA studio-test did not deploy and smoke-test
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Free text typed into a form: it reaches the shell through env only.
+          CANDIDATE: ${{ inputs.sha }}
+        run: |
+          if [[ ! "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::'$CANDIDATE' is not a full 40-character commit SHA"
+            exit 1
+          fi
+
+          # A CD run concludes success even when deploy-dev was skipped (a
+          # superseded SHA stands down), so the run's conclusion is not proof.
+          # The proof is a deploy-dev job that succeeded on this SHA — that job
+          # deploys it to studio-test and runs the Playwright smoke against it.
+          proven=false
+          for run_id in $(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/cd.yml/runs?head_sha=$CANDIDATE&status=completed" \
+            --jq '.workflow_runs[].id'); do
+            deployed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+              --jq '[.jobs[] | select(.name == "deploy-dev" and .conclusion == "success")] | length')
+            if [[ "$deployed" -gt 0 ]]; then
+              proven=true
+              echo "studio-test deployed and smoke-tested $CANDIDATE in CD run $run_id"
+              break
+            fi
+          done
+          if [[ "$proven" != "true" ]]; then
+            echo "::error::no successful deploy-dev (deploy + smoke on studio-test) for $CANDIDATE"
+            exit 1
+          fi
+          echo "sha=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+  deploy-prd:
+    needs: [gate]
+    runs-on: ubuntu-latest
+    permissions: {}
+    # Holds the prd-only credentials; a required reviewer can be set on it.
+    environment: studio-prd
+    concurrency:
+      group: promote-studio-prd
+      cancel-in-progress: false
+    env:
+      DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+      STUDIO_PRD_URL: https://studio.oute.pro
+    steps:
+      - name: Connect to Tailscale (studio-prd CD identity)
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY_PRD }}
+
+      - name: Wait for the Tailscale backend to settle
+        # Same race cd.yml documents: `tailscale up` returns before the daemon
+        # is Running.
+        run: |
+          for attempt in $(seq 1 30); do
+            state=$(tailscale status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['BackendState'])")
+            echo "attempt $attempt: BackendState=$state"
+            [[ "$state" == "Running" ]] && exit 0
+            sleep 2
+          done
+          echo "::error::Tailscale backend never reached Running" && exit 1
+
+      - name: Load deploy SSH key
+        env:
+          SSH_KEY: ${{ secrets.STUDIO_CD_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Deploy the promoted commit to studio-prd and verify it
+        env:
+          HOST: ${{ secrets.STUDIO_PRD_SSH_HOST }}
+        run: |
+          on_host() {
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
+              "lxc exec studio-prd -- bash -lc '$1'"
+          }
+
+          previous=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r')
+          echo "studio-prd was running $previous"
+
+          # Detached checkout of the exact SHA, as cd.yml does for studio-test.
+          # The caddy restart is unconditional because compose does not
+          # recreate a service whose only changed input is the bind-mounted
+          # Caddyfile.
+          on_host "set -eu; cd /opt/app; git fetch --quiet origin main; git checkout --force --detach $DEPLOY_SHA; docker compose up -d --build; docker compose restart caddy"
+
+          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r')
+          if [[ "$running" != "$DEPLOY_SHA" ]]; then
+            echo "::error::studio-prd is running $running, expected $DEPLOY_SHA"
+            exit 1
+          fi
+          {
+            echo "Promoted \`$DEPLOY_SHA\` to studio-prd (was \`$previous\`)."
+            echo "Roll back by dispatching Promote with \`$previous\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify over public HTTPS
+        # curl rejects an invalid certificate by default, so a green step also
+        # means Certbot's certificate is valid for the domain.
+        run: |
+          ready=false
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 5 "$STUDIO_PRD_URL/api/ready"; then ready=true; break; fi
+            sleep 2
+          done
+          if [[ "$ready" != "true" ]]; then
+            echo "::error::studio-prd never became ready at $STUDIO_PRD_URL" && exit 1
+          fi
+          # Installable as a PWA: the web manifest and the service worker are served.
+          curl -fsS --max-time 5 -o /dev/null "$STUDIO_PRD_URL/manifest.webmanifest"
+          curl -fsS --max-time 5 -o /dev/null "$STUDIO_PRD_URL/sw.js"
+          echo "Verified \`$STUDIO_PRD_URL\`: ready, manifest and service worker over HTTPS." >> "$GITHUB_STEP_SUMMARY"

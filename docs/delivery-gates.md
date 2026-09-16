@@ -195,10 +195,12 @@ and a new email is a new Account with no Identity linked to it.
 
 ## Production
 
-There is no `studio-prd` deployment yet. When it exists it gets a `deploy-prd`
-job gated by `workflow_dispatch` plus promotion of a SHA already deployed and
-smoke-tested on `studio-test` — never a fresh build off `main`. Provisioning
-lives in the `renatobardi/lab` repo (`install-app.sh`), not here.
+`studio-prd` is never deployed by `cd.yml`. `promote.yml` is dispatched by
+hand with a SHA, and its gate refuses any SHA without a successful
+`deploy-dev` job — the deploy and the smoke on `studio-test` — on exactly that
+commit. Nothing is built for production off `main`'s tip. The contract is
+asserted by the same `gates` job; the runbook, including rollback, is
+`docs/production.md`.
 
 ## Access
 
@@ -206,5 +208,7 @@ Repository settings, rulesets, Actions secrets and the SonarCloud organisation
 are owned by the repository owner. CD's own credentials (`TS_AUTHKEY_DEV`,
 `STUDIO_CD_SSH_KEY`, `STUDIO_TEST_*`) live in the `studio-test` GitHub
 Environment, except `STUDIO_TEST_EXTENSION_*`, `STUDIO_TEST_OWNER_PRIVATE_KEY_HEX`
-and `STUDIO_TEST_WORKSPACE_SLUG`, which are repository secrets. All are
-referenced by name only — never checked in.
+and `STUDIO_TEST_WORKSPACE_SLUG`, which are repository secrets. Production's
+credentials (`TS_AUTHKEY_PRD`, `STUDIO_CD_SSH_KEY`, `STUDIO_PRD_SSH_HOST`) live
+in the `studio-prd` Environment. All are referenced by name only — never
+checked in.

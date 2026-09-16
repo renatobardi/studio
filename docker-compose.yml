@@ -35,9 +35,10 @@ services:
       SURREAL_DATABASE: ${SURREAL_DATABASE}
       # Encrypts each Workspace Key at rest (ADR-0002) — never the key itself.
       WORKSPACE_KEY_SECRET: ${WORKSPACE_KEY_SECRET}
-      # Optional: path to a Firebase service-account JSON file. Omit to run
-      # with Firebase auth unconfigured — NIP-98 callers are unaffected.
-      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+      # Set only when .env names a credential file (FIREBASE_CREDENTIALS_FILE,
+      # mounted below). Unset, Firebase auth stays unconfigured — NIP-98
+      # callers are unaffected.
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_FILE:+/run/secrets/firebase-adminsdk.json}
       # Optional: only read by `python -m studio_api.ensure_e2e_accounts`, which
       # CD runs before the Playwright smoke (issue #50) — unset on studio-prd.
       STUDIO_TEST_EMAIL: ${STUDIO_TEST_EMAIL:-}
@@ -52,6 +53,16 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-studio-media}
+      # uvicorn honours X-Forwarded-Proto only from these addresses (default:
+      # 127.0.0.1). The api publishes no port: only this Compose network's own
+      # services reach it, and of those only Caddy sends it requests, so the
+      # scheme Caddy forwards is taken as-is.
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      # The Firebase service-account JSON, by host path — never its content.
+      # /dev/null stands in when unset, so Compose never creates a directory
+      # in the credential's place.
+      - ${FIREBASE_CREDENTIALS_FILE:-/dev/null}:/run/secrets/firebase-adminsdk.json:ro
     depends_on:
       - surrealdb
       - minio
