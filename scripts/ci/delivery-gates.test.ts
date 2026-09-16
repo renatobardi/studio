@@ -9,8 +9,20 @@ import { describe, expect, test } from 'bun:test'
 // origin/main, a push-triggered deploy that races CI, or a manual dispatch
 // that skips the gate.
 
-type Step = { name?: string; run?: string; with?: Record<string, string> }
-type Job = { if?: string; steps: Step[]; [key: string]: unknown }
+type Step = {
+  name?: string
+  run?: string
+  uses?: string
+  env?: Record<string, string>
+  with?: Record<string, string>
+}
+type Job = {
+  if?: string
+  needs?: string[]
+  env?: Record<string, string>
+  steps: Step[]
+  [key: string]: unknown
+}
 type Workflow = { jobs: Record<string, Job>; [key: string]: unknown }
 
 const repoRoot = new URL('../../', import.meta.url).pathname
@@ -90,6 +102,46 @@ describe('ci.yml', () => {
   test('publishes the job names the main ruleset requires', () => {
     // scripts/ops/apply-main-ruleset.sh requires these contexts by name —
     // renaming a job here silently unprotects main.
-    expect(Object.keys(ci.jobs).sort()).toEqual(['gates', 'test', 'web'])
+    expect(Object.keys(ci.jobs).sort()).toEqual(['gates', 'sonar', 'test', 'web'])
+  })
+})
+
+// The Sonar gate (issue #76). Automatic analysis measured no coverage at all —
+// every PR read 0.0% on new code, so the one condition that would reject
+// untested code could never participate. The scan moved into CI so it can be
+// fed the coverage the suites already produce, and so the gate's verdict is a
+// red job here instead of a check run that may or may not be posted.
+describe('ci.yml sonar job', () => {
+  const sonar = ci.jobs.sonar
+  const sonarCommands = commandsOf(sonar)
+  const scan = sonar.steps.find((step) => (step.uses ?? '').includes('sonarqube-scan-action'))
+
+  test('waits for the quality gate, so a failed gate fails the run', () => {
+    // Without the wait the scan is fire-and-forget: the job stays green
+    // whatever the gate decides, which is exactly the hole #76 opened on.
+    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.qualitygate.wait=true')
+  })
+
+  test('scans only after both suites ran, and takes their coverage', () => {
+    expect(sonar.needs).toEqual(['test', 'web'])
+    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.python.coverage.reportPaths=api/coverage.xml')
+    expect(`${scan?.with?.args ?? ''}`).toContain(
+      'sonar.javascript.lcov.reportPaths=web/coverage/lcov.info',
+    )
+  })
+
+  test('reads the token from secrets, never from a file in the repo', () => {
+    expect(`${scan?.env?.SONAR_TOKEN ?? ''}`).toContain('secrets.SONAR_TOKEN')
+    expect(sonarCommands).not.toContain('SONAR_TOKEN=')
+  })
+
+  test('the suites publish the coverage the scan downloads', () => {
+    const uploads = [ci.jobs.test, ci.jobs.web].flatMap((job) =>
+      job.steps.filter((step) => (step.uses ?? '').includes('upload-artifact')),
+    )
+    expect(uploads.map((step) => step.with?.name).sort()).toEqual([
+      'coverage-api',
+      'coverage-web',
+    ])
   })
 })

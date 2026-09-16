@@ -37,7 +37,21 @@ jobs:
         run: docker compose --profile test run --rm test uv run ruff check src tests
 
       - name: Run test suite against the Compose stack
-        run: docker compose --profile test run --rm test
+        # Coverage lands on the runner through an ad-hoc mount: the suite runs
+        # inside the container, and the `sonar` job needs the report out here.
+        run: |
+          docker compose --profile test run --rm -v "$PWD/api:/out" test \
+            uv run pytest -q --cov --cov-report=xml:/out/coverage.xml
+          # coverage.py writes paths relative to the container's /app; Sonar
+          # resolves them against the checkout, where the api/ prefix exists.
+          sed -i 's|<source>/app</source>|<source>.</source>|; s|filename="src/|filename="api/src/|g' \
+            api/coverage.xml
+
+      - name: Publish API coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-api
+          path: api/coverage.xml
 
       - name: Start the full stack for the interop smoke
         run: |
@@ -104,7 +118,13 @@ jobs:
 
       - name: Unit tests
         working-directory: web
-        run: bun run test
+        run: bun run test:coverage
+
+      - name: Publish web coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-web
+          path: web/coverage/lcov.info
       # Playwright flows 1 & 5 against studio-test moved to cd.yml — they now
       # run as a post-deploy smoke test against what was just deployed,
       # instead of racing an independent push-triggered job against whatever
@@ -120,3 +140,41 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Delivery-gate contract
         run: bun test scripts/ci
+
+  sonar:
+    # The quality gate (issue #76). Automatic analysis measured no coverage at
+    # all — every PR read 0.0% on new code — so the scan moved here, where the
+    # suites that just ran can hand it their reports. `sonar.qualitygate.wait`
+    # makes the gate's verdict this job's conclusion: a failed gate is a red
+    # run, not a check run that may or may not be posted.
+    needs: [test, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Blame data: shallow history makes every line look new.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: coverage-api
+          path: api
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: coverage-web
+          path: web/coverage
+
+      - name: Scan and wait for the quality gate
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.projectKey=renatobardi_studio
+            -Dsonar.organization=renatobardi
+            -Dsonar.exclusions=docs/UI/design/**
+            -Dsonar.python.coverage.reportPaths=api/coverage.xml
+            -Dsonar.javascript.lcov.reportPaths=web/coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
