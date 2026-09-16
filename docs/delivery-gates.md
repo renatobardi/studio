@@ -115,8 +115,9 @@ ever opened.
 What the gate does reject is real, and predates this: PR #77 was rejected on
 `new_security_rating`, and #110 on duplication and security. On `main` it
 still reports `Not computed` until a **New Code definition** is set
-(Administration > New Code — `Reference branch: main`, since the project
-publishes no version for `Previous version` to key on) — every `Sonar way` condition is scoped to new
+(Administration > New Code — `Number of days: 30`: `Reference branch` is not
+offered on this plan, and `Previous version` has nothing to key on, since the
+project publishes no `sonar.projectVersion`) — every `Sonar way` condition is scoped to new
 code, and on a pull request new code is the diff, which is why pull requests
 compute and `main` does not.
 
