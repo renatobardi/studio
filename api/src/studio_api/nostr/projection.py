@@ -69,3 +69,10 @@ def build_channel_add(sk: PrivateKey, *, channel_id: str, pubkey: str) -> NostrE
 
 def build_channel_remove(sk: PrivateKey, *, channel_id: str, pubkey: str) -> NostrEvent:
     return sign_event(sk, kind=9001, tags=[["h", channel_id], ["p", pubkey]])
+
+
+# Every kind this module signs with the Workspace Key. A restored database is
+# only proven when each one still verifies against that key (issue #53).
+PROJECTION_KINDS = frozenset(
+    {13534, 33534, 8000, 8001, 39000, 39001, 39002, 39003, 9000, 9001}
+)
