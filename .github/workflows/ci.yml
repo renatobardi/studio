@@ -157,6 +157,13 @@ jobs:
     # suites that just ran can hand it their reports. `sonar.qualitygate.wait`
     # makes the gate's verdict this job's conclusion: a failed gate is a red
     # run, not a check run that may or may not be posted.
+    #
+    # On a pull request only. main is analysed too — that is what keeps its
+    # gate status computed — but a red job there would stop `cd.yml`, which
+    # promotes only a SHA whose CI concluded success: no deploy at all, for a
+    # measure over a month of commits nobody can go back and change. The gate
+    # blocks where it can be acted on, which is the pull request the ruleset
+    # requires it on.
     needs: [test, web]
     runs-on: ubuntu-latest
     steps:
@@ -191,4 +198,4 @@ jobs:
             -Dsonar.coverage.exclusions=web/src/preview/**,web/tools/**,scripts/**
             -Dsonar.python.coverage.reportPaths=api/coverage/coverage.xml
             -Dsonar.javascript.lcov.reportPaths=web/coverage/lcov.info
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=${{ github.event_name == 'pull_request' }}

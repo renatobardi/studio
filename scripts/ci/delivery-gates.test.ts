@@ -117,10 +117,14 @@ describe('ci.yml sonar job', () => {
   const scan = sonar.steps.find((step) => (step.uses ?? '').includes('sonarqube-scan-action'))
   const scanArgs = `${scan?.with?.args ?? ''}`
 
-  test('waits for the quality gate, so a failed gate fails the run', () => {
+  test('waits for the quality gate on a pull request, and only there', () => {
     // Without the wait the scan is fire-and-forget: the job stays green
     // whatever the gate decides, which is exactly the hole #76 opened on.
-    expect(scanArgs).toContain('sonar.qualitygate.wait=true')
+    // On main it must not wait: cd.yml promotes only a SHA whose CI concluded
+    // success, so a red scan there stops every deploy of code the gate already
+    // passed on its way in — and main's new-code window covers a month of
+    // commits nobody can go back and change.
+    expect(scanArgs).toContain("sonar.qualitygate.wait=${{ github.event_name == 'pull_request' }}")
   })
 
   test('scans only after both suites ran, and takes their coverage', () => {

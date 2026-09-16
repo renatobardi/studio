@@ -97,9 +97,18 @@ would only manufacture false assurance.
 ## The Sonar gate
 
 The scan runs in CI (`ci.yml`, job `sonar`), not as SonarCloud's automatic
-analysis, and `sonar.qualitygate.wait=true` makes the gate's verdict that
-job's conclusion: a gate that fails turns the run red, rather than depending
-on a check run being posted. The job needs both suites first (`needs: [test,
+analysis, and on a pull request `sonar.qualitygate.wait` makes the gate's
+verdict that job's conclusion: a gate that fails turns the run red, rather
+than depending on a check run being posted.
+
+On `main` the scan runs but does not wait. That is not the gate going soft:
+step 3 above promotes only a SHA whose CI concluded `success`, so a red scan
+on `main` stops every deploy — including of code the gate already passed on
+its way in — and `main`'s new-code window measures a rolling month of commits
+nobody can go back and change. The gate blocks where it can be acted on,
+which is the pull request the ruleset requires it on. `main` is still
+analysed, which is what keeps its gate status computed instead of
+`Not computed`. The job needs both suites first (`needs: [test,
 web]`), because what it adds over automatic analysis is their coverage —
 `api/coverage/coverage.xml` from pytest-cov and `web/coverage/lcov.info` from
 `bun test --coverage`, both rewritten to the paths the checkout has before
