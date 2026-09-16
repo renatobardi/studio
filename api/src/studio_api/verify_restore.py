@@ -22,7 +22,7 @@ import os
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 from coincurve import PrivateKey
 
@@ -31,10 +31,10 @@ from studio_api.media.storage import ObjectStorage
 from studio_api.nostr.crypto import has_valid_integrity
 from studio_api.nostr.model import NostrEvent
 from studio_api.nostr.projection import PROJECTION_KINDS
-from studio_api.nostr.store import EventStore
+from studio_api.nostr.store import EventStore, _from_row
 from studio_api.nostr.validation import MESSAGE
 
-BlobVerdict = str  # "intact" | "missing" | "corrupt"
+BlobVerdict = Literal["intact", "missing", "corrupt"]
 
 
 @dataclass(frozen=True)
@@ -72,6 +72,7 @@ class RestoreEvidence:
             and all(workspace.ok for workspace in self.workspaces)
             and any(workspace.messages for workspace in self.workspaces)
             and any(workspace.projections for workspace in self.workspaces)
+            and self.blobs > 0
             and not self.missing_blobs
             and not self.corrupt_blobs
         )
@@ -154,16 +155,10 @@ async def collect_evidence(store: EventStore, storage: ObjectStorage, *, server_
     for row in await _rows(db, "SELECT *, meta::id(id) AS slug FROM workspace;"):
         slug = row["slug"]
         events = [
-            {
-                "id": event["event_id"],
-                "pubkey": event["pubkey"],
-                "created_at": event["created_at"],
-                "kind": event["kind"],
-                "tags": event["tags"],
-                "content": event["content"],
-                "sig": event["sig"],
-            }
-            for event in await _rows(
+            # The store's own row mapping, so the audit reads an event exactly
+            # as the relay would serve it back.
+            _from_row(row)
+            for row in await _rows(
                 db, "SELECT * FROM event WHERE workspace_slug = $slug;", {"slug": slug}
             )
         ]
@@ -177,7 +172,7 @@ async def collect_evidence(store: EventStore, storage: ObjectStorage, *, server_
                 slug=slug,
                 key_pubkey=row["key_pubkey"],
                 encrypted_key=bytes(row["encrypted_key"]),
-                events=events,  # type: ignore[arg-type]
+                events=events,
                 memberships=len(members),
                 server_secret=server_secret,
             )

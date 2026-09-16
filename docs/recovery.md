@@ -16,8 +16,8 @@ Two stores, and neither is a backup of the other:
 - **MinIO** — the Attachment bytes, one object per sha256.
 
 A Message references its Attachment by hash. Restoring one store without the
-other gives a timeline pointing at blobs that are not there, which is why the
-backup captures both and the audit checks both.
+other gives a timeline pointing at Attachments that are not there, which is why
+the backup captures both and the audit checks both.
 
 ## The Workspace Key secret is part of the backup
 
@@ -57,14 +57,20 @@ sound:
 | `memberships` | `workspace_member` rows that came back |
 | `projections` | Workspace-signed NIP-43/NIP-29 events (`PROJECTION_KINDS`) |
 | `unsigned_projections` | Projections that no longer verify — wrong signer, or bytes changed since signing |
-| `blobs` / `missing_blobs` / `corrupt_blobs` | Every `blob` row fetched from the bucket and re-hashed against its own sha256 |
+| `blobs` / `missing_blobs` / `corrupt_blobs` | Every Attachment (one `blob` row each) fetched from the bucket and re-hashed against its own sha256 |
 
 A Workspace is sound when its key is recoverable, its members are back and no
 projection fails to verify. It is *not* required to be busy — a Workspace
 nobody has spoken in yet has no Messages to lose. The restore as a whole is
-proven when every Workspace is sound, no blob is missing or corrupt, and
-somewhere on the server at least one Message and one projection did come back:
-a dump that silently restored nothing would otherwise pass every other check.
+proven when every Workspace is sound, no Attachment is missing or corrupt, and
+somewhere on the server at least one Message, one projection and one Attachment
+did come back: a dump that silently restored nothing would otherwise pass every
+other check — with no rows at all there is nothing to find missing.
+
+What this does **not** prove is completeness. Nothing in the restored stack
+knows how many Messages the source held, so a dump that lost most of them still
+passes. Compare the report's counts against the running deployment when that
+matters.
 
 ## Running the drill
 

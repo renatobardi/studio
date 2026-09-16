@@ -18,8 +18,16 @@ from studio_api.crypto_secrets import encrypt_secret
 from studio_api.nostr.model import NostrEvent
 from studio_api.nostr.projection import (
     PROJECTION_KINDS,
+    build_channel_add,
+    build_channel_admins,
+    build_channel_members,
+    build_channel_metadata,
+    build_channel_remove,
+    build_channel_roles,
     build_workspace_add,
     build_workspace_member_list,
+    build_workspace_remove,
+    build_workspace_role_definition,
 )
 from studio_api.nostr.signing import sign_event
 from studio_api.verify_restore import (
@@ -193,15 +201,25 @@ class TestAuditWorkspace:
 
 
 class TestProjectionKinds:
-    def test_every_kind_the_projection_signs_is_one_the_audit_looks_for(self) -> None:
+    def test_the_audit_looks_for_exactly_the_kinds_the_projection_signs(self) -> None:
+        """Every builder, not a sample: a kind missing from the set is a
+        Workspace-signed event whose signature nothing would ever check."""
         sk = PrivateKey()
         pubkey = sk.public_key_xonly.format().hex()
         built = [
+            build_workspace_role_definition(sk, role="owner"),
             build_workspace_member_list(sk, members=[(pubkey, "owner")]),
             build_workspace_add(sk, pubkey=pubkey),
+            build_workspace_remove(sk, pubkey=pubkey),
+            build_channel_metadata(sk, channel_id="general", name="General", about=""),
+            build_channel_admins(sk, channel_id="general", admin_pubkeys=[pubkey]),
+            build_channel_members(sk, channel_id="general", member_pubkeys=[pubkey]),
+            build_channel_roles(sk, channel_id="general"),
+            build_channel_add(sk, channel_id="general", pubkey=pubkey),
+            build_channel_remove(sk, channel_id="general", pubkey=pubkey),
         ]
 
-        assert {event["kind"] for event in built} <= PROJECTION_KINDS
+        assert {event["kind"] for event in built} == PROJECTION_KINDS
 
 
 class TestClassifyBlob:
@@ -289,9 +307,17 @@ class TestRestoreEvidence:
 
         assert not RestoreEvidence(
             workspaces=(self._sound_workspace(), broken),
-            blobs=0,
+            blobs=2,
             missing_blobs=(),
             corrupt_blobs=(),
+        ).ok
+
+    def test_a_restore_that_brought_back_no_attachment_at_all_proves_nothing(self) -> None:
+        """No blob row means nothing to find missing or corrupt, so the bucket
+        checks pass by having nothing to say. A server that holds Attachments
+        must get them back."""
+        assert not RestoreEvidence(
+            workspaces=(self._sound_workspace(),), blobs=0, missing_blobs=(), corrupt_blobs=()
         ).ok
 
     def test_a_blob_that_did_not_come_back_fails_the_whole_restore(self) -> None:
