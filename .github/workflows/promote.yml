@@ -23,14 +23,17 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-  actions: read
+# Nothing by default: each job asks for what it uses, so production's deploy
+# job never holds a token grant it has no use for.
+permissions: {}
 
 jobs:
   gate:
     if: github.repository == 'renatobardi/studio'
     runs-on: ubuntu-latest
+    permissions:
+      # Reads CD's runs and jobs for this SHA.
+      actions: read
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
     steps:
@@ -71,6 +74,7 @@ jobs:
   deploy-prd:
     needs: [gate]
     runs-on: ubuntu-latest
+    permissions: {}
     # Holds the prd-only credentials; a required reviewer can be set on it.
     environment: studio-prd
     concurrency:

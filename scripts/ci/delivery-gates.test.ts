@@ -202,6 +202,14 @@ describe('promote.yml', () => {
     expect(commands).toContain('/api/ready')
   })
 
+  test('grants the token nothing by default, and each job only what it uses', () => {
+    // A workflow-level grant reaches every job, including the one holding
+    // production's SSH key (Sonar githubactions:S8264).
+    expect(promote.permissions).toEqual({})
+    expect(promoteGate.permissions).toEqual({ actions: 'read' })
+    expect(deployPrd.permissions).toEqual({})
+  })
+
   test('never seeds or resets e2e Accounts on production', () => {
     expect(everyRun).not.toContain('ensure_e2e_accounts')
   })
