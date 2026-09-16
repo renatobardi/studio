@@ -71,6 +71,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // encodeURIComponent leaves "." alone, so a value of ".." would survive as a
+  // segment that the URL parser resolves to a different endpoint than this call
+  // names — with the same method and credentials. No real code, slug or pubkey
+  // is only dots; answer as the server would to a value it cannot find.
+  if (path.split("/").some((segment) => segment === "." || segment === "..")) {
+    throw new ApiError(400, "not a valid path segment");
+  }
   const res = await fetch(`/api${path}`, init);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
