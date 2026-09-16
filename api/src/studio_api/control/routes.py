@@ -107,7 +107,8 @@ _NOT_A_MEMBER: _Responses = {403: {"description": "not a Workspace Member"}}
 _NOT_A_MANAGER: _Responses = {403: {"description": "requires the Workspace owner or an admin"}}
 _NOT_A_CHANNEL_MANAGER: _Responses = {403: {"description": "requires a Channel admin or a Workspace admin"}}
 _NOT_A_CHANNEL_MEMBER: _Responses = {403: {"description": "not a Channel Member"}}
-_NOT_AN_ACCOUNT: _Responses = {403: {"description": "only a Firebase-authenticated caller has an Account"}}
+_ONLY_AN_ACCOUNT = "only a Firebase-authenticated caller has an Account"
+_NOT_AN_ACCOUNT: _Responses = {403: {"description": _ONLY_AN_ACCOUNT}}
 _REFUSED_BY_RULES: _Responses = {
     400: {"description": "a change the Workspace's own rules refuse"}
 }
@@ -138,7 +139,7 @@ async def get_account(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> AccountOut:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, "only a Firebase-authenticated caller has an Account")
+        raise HTTPException(403, _ONLY_AN_ACCOUNT)
     account = await repo.get_account(caller.uid)
     if account is None:
         account = await repo.create_account(uid=caller.uid, email=caller.email, provider="firebase")
@@ -160,7 +161,7 @@ async def link_identity(
     repo: ControlPlaneRepository = Depends(get_repo),
 ) -> AccountOut:
     if not isinstance(caller, FirebaseCaller):
-        raise HTTPException(403, "only a Firebase-authenticated caller has an Account")
+        raise HTTPException(403, _ONLY_AN_ACCOUNT)
     try:
         pubkey = verify_nip98(
             body.proof,  # type: ignore[arg-type]

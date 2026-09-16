@@ -37,14 +37,16 @@ jobs:
         run: docker compose --profile test run --rm test uv run ruff check src tests
 
       - name: Run test suite against the Compose stack
-        # Coverage lands on the runner through an ad-hoc mount: the suite runs
-        # inside the container, and the `sonar` job needs the report out here.
-        # The container runs as a non-root user of its own, so the directory it
-        # writes into has to be writable by anyone.
+        # The report is copied out of the container rather than written into a
+        # bind mount: the container has a non-root user of its own, and making
+        # a workspace directory world-writable to bridge that is a hole, not a
+        # fix. Hence no --rm until the copy is done.
         run: |
-          mkdir -p api/coverage && chmod 777 api/coverage
-          docker compose --profile test run --rm -v "$PWD/api/coverage:/out" test \
-            uv run pytest -q --cov --cov-report=xml:/out/coverage.xml
+          mkdir -p api/coverage
+          docker compose --profile test run --name studio-coverage test \
+            uv run pytest -q --cov --cov-report=xml:/tmp/coverage.xml
+          docker cp studio-coverage:/tmp/coverage.xml api/coverage/coverage.xml
+          docker rm studio-coverage
           # coverage.py names files relative to the package root it measured;
           # Sonar resolves them against the checkout, where that root is
           # api/src/studio_api.
@@ -182,7 +184,11 @@ jobs:
           args: >
             -Dsonar.projectKey=renatobardi_studio
             -Dsonar.organization=renatobardi
-            -Dsonar.exclusions=docs/UI/design/**
+            -Dsonar.sources=api/src,web/src,scripts,.github,api/Dockerfile
+            -Dsonar.tests=api/tests,web/src,web/e2e,scripts/ci
+            -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx
+            -Dsonar.exclusions=docs/UI/design/**,**/*.test.ts,**/*.test.tsx
+            -Dsonar.coverage.exclusions=web/src/preview/**,web/tools/**,scripts/**
             -Dsonar.python.coverage.reportPaths=api/coverage/coverage.xml
             -Dsonar.javascript.lcov.reportPaths=web/coverage/lcov.info
             -Dsonar.qualitygate.wait=true

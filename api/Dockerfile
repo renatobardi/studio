@@ -14,12 +14,12 @@ RUN uv sync --locked --no-install-project --no-build
 
 COPY src ./src
 COPY tests ./tests
-# The project itself is the one thing built from source in this image.
-RUN uv sync --locked
-
-# The app reads its code and writes nothing outside /tmp; running it as root
-# only widens what a bug in it can reach.
-RUN useradd --create-home --uid 10001 studio && chown -R studio:studio /app
+# The project itself is the one thing built from source in this image — hence
+# no --no-build on this sync. The app reads its code and writes nothing outside
+# /tmp, so it runs as a user of its own: root only widens what a bug can reach.
+RUN uv sync --locked \
+ && useradd --create-home --uid 10001 studio \
+ && chown -R studio:studio /app
 USER studio
 
 ENV PATH="/app/.venv/bin:${PATH}"
