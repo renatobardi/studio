@@ -63,6 +63,9 @@ def _resolve_get_pubkey(authorization: str | None, *, url: str, method: str, now
     "/upload",
     responses={
         400: {"description": "sha256 or recipients do not match the request"},
+        401: {"description": "the Blossom authorization does not verify"},
+        403: {"description": "not a Workspace Member"},
+        413: {"description": "file exceeds the 10 MB limit"},
         415: {"description": "unsupported Content-Type"},
     },
 )
@@ -128,7 +131,13 @@ async def upload_blob(
     return BlobDescriptor(url=url, sha256=sha256, size=len(body), type=content_type)
 
 
-@router.get("/{sha256_with_ext}", responses={403: {"description": "no right to this blob"}})
+@router.get(
+    "/{sha256_with_ext}",
+    responses={
+        401: {"description": "the authorization does not verify"},
+        403: {"description": "no right to this blob"},
+    },
+)
 async def get_blob(
     sha256_with_ext: str,
     request: Request,

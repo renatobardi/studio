@@ -94,6 +94,26 @@ def _control_error_to_http(error: ControlPlaneError) -> HTTPException:
     return HTTPException(_ERROR_STATUS.get(type(error), 400), str(error))
 
 
+_Responses = dict[int | str, dict[str, Any]]
+
+# --- Documented error answers ---------------------------------------------------
+#
+# What a client must be ready for, written where OpenAPI can carry it (#76).
+# Most of these are raised by the helpers above rather than in the endpoint
+# body, but a caller sees them from the endpoint all the same.
+
+_NO_IDENTITY: _Responses = {400: {"description": "this Account has no linked Identity yet"}}
+_NOT_A_MEMBER: _Responses = {403: {"description": "not a Workspace Member"}}
+_NOT_A_MANAGER: _Responses = {403: {"description": "requires the Workspace owner or an admin"}}
+_NOT_A_CHANNEL_MANAGER: _Responses = {403: {"description": "requires a Channel admin or a Workspace admin"}}
+_NOT_A_CHANNEL_MEMBER: _Responses = {403: {"description": "not a Channel Member"}}
+_NOT_AN_ACCOUNT: _Responses = {403: {"description": "only a Firebase-authenticated caller has an Account"}}
+_MEMBER_RULE: _Responses = {400: {"description": "the change the Workspace's own rules refuse"}}
+
+_MANAGER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MANAGER}
+_MEMBER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MEMBER}
+
+
 # --- Account ----------------------------------------------------------------
 
 
@@ -109,7 +129,7 @@ class LinkIdentityBody(BaseModel):
     `u`/`method` tags matching this endpoint."""
 
 
-@router.get("/account")
+@router.get("/account", responses={**_NOT_AN_ACCOUNT})
 async def get_account(
     request: Request,
     caller: CallerIdentity = Depends(require_caller),
@@ -123,7 +143,14 @@ async def get_account(
     return AccountOut(uid=account.uid, email=account.email, pubkey=account.pubkey)
 
 
-@router.post("/account/link-identity")
+@router.post(
+    "/account/link-identity",
+    responses={
+        **_NOT_AN_ACCOUNT,
+        400: {"description": "the proof does not verify against this request"},
+        409: {"description": "this Account is already linked to a different Identity"},
+    },
+)
 async def link_identity(
     body: LinkIdentityBody,
     request: Request,
@@ -157,7 +184,13 @@ class KeyBackupBody(BaseModel):
     blob_base64: str
 
 
-@router.put("/account/key-backup")
+@router.put(
+    "/account/key-backup",
+    responses={
+        403: {"description": "only a Firebase-authenticated caller has a Key Backup"},
+        400: {"description": "no Identity is linked to this Account yet"},
+    },
+)
 async def put_key_backup(
     body: KeyBackupBody,
     caller: CallerIdentity = Depends(require_caller),
@@ -177,7 +210,13 @@ async def put_key_backup(
     return {"status": "ok"}
 
 
-@router.get("/account/key-backup")
+@router.get(
+    "/account/key-backup",
+    responses={
+        403: {"description": "only a Firebase-authenticated caller has a Key Backup"},
+        404: {"description": "no Key Backup on file"},
+    },
+)
 async def get_key_backup(
     caller: CallerIdentity = Depends(require_caller),
     repo: ControlPlaneRepository = Depends(get_repo),
@@ -225,7 +264,7 @@ def _workspace_out(request: Request, workspace: Workspace, role: str) -> Workspa
     )
 
 
-@router.get("/workspaces")
+@router.get("/workspaces", responses={**_NO_IDENTITY})
 async def list_workspaces(
     request: Request,
     caller: CallerIdentity = Depends(require_caller),
@@ -238,7 +277,13 @@ async def list_workspaces(
     return [_workspace_out(request, workspace, role) for workspace, role in found]
 
 
-@router.post("/workspaces")
+@router.post(
+    "/workspaces",
+    responses={
+        **_NO_IDENTITY,
+        409: {"description": "that Workspace slug is already taken"},
+    },
+)
 async def create_workspace(
     body: CreateWorkspaceBody,
     request: Request,
@@ -255,7 +300,10 @@ async def create_workspace(
     return _workspace_out(request, workspace, "owner")
 
 
-@router.get("/workspaces/{slug}")
+@router.get(
+    "/workspaces/{slug}",
+    responses={**_MEMBER_ENDPOINT, 404: {"description": "no such Workspace"}},
+)
 async def get_workspace(
     slug: str,
     request: Request,
@@ -316,7 +364,7 @@ class WorkspaceMemberOut(BaseModel):
     role: str
 
 
-@router.post("/workspaces/{slug}/invites")
+@router.post("/workspaces/{slug}/invites", responses={**_MANAGER_ENDPOINT})
 async def create_invite(
     slug: str,
     body: CreateInviteBody,
@@ -339,7 +387,7 @@ async def create_invite(
     return _invite_out(invite, now=int(time.time()))
 
 
-@router.get("/workspaces/{slug}/invites")
+@router.get("/workspaces/{slug}/invites", responses={**_MANAGER_ENDPOINT})
 async def list_invites(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -352,7 +400,7 @@ async def list_invites(
     return [_invite_out(i, now=now) for i in invites]
 
 
-@router.delete("/workspaces/{slug}/invites/{code}")
+@router.delete("/workspaces/{slug}/invites/{code}", responses={**_MANAGER_ENDPOINT})
 async def revoke_invite(
     slug: str,
     code: str,
@@ -373,7 +421,14 @@ async def preview_invite(
     return InvitePreviewOut(workspace_name=name, valid=reason is None, reason=reason)
 
 
-@router.post("/invites/{code}/redeem")
+@router.post(
+    "/invites/{code}/redeem",
+    responses={
+        403: {"description": "redeeming an invite requires proving Identity (NIP-98)"},
+        404: {"description": "no such invite"},
+        410: {"description": "that invite admits nobody: revoked, expired or exhausted"},
+    },
+)
 async def redeem_invite(
     code: str,
     request: Request,
@@ -397,7 +452,7 @@ async def redeem_invite(
 # --- Workspace Members ---------------------------------------------------------
 
 
-@router.get("/workspaces/{slug}/members")
+@router.get("/workspaces/{slug}/members", responses={**_MEMBER_ENDPOINT})
 async def list_workspace_members(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -413,7 +468,10 @@ class SetRoleBody(BaseModel):
     role: str
 
 
-@router.patch("/workspaces/{slug}/members/{member_pubkey}")
+@router.patch(
+    "/workspaces/{slug}/members/{member_pubkey}",
+    responses={**_MANAGER_ENDPOINT, **_MEMBER_RULE},
+)
 async def set_workspace_member_role(
     slug: str,
     member_pubkey: str,
@@ -432,7 +490,10 @@ async def set_workspace_member_role(
     return WorkspaceMemberOut(pubkey=member.pubkey, role=member.role)
 
 
-@router.delete("/workspaces/{slug}/members/{member_pubkey}")
+@router.delete(
+    "/workspaces/{slug}/members/{member_pubkey}",
+    responses={**_MANAGER_ENDPOINT, **_MEMBER_RULE},
+)
 async def remove_workspace_member(
     slug: str,
     member_pubkey: str,
@@ -485,7 +546,7 @@ class ChannelMemberOut(BaseModel):
     role: str
 
 
-@router.post("/workspaces/{slug}/channels")
+@router.post("/workspaces/{slug}/channels", responses={**_MANAGER_ENDPOINT})
 async def create_channel(
     slug: str,
     body: CreateChannelBody,
@@ -501,7 +562,7 @@ async def create_channel(
     return ChannelOut(id=channel.id, name=channel.name, about=channel.about, private=channel.private)
 
 
-@router.get("/workspaces/{slug}/channels")
+@router.get("/workspaces/{slug}/channels", responses={**_MEMBER_ENDPOINT})
 async def list_channels(
     slug: str,
     caller: CallerIdentity = Depends(require_caller),
@@ -519,7 +580,10 @@ async def list_channels(
     ]
 
 
-@router.post("/workspaces/{slug}/channels/{channel_id}/members")
+@router.post(
+    "/workspaces/{slug}/channels/{channel_id}/members",
+    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER, **_MEMBER_RULE},
+)
 async def add_channel_member(
     slug: str,
     channel_id: str,
@@ -536,7 +600,10 @@ async def add_channel_member(
     return {"status": "ok"}
 
 
-@router.get("/workspaces/{slug}/channels/{channel_id}/members")
+@router.get(
+    "/workspaces/{slug}/channels/{channel_id}/members",
+    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MEMBER},
+)
 async def list_channel_members(
     slug: str,
     channel_id: str,
@@ -549,7 +616,10 @@ async def list_channel_members(
     return [ChannelMemberOut(pubkey=m.pubkey, role=m.role) for m in members]
 
 
-@router.delete("/workspaces/{slug}/channels/{channel_id}/members/{member_pubkey}")
+@router.delete(
+    "/workspaces/{slug}/channels/{channel_id}/members/{member_pubkey}",
+    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER},
+)
 async def remove_channel_member(
     slug: str,
     channel_id: str,
