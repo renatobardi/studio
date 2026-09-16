@@ -142,8 +142,9 @@ jobs:
 
   gates:
     # The delivery-gate contract itself (issue #51): asserts cd.yml still
-    # deploys only CI-validated SHAs. No dependencies to install — the test
-    # only parses the workflow YAML.
+    # deploys only CI-validated SHAs, and (issue #54) that docker-compose.yml
+    # still carries everything a fresh server needs — rendered with the
+    # runner's own `docker compose`, so nothing else to install.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
