@@ -268,8 +268,9 @@ class TestLiveFanout:
 
             await store.publish(make_event(id="id-1", kind=1))
 
+            delivery = queue.get()
             with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(queue.get(), timeout=0.5)
+                await asyncio.wait_for(delivery, timeout=0.5)
         finally:
             await fanout.stop()
 

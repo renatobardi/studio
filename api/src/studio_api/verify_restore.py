@@ -84,7 +84,8 @@ def recover_key_pubkey(encrypted_key: bytes, *, server_secret: str) -> str | Non
     try:
         secret = decrypt_secret(encrypted_key, server_secret=server_secret)
         return PrivateKey(secret).public_key_xonly.format().hex()
-    except Exception:  # noqa: BLE001 — a wrong secret or a damaged blob both mean "not recovered"
+    # a wrong secret or a damaged blob both mean "not recovered"
+    except Exception:  # noqa: BLE001
         return None
 
 

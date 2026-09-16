@@ -4,6 +4,7 @@ synchronous, so every call runs off the event loop via `asyncio.to_thread`.
 """
 
 import asyncio
+import os
 
 import boto3
 from botocore.client import Config
@@ -25,7 +26,9 @@ class ObjectStorage:
             aws_access_key_id=self._access_key,
             aws_secret_access_key=self._secret_key,
             config=Config(signature_version="s3v4"),
-            region_name="us-east-1",
+            # MinIO ignores the region, but SigV4 refuses to sign without one.
+            # A real S3 deployment sets AWS_REGION and signs for its own.
+            region_name=os.environ.get("AWS_REGION", "us-east-1"),
         )
 
     async def ensure_bucket(self) -> None:
