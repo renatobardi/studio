@@ -59,27 +59,24 @@ export class ChannelFeed {
   start(): () => void {
     const firstPage: VerifiedEvent[] = [];
     let eosed = false;
-    this.disposers.push(
-      this.client.subscribe(liveMessageFilters(this.channelId), {
-        onEvent: (event) => {
-          this.apply(event);
-          // A Message arriving live can have no history behind it: anything targeting it is
-          // published later and reaches the Channel-wide companion subscription.
-          if (!eosed) firstPage.push(event);
-        },
-        onEose: () => {
-          if (!eosed) this.hasMore = firstPage.length >= PAGE_SIZE;
-          eosed = true;
-          this.coverRoots(firstPage);
-          this.emit();
-        },
-      }),
-    );
-    this.disposers.push(
-      this.client.subscribe(channelCompanionFilters(this.channelId), {
-        onEvent: (event) => this.apply(event),
-      }),
-    );
+    const liveMessages = this.client.subscribe(liveMessageFilters(this.channelId), {
+      onEvent: (event) => {
+        this.apply(event);
+        // A Message arriving live can have no history behind it: anything targeting it is
+        // published later and reaches the Channel-wide companion subscription.
+        if (!eosed) firstPage.push(event);
+      },
+      onEose: () => {
+        if (!eosed) this.hasMore = firstPage.length >= PAGE_SIZE;
+        eosed = true;
+        this.coverRoots(firstPage);
+        this.emit();
+      },
+    });
+    const companions = this.client.subscribe(channelCompanionFilters(this.channelId), {
+      onEvent: (event) => this.apply(event),
+    });
+    this.disposers.push(liveMessages, companions);
     // Only the relay subscriptions: the listeners belong to whoever is rendering the feed,
     // which under StrictMode outlives a start()/dispose() pair.
     return () => {

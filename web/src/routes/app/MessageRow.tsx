@@ -31,7 +31,7 @@ export function MessageRow({
   actions?: ReactNode;
 }>) {
   return (
-    <li className={`message${continuation ? " continuation" : ""}${className ? ` ${className}` : ""}`} data-row="true" data-testid={testId}>
+    <li className={["message", continuation ? "continuation" : "", className ?? ""].filter(Boolean).join(" ")} data-row="true" data-testid={testId}>
       {continuation && avatarSize === 32 ? (
         <span className="message-gutter" />
       ) : (

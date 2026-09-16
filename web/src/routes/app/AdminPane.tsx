@@ -315,7 +315,7 @@ function ChannelsTab({
           <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="About (optional)" />
           <label className="conversation-list-item-row">
             <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-            Private
+            {"Private"}
           </label>
           <button className="btn btn-primary" onClick={() => void create()}>
             Create Channel

@@ -15,13 +15,15 @@ import { isEmailVerified } from "../../lib/emailVerification";
 import { Sakura } from "../../components/brand/Sakura";
 import { Icon } from "../../components/icons/Icon";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Every repetition excludes the separator that follows it, so there is nothing
+// for the engine to backtrack over on a near-miss.
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 export function AuthScreen({
   notice,
   pendingUnverifiedUser,
   onAuthenticated,
-}: {
+}: Readonly<{
   // What the previous session left behind on this browser, when signing out
   // could not wipe all of it (#39) — shown here because this is the screen
   // sign-out returns to.
@@ -30,7 +32,7 @@ export function AuthScreen({
   // page reload mid-verification) — starts straight at the verify step.
   pendingUnverifiedUser?: User | null;
   onAuthenticated: (user: User, password: string | null) => void;
-}) {
+}>) {
   const [step, setStep] = useState<AuthStep>(pendingUnverifiedUser ? "verify" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

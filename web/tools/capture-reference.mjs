@@ -135,6 +135,47 @@ const AFTER = {
   },
 };
 
+/** One state of one screen, light and (on desktop, where the reference has both) dark. */
+async function captureEntry(page, entry, { name, out }) {
+  const written = [];
+  for (const dark of entry.dark && name === "desktop" ? [false, true] : [false]) {
+    await page.evaluate(applyState, [entry.state, dark ? "dark" : "light"]);
+    await page.waitForTimeout(250);
+    if (entry.after) await AFTER[entry.after](page);
+    await page.waitForTimeout(250);
+    const file = join(out, name, `${entry.id}${dark ? "-dark" : ""}.png`);
+    await page.screenshot({ path: file, animations: "disabled", caret: "hide" });
+    written.push(file);
+  }
+  return written;
+}
+
+/** Every state the matrix asks of one viewport, in one browser context. */
+async function captureViewport(browser, port, { name, viewport, out, matrix }) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1, reducedMotion: "reduce" });
+  try {
+    // Only the vendored bundle: the Noto Sans JP @import is the one remote fetch, and it is
+    // not used by any Studio screen. Blocking it keeps the capture offline and repeatable.
+    await context.route(/fonts\.googleapis\.com|fonts\.gstatic\.com/, (route) => route.abort());
+    const page = await context.newPage();
+    // Plain HTTP to the in-process loopback server above — nothing leaves this machine.
+    await page.goto(`http://127.0.0.1:${port}/Studio.dc.html`); // NOSONAR
+    await page.waitForFunction(() => document.querySelector("[data-screen-label]") !== null);
+    await page.evaluate(() => document.fonts.ready);
+    const inter = await page.evaluate(() => document.fonts.check('12px "Inter Variable"'));
+    if (!inter) throw new Error("Inter Variable did not load — the reference would be captured in a fallback font");
+    await mkdir(join(out, name), { recursive: true });
+    const written = [];
+    for (const entry of matrix) {
+      if (name === "mobile" && !entry.mobile) continue;
+      written.push(...(await captureEntry(page, entry, { name, out })));
+    }
+    return written;
+  } finally {
+    await context.close();
+  }
+}
+
 async function capture() {
   const viewports = VIEWPORTS;
   const matrix = MATRIX;
@@ -144,31 +185,7 @@ async function capture() {
   const written = [];
   try {
     for (const [name, viewport] of Object.entries(viewports)) {
-      const context = await browser.newContext({ viewport, deviceScaleFactor: 1, reducedMotion: "reduce" });
-      // Only the vendored bundle: the Noto Sans JP @import is the one remote fetch, and it is
-      // not used by any Studio screen. Blocking it keeps the capture offline and repeatable.
-      await context.route(/fonts\.googleapis\.com|fonts\.gstatic\.com/, (route) => route.abort());
-      const page = await context.newPage();
-      // Plain HTTP to the in-process loopback server above — nothing leaves this machine.
-      await page.goto(`http://127.0.0.1:${port}/Studio.dc.html`); // NOSONAR
-      await page.waitForFunction(() => document.querySelector("[data-screen-label]") !== null);
-      await page.evaluate(() => document.fonts.ready);
-      const inter = await page.evaluate(() => document.fonts.check('12px "Inter Variable"'));
-      if (!inter) throw new Error("Inter Variable did not load — the reference would be captured in a fallback font");
-      await mkdir(join(out, name), { recursive: true });
-      for (const entry of matrix) {
-        if (name === "mobile" && !entry.mobile) continue;
-        for (const dark of entry.dark && name === "desktop" ? [false, true] : [false]) {
-          await page.evaluate(applyState, [entry.state, dark ? "dark" : "light"]);
-          await page.waitForTimeout(250);
-          if (entry.after) await AFTER[entry.after](page);
-          await page.waitForTimeout(250);
-          const file = join(out, name, `${entry.id}${dark ? "-dark" : ""}.png`);
-          await page.screenshot({ path: file, animations: "disabled", caret: "hide" });
-          written.push(file);
-        }
-      }
-      await context.close();
+      written.push(...(await captureViewport(browser, port, { name, viewport, out, matrix })));
     }
   } finally {
     await browser.close();

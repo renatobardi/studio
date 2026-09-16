@@ -15,6 +15,7 @@ import type { User } from "firebase/auth";
 import { AuthScreen } from "../routes/auth/AuthScreen";
 import { AppShell } from "../routes/app/AppShell";
 import { OnboardingScreen } from "../routes/onboarding/OnboardingScreen";
+import type { RelayClient } from "../lib/relay";
 import { FakeRelayClient, previewSigner } from "./fakeRelay";
 import { Steps, type Step } from "./Steps";
 import { ALL_EVENTS, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
@@ -86,11 +87,16 @@ const PREVIEW_USER = {
   reload: () => Promise.resolve(),
 } as unknown as User;
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
 // The shell's own REST calls, answered from the fixtures.
 const realFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
-  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  const path = new URL(url, window.location.origin).pathname;
+  const path = new URL(requestUrl(input), window.location.origin).pathname;
   const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } }));
   if (path === `/api/workspaces/${WORKSPACE.slug}/channels`) return json(CHANNELS);
   if (path === `/api/workspaces/${WORKSPACE.slug}/members`) return json(MEMBERS);
@@ -105,6 +111,16 @@ window.fetch = (input, init) => {
   return realFetch(input, init);
 };
 
+function mountedScreen(client: RelayClient) {
+  if (screen.mount === "auth") return <AuthScreen onAuthenticated={() => {}} />;
+  if (screen.mount === "onboarding") {
+    return (
+      <OnboardingScreen user={PREVIEW_USER} account={null} accountPassword="preview-account-password" onComplete={() => {}} />
+    );
+  }
+  return <AppShell workspace={WORKSPACE} signer={previewSigner(OWN)} client={client} onSignOut={() => {}} />;
+}
+
 async function main() {
   await storeAppearance(appearance);
   applyAppearance(appearance);
@@ -112,16 +128,10 @@ async function main() {
   const client = new FakeRelayClient(ALL_EVENTS).asClient();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      {screen.mount === "auth" ? (
-        <AuthScreen onAuthenticated={() => {}} />
-      ) : screen.mount === "onboarding" ? (
-        <OnboardingScreen user={PREVIEW_USER} account={null} accountPassword="preview-account-password" onComplete={() => {}} />
-      ) : (
-        <AppShell workspace={WORKSPACE} signer={previewSigner(OWN)} client={client} onSignOut={() => {}} />
-      )}
+      {mountedScreen(client)}
       <Steps steps={screen.steps} />
     </StrictMode>,
   );
 }
 
-void main();
+await main();

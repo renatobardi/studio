@@ -229,6 +229,8 @@ export function Timeline({
             const replyCount = countThreadReplies(replies, message.id);
             const continuation = isContinuation(sorted[index - 1], message);
             const author = displayName(profiles, message.pubkey);
+            const rowState = message.id === openThreadRootId ? "active" : "";
+            const rowClass = rowState || (replyCount > 0 ? "has-replies" : "");
             return (
               <MessageRow
                 key={message.id}
@@ -237,7 +239,7 @@ export function Timeline({
                 createdAt={message.created_at}
                 content={message.content}
                 continuation={continuation}
-                className={message.id === openThreadRootId ? "active" : replyCount > 0 ? "has-replies" : ""}
+                className={rowClass}
                 testId="timeline-message"
                 actions={
                   <span className="message-actions">

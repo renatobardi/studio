@@ -9,5 +9,5 @@ export function clockTime(createdAt: number, timeZone?: string): string {
  * avatar and header instead of repeating them. The prototype groups by author alone, with no
  * time window (`buildRow` in docs/UI/design/Studio.dc.html). */
 export function isContinuation(previous: { pubkey: string } | undefined, current: { pubkey: string }): boolean {
-  return previous !== undefined && previous.pubkey === current.pubkey;
+  return previous?.pubkey === current.pubkey;
 }

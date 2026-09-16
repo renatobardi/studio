@@ -1138,14 +1138,6 @@ button.sidebar-group-label:hover {
   gap: 8px;
 }
 
-.composer-region {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 16px 12px;
-}
-
 .load-older {
   align-self: center;
 }

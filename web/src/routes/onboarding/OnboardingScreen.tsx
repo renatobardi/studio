@@ -61,13 +61,13 @@ export function OnboardingScreen({
   accountPassword,
   onComplete,
   onAccountChanged,
-}: {
+}: Readonly<{
   user: User;
   account: AccountOut | null;
   accountPassword: string | null;
   onComplete: (workspace: WorkspaceOut) => void;
   onAccountChanged?: (account: AccountOut) => void;
-}) {
+}>) {
   // A NIP-07 extension holds the key itself, so the app neither generates an
   // Identity nor takes custody of one — and the Key Backup steps fall away
   // (#45). Fixed for the run: an extension appearing mid-flow would change
@@ -275,7 +275,7 @@ export function OnboardingScreen({
     runStep(async () => {
       const token = await idToken();
       const { blob_base64 } = await api.getKeyBackup(token);
-      const blob = Uint8Array.from(atob(blob_base64), (c) => c.charCodeAt(0));
+      const blob = Uint8Array.from(atob(blob_base64), (c) => c.codePointAt(0)!);
       const nsec = await decryptBackup(blob, restorePassphrase);
       const secretKey = secretKeyFromNsec(nsec);
       const restored = getPublicKey(secretKey);
@@ -377,7 +377,7 @@ export function OnboardingScreen({
       const linked = await linkAccountIdentity(token, localSigner(identity.secretKey, identity.publicKey));
       setLinkedPubkey(linked.pubkey);
       await storeIdentity(nsecFromSecretKey(identity.secretKey));
-      const blobBase64 = btoa(String.fromCharCode(...backupBlob));
+      const blobBase64 = btoa(String.fromCodePoint(...backupBlob));
       await api.putKeyBackup(token, blobBase64);
       advance("download");
     }, "Couldn't store your Key Backup. Check the passphrase and try again.");
