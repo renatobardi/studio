@@ -10,7 +10,8 @@
 # provisioned the same way as studio-test (git checkout in /opt/app, plain
 # `docker compose up -d --build`), public at https://studio.oute.pro through
 # the host's Nginx/Certbot. Its credentials live in the `studio-prd` GitHub
-# Environment, never shared with studio-test's.
+# Environment, whose required reviewer is what stands between a dispatch and
+# production — see docs/production.md, "GitHub".
 
 name: Promote
 

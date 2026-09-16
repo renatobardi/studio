@@ -153,19 +153,15 @@ describe('ci.yml sonar job', () => {
 // studio-test did not already run and smoke-test: the only input is a SHA, and
 // the gate asks GitHub for proof that CD deployed exactly that SHA to
 // studio-test and its smoke passed.
-const promotePath = '.github/workflows/promote.yml'
-const promote = (await Bun.file(`${repoRoot}${promotePath}`).exists())
-  ? await read(promotePath)
-  : ({ jobs: {} } as Workflow)
+const promote = await read('.github/workflows/promote.yml')
 
 describe('promote.yml', () => {
-  const promoteTriggers = (promote.on ?? promote[true as unknown as string] ?? {}) as Record<
+  const promoteTriggers = (promote.on ?? promote[true as unknown as string]) as Record<
     string,
     { inputs?: Record<string, { required?: boolean }> } | undefined
   >
-  const noJob: Job = { steps: [] }
-  const promoteGate = promote.jobs.gate ?? noJob
-  const deployPrd = promote.jobs['deploy-prd'] ?? noJob
+  const promoteGate = promote.jobs.gate
+  const deployPrd = promote.jobs['deploy-prd']
   const everyRun = Object.values(promote.jobs)
     .flatMap((job) => job.steps.map((step) => step.run ?? ''))
     .join('\n')

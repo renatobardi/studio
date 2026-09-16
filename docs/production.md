@@ -12,8 +12,8 @@ backups and restore by `docs/recovery.md`.
   `lab/servers/oute-server/PORTS.md`.
 - Inside it, `/opt/app` is a git checkout running this repository's
   `docker-compose.yml` unchanged: SurrealDB, MinIO, api, web, Caddy on `:80`.
-  Its own volumes — no database, bucket or credential is shared with
-  `studio-test`.
+  Its own volumes and its own `.env`: no database, bucket or application
+  credential is shared with `studio-test`.
 - Public at `https://studio.oute.pro`. TLS ends at the host's Nginx (Certbot
   certificate), which proxies to `<container-ip>:80`. Caddy trusts that hop's
   `X-Forwarded-Proto`, so the api sees `https`/`wss` — NIP-98 and NIP-42 compare
@@ -63,7 +63,11 @@ holding:
 - `STUDIO_CD_SSH_KEY` — deploy key allowed to `ssh oute-server` and `lxc exec`.
 - `STUDIO_PRD_SSH_HOST` — the SSH target for `oute-server`.
 
-Referenced by name only, as every CD credential is.
+Referenced by name only, as every CD credential is. The SSH deploy key may be
+the same one `studio-test` uses — it reaches `oute-server`, and from there any
+container — so what separates production is this Environment's required
+reviewer, not the key. The reviewer is repository configuration, not code:
+confirm it under Settings → Environments before the first promotion.
 
 ## Releasing
 
@@ -80,7 +84,7 @@ Referenced by name only, as every CD credential is.
    `/api/ready`, `/manifest.webmanifest` and `/sw.js`.
 6. **Authenticated smoke, by a person**, with test Accounts of the
    `studio-prd` Firebase project and a Workspace kept for testing only —
-   never real people's data: sign in, send a Channel Message, attach a photo
+   never real people's data: sign in, send a Message in a Channel, attach a photo
    and see it load, exchange a Direct Message with the second test Account,
    install the PWA from the browser. Record the SHA and the result on the
    release's issue or PR.
@@ -88,7 +92,11 @@ Referenced by name only, as every CD credential is.
 ## Rolling back
 
 Dispatch **Promote** again with the SHA the failed release's summary says it
-replaced. It went through the same gate, so it is accepted.
+replaced. The gate accepts it while its CD run is still in the Actions history
+(the repository's run retention). Two exceptions: the very first promotion
+replaces the checkout `install-app.sh` made, which never went through the
+gate — there is nothing to roll back to but the LXD `deploy-*` snapshot — and
+an SHA whose CD run has expired is refused like any unproven one.
 
 Code rolls back; data does not. A release that changed stored data in a way
 the older code cannot read needs a restore instead (`docs/recovery.md`) —
