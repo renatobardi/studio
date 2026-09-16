@@ -1,5 +1,4 @@
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { nip19 } from "nostr-tools";
+import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 
 export interface Identity {
   secretKey: Uint8Array;

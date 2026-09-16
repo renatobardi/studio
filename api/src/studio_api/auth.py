@@ -3,7 +3,6 @@ event in the `Authorization` header, both resolving to a CallerIdentity.
 Later tickets' endpoints depend on this, not on either scheme directly."""
 
 import base64
-import binascii
 import json
 import time
 from dataclasses import dataclass
@@ -65,7 +64,8 @@ def decode_nostr_authorization_event(value: str) -> NostrEvent:
     which differ only in which kind/tags they then check."""
     try:
         return json.loads(base64.b64decode(value, validate=True))  # type: ignore[no-any-return]
-    except (binascii.Error, ValueError) as error:
+    # binascii.Error is a ValueError, and so is json's decode error.
+    except ValueError as error:
         raise AuthError("malformed Nostr authorization event") from error
 
 

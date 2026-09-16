@@ -36,7 +36,8 @@ def verify_event_signature(event: NostrEvent) -> bool:
         return False
     try:
         return bool(PublicKeyXOnly(pubkey_bytes).verify(sig_bytes, id_bytes))
-    except Exception:  # noqa: BLE001 — a malformed/invalid key or signature just fails verification
+    # a malformed/invalid key or signature just fails verification
+    except Exception:  # noqa: BLE001
         return False
 
 

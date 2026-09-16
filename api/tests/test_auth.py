@@ -188,10 +188,11 @@ class TestResolveCaller:
         assert caller == FirebaseCaller(uid="abc123", email="abc123@example.com")
 
     def test_an_invalid_bearer_token_is_rejected(self) -> None:
+        verifier = _FakeFirebaseVerifier()
         with pytest.raises(AuthError):
             resolve_caller(
                 "Bearer not-a-real-token",
-                firebase_verifier=_FakeFirebaseVerifier(),
+                firebase_verifier=verifier,
                 url=URL,
                 method=METHOD,
                 now=NOW,
@@ -230,26 +231,29 @@ class TestResolveCaller:
         assert caller == NostrCaller(pubkey=pubkey)
 
     def test_a_missing_header_is_rejected(self) -> None:
+        verifier = _FakeFirebaseVerifier()
         with pytest.raises(AuthError):
             resolve_caller(
-                None, firebase_verifier=_FakeFirebaseVerifier(), url=URL, method=METHOD, now=NOW
+                None, firebase_verifier=verifier, url=URL, method=METHOD, now=NOW
             )
 
     def test_an_unsupported_scheme_is_rejected(self) -> None:
+        verifier = _FakeFirebaseVerifier()
         with pytest.raises(AuthError):
             resolve_caller(
                 "Basic dXNlcjpwYXNz",
-                firebase_verifier=_FakeFirebaseVerifier(),
+                firebase_verifier=verifier,
                 url=URL,
                 method=METHOD,
                 now=NOW,
             )
 
     def test_malformed_nostr_payload_is_rejected(self) -> None:
+        verifier = _FakeFirebaseVerifier()
         with pytest.raises(AuthError):
             resolve_caller(
                 "Nostr not-valid-base64!!!",
-                firebase_verifier=_FakeFirebaseVerifier(),
+                firebase_verifier=verifier,
                 url=URL,
                 method=METHOD,
                 now=NOW,

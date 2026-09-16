@@ -178,7 +178,8 @@ class LiveFanout:
                 self.deliver(_from_row(typed_row), workspace_slug=typed_row["workspace_slug"])
         except asyncio.CancelledError:
             raise  # stop() — an orderly shutdown, not a failure
-        except Exception as error:  # noqa: BLE001 — whatever ends the stream, delivery is down
+        # whatever ends the stream, delivery is down
+        except Exception as error:  # noqa: BLE001
             self._record_failure(type(error).__name__)
         else:
             self._record_failure("the live query ended")
@@ -305,7 +306,8 @@ class EventStore:
                 await db.use(namespace, database)
                 await db.query(_SCHEMA)
                 return cls(db, workspace_slug)
-            except Exception as error:  # noqa: BLE001 — broad: any connect-phase failure retries
+            # broad: any connect-phase failure retries
+            except Exception as error:  # noqa: BLE001
                 last_error = error
                 await asyncio.sleep(retry_delay_seconds)
         assert last_error is not None

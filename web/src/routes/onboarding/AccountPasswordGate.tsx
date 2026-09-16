@@ -15,10 +15,10 @@ import { useState } from "react";
 export function AccountPasswordGate({
   user,
   onConfirmed,
-}: {
+}: Readonly<{
   user: User;
   onConfirmed: (password: string) => void;
-}) {
+}>) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -12,7 +12,7 @@ describe("generateIdentity", () => {
   test("produces a secret key and its matching public key", () => {
     const identity = generateIdentity();
     expect(identity.secretKey).toBeInstanceOf(Uint8Array);
-    expect(identity.secretKey.length).toBe(32);
+    expect(identity.secretKey).toHaveLength(32);
     expect(identity.publicKey).toMatch(/^[0-9a-f]{64}$/);
   });
 

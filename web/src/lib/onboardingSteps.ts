@@ -33,22 +33,22 @@ const LOCAL_STEPS: readonly OnboardingStep[] = [
 ];
 
 /** Absent under an extension, not merely skippable: there is no key to back up. */
-const CUSTODY_STEPS: readonly OnboardingStep[] = ["backup", "backup-options", "download"];
+const CUSTODY_STEPS = new Set<OnboardingStep>(["backup", "backup-options", "download"]);
 
 /**
  * Cosmetic only. The "download" step is where the passphrase is verified and
  * the Key Backup uploaded — downloading the file is the optional part of it,
  * offered as a side action, so the step itself can never be skipped.
  */
-const SKIPPABLE: readonly OnboardingStep[] = ["avatar"];
+const SKIPPABLE = new Set<OnboardingStep>(["avatar"]);
 
 export function stepsFor(custody: Custody): OnboardingStep[] {
   if (custody === "local") return [...LOCAL_STEPS];
-  return LOCAL_STEPS.filter((step) => !CUSTODY_STEPS.includes(step));
+  return LOCAL_STEPS.filter((step) => !CUSTODY_STEPS.has(step));
 }
 
 export function isSkippable(step: OnboardingStep, custody: Custody): boolean {
-  return stepsFor(custody).includes(step) && SKIPPABLE.includes(step);
+  return stepsFor(custody).includes(step) && SKIPPABLE.has(step);
 }
 
 export function nextStep(step: OnboardingStep, custody: Custody): OnboardingStep | null {

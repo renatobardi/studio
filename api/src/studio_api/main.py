@@ -8,7 +8,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import Annotated, cast
 
 from fastapi import FastAPI, Header, Response
 from fastapi.responses import JSONResponse
@@ -88,65 +88,76 @@ def create_app(
 
     @app.get("/api/ready")
     async def ready(response: Response) -> dict[str, str]:
-        current_store: EventStore | None = app.state.store
-        if current_store is None:
-            response.status_code = 503
-            return {"status": "unavailable"}
-        try:
-            await current_store.ping()
-        except Exception:  # noqa: BLE001 — any failure reaching the store means "not ready"
-            response.status_code = 503
-            return {"status": "unavailable"}
-        # Reaching the database is not enough: a relay whose live query has
-        # stopped answers REQs with history and then goes silent, which is not
-        # a working Workspace (ticket #52).
-        current_fanout: LiveFanout | None = app.state.fanout
-        if current_fanout is not None and current_fanout.failure is not None:
-            response.status_code = 503
-            return {"status": "unavailable"}
-        return {"status": "ok"}
+        return await _readiness(app, response)
 
     @app.get("/relay/{slug}")
-    async def relay_info(
-        slug: str, accept: str | None = Header(default=None)
-    ) -> Response:
-        if accept != NOSTR_JSON_MEDIA_TYPE or await _relay_authorizer(app, slug) is None:
-            return Response(status_code=404)
-        self_pubkey = None
-        if app.state.repo is not None:
-            workspace = await app.state.repo.get_workspace(slug)
-            self_pubkey = workspace.key_pubkey if workspace is not None else None
-        document = build_info_document(name=app.state.relay_name, self_pubkey=self_pubkey)
-        return JSONResponse(document, media_type=NOSTR_JSON_MEDIA_TYPE)
+    async def relay_info(slug: str, accept: Annotated[str | None, Header()] = None) -> Response:
+        return await _relay_info_document(app, slug, accept)
 
     @app.websocket("/relay/{slug}")
     async def relay_ws(websocket: WebSocket, slug: str) -> None:
-        authorizer = await _relay_authorizer(app, slug)
-        if authorizer is None:
-            await websocket.close(code=4404)
-            return
-        await websocket.accept()
-        connection = RelayConnection(
-            store=app.state.store.for_workspace(slug),
-            fanout=app.state.fanout,
-            authorizer=authorizer,
-            relay_url=str(websocket.url),
-            send=websocket.send_json,
-            registry=app.state.connection_registry,
-            close_transport=websocket.close,
-            media_repo=app.state.media_repo,
-        )
-        await connection.start()
-        try:
-            while True:
-                if not await _pump_one_message(websocket, connection):
-                    break
-        except WebSocketDisconnect:
-            pass
-        finally:
-            await connection.close()
+        await _serve_relay(app, websocket, slug)
 
     return app
+
+
+async def _readiness(app: FastAPI, response: Response) -> dict[str, str]:
+    current_store: EventStore | None = app.state.store
+    if current_store is None:
+        response.status_code = 503
+        return {"status": "unavailable"}
+    try:
+        await current_store.ping()
+    # any failure reaching the store means "not ready"
+    except Exception:  # noqa: BLE001
+        response.status_code = 503
+        return {"status": "unavailable"}
+    # Reaching the database is not enough: a relay whose live query has
+    # stopped answers REQs with history and then goes silent, which is not
+    # a working Workspace (ticket #52).
+    current_fanout: LiveFanout | None = app.state.fanout
+    if current_fanout is not None and current_fanout.failure is not None:
+        response.status_code = 503
+        return {"status": "unavailable"}
+    return {"status": "ok"}
+
+
+async def _relay_info_document(app: FastAPI, slug: str, accept: str | None) -> Response:
+    if accept != NOSTR_JSON_MEDIA_TYPE or await _relay_authorizer(app, slug) is None:
+        return Response(status_code=404)
+    self_pubkey = None
+    if app.state.repo is not None:
+        workspace = await app.state.repo.get_workspace(slug)
+        self_pubkey = workspace.key_pubkey if workspace is not None else None
+    document = build_info_document(name=app.state.relay_name, self_pubkey=self_pubkey)
+    return JSONResponse(document, media_type=NOSTR_JSON_MEDIA_TYPE)
+
+
+async def _serve_relay(app: FastAPI, websocket: WebSocket, slug: str) -> None:
+    authorizer = await _relay_authorizer(app, slug)
+    if authorizer is None:
+        await websocket.close(code=4404)
+        return
+    await websocket.accept()
+    connection = RelayConnection(
+        store=app.state.store.for_workspace(slug),
+        fanout=app.state.fanout,
+        authorizer=authorizer,
+        relay_url=str(websocket.url),
+        send=websocket.send_json,
+        registry=app.state.connection_registry,
+        close_transport=websocket.close,
+        media_repo=app.state.media_repo,
+    )
+    await connection.start()
+    try:
+        while True:
+            if not await _pump_one_message(websocket, connection):
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await connection.close()
 
 
 async def _pump_one_message(websocket: WebSocket, connection: RelayConnection) -> bool:

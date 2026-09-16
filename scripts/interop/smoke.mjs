@@ -63,7 +63,9 @@ function connect(url) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url);
     ws.addEventListener("open", () => resolve(ws), { once: true });
-    ws.addEventListener("error", (event) => reject(new Error(String(event))), {
+    // The error event carries nothing worth printing — it stringifies to
+    // "[object Event]". What the reader needs is which socket failed.
+    ws.addEventListener("error", () => reject(new Error(`WebSocket error on ${url}`)), {
       once: true,
     });
   });
@@ -76,7 +78,7 @@ function nextMessage(ws) {
       resolve(JSON.parse(event.data));
     };
     ws.addEventListener("message", onMessage);
-    ws.addEventListener("error", (event) => reject(new Error(String(event))), {
+    ws.addEventListener("error", () => reject(new Error("WebSocket error while awaiting a message")), {
       once: true,
     });
   });
@@ -144,7 +146,9 @@ async function main() {
   console.log("interop smoke OK");
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error("interop smoke FAILED:", error);
   process.exit(1);
-});
+}

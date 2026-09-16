@@ -51,7 +51,7 @@ export function sha256Hex(data: ArrayBuffer): string {
  * the hash, because the server grants no access from the gift wrap that carries it (#38). */
 export function buildBlossomAuthEvent(
   action: "upload" | "get",
-  opts: { sha256?: string; ttlSeconds?: number; recipients?: string[] } = {},
+  opts: { sha256?: string; ttlSeconds?: number; recipients?: string[] },
   signer: Signer,
 ): Promise<VerifiedEvent> {
   const tags = [["t", action], ["expiration", String(Math.floor(Date.now() / 1000) + (opts.ttlSeconds ?? 300))]];
@@ -63,7 +63,7 @@ export function buildBlossomAuthEvent(
 export function blossomAuthorizationHeader(event: VerifiedEvent): string {
   const bytes = new TextEncoder().encode(JSON.stringify(event));
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (const byte of bytes) binary += String.fromCodePoint(byte);
   return `Nostr ${btoa(binary)}`;
 }
 

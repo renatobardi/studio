@@ -17,3 +17,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+
+# Coverage reports, produced by CI for the Sonar scan (#76) — never committed.
+api/coverage/
+web/coverage/

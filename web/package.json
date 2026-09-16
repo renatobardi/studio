@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "bun test src",
+    "test:coverage": "bun test src --coverage --coverage-reporter=lcov",
     "test:e2e": "playwright test",
     "test:visual": "STUDIO_PREVIEW_URL=http://localhost:5173 playwright test e2e/visual.spec.ts",
     "capture:reference": "node tools/capture-reference.mjs"

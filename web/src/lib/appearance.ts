@@ -13,9 +13,9 @@ export interface Appearance {
 /** Where the prototype starts (docs/UI/REFERENCE.md): its own default density is compact. */
 export const DEFAULT_APPEARANCE: Appearance = { theme: "light", density: "compact", fontScale: "default" };
 
-const THEMES: Theme[] = ["light", "dark"];
-const DENSITIES: Density[] = ["compact", "comfy", "spacious"];
-const FONT_SCALES: FontScale[] = ["smaller", "default", "larger"];
+const THEMES = new Set<Theme>(["light", "dark"]);
+const DENSITIES = new Set<Density>(["compact", "comfy", "spacious"]);
+const FONT_SCALES = new Set<FontScale>(["smaller", "default", "larger"]);
 
 const STORE_KEY = "studio.appearance";
 
@@ -30,11 +30,11 @@ export function parseAppearance(value: unknown): Appearance {
   if (typeof value !== "object" || value === null) return DEFAULT_APPEARANCE;
   const candidate = value as Partial<Appearance>;
   return {
-    theme: THEMES.includes(candidate.theme as Theme) ? (candidate.theme as Theme) : DEFAULT_APPEARANCE.theme,
-    density: DENSITIES.includes(candidate.density as Density)
+    theme: THEMES.has(candidate.theme as Theme) ? (candidate.theme as Theme) : DEFAULT_APPEARANCE.theme,
+    density: DENSITIES.has(candidate.density as Density)
       ? (candidate.density as Density)
       : DEFAULT_APPEARANCE.density,
-    fontScale: FONT_SCALES.includes(candidate.fontScale as FontScale)
+    fontScale: FONT_SCALES.has(candidate.fontScale as FontScale)
       ? (candidate.fontScale as FontScale)
       : DEFAULT_APPEARANCE.fontScale,
   };

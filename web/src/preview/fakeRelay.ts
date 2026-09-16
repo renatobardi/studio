@@ -12,8 +12,8 @@ function matches(event: VerifiedEvent, filter: Filter): boolean {
   for (const [key, wanted] of Object.entries(filter)) {
     if (!key.startsWith("#")) continue;
     const name = key.slice(1);
-    const values = event.tags.filter((tag) => tag[0] === name).map((tag) => tag[1]);
-    if (!(wanted as string[]).some((value) => values.includes(value))) return false;
+    const values = new Set(event.tags.filter((tag) => tag[0] === name).map((tag) => tag[1]));
+    if (!(wanted as string[]).some((value) => values.has(value))) return false;
   }
   return true;
 }
@@ -76,7 +76,9 @@ export class FakeRelayClient {
     return Promise.resolve();
   }
 
-  close(): void {}
+  close(): void {
+    // The fixtures hold no socket: nothing to close.
+  }
 
   asClient(): RelayClient {
     return this as unknown as RelayClient;

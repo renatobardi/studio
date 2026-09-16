@@ -166,6 +166,7 @@ class ConnectionRegistry:
             del self._by_member[key]
 
     async def force_disconnect(self, pubkey: str, *, workspace_slug: str, reason: str) -> None:
+        # Over a copy: closing a connection unregisters it from this very set.
         for connection in list(self._by_member.get((workspace_slug, pubkey), ())):
             await connection.force_close(reason)
 
@@ -246,6 +247,7 @@ class RelayConnection:
         await self._send(["NOTICE", f"invalid: {message}"])
 
     async def close(self) -> None:
+        # Over a copy: cancelling a subscription removes it from this set.
         for sub_id in list(self._sub_ids):
             self._cancel_subscription(sub_id)
         if self._registry is not None and self._authed_pubkey is not None:
@@ -354,7 +356,8 @@ class RelayConnection:
             return
         try:
             result = await self._store.publish(event)
-        except Exception as error:  # noqa: BLE001 — a store failure, not a bad event
+        # a store failure, not a bad event
+        except Exception as error:  # noqa: BLE001
             await self._send(["OK", event_id, False, f"error: {error}"])
             return
         if result is not PublishResult.OK:
@@ -427,7 +430,8 @@ class RelayConnection:
         self._sub_ids.add(sub_id)
         try:
             events = await self._store.query(filters)
-        except Exception as error:  # noqa: BLE001 — a store failure, not a bad request
+        # a store failure, not a bad request
+        except Exception as error:  # noqa: BLE001
             self._cancel_subscription(sub_id)
             await self._send(["CLOSED", sub_id, f"error: {error}"])
             return

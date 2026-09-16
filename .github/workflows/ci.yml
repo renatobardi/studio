@@ -37,7 +37,27 @@ jobs:
         run: docker compose --profile test run --rm test uv run ruff check src tests
 
       - name: Run test suite against the Compose stack
-        run: docker compose --profile test run --rm test
+        # The report is copied out of the container rather than written into a
+        # bind mount: the container has a non-root user of its own, and making
+        # a workspace directory world-writable to bridge that is a hole, not a
+        # fix. Hence no --rm until the copy is done.
+        run: |
+          mkdir -p api/coverage
+          docker compose --profile test run --name studio-coverage test \
+            uv run pytest -q --cov --cov-report=xml:/tmp/coverage.xml
+          docker cp studio-coverage:/tmp/coverage.xml api/coverage/coverage.xml
+          docker rm studio-coverage
+          # coverage.py names files relative to the package root it measured;
+          # Sonar resolves them against the checkout, where that root is
+          # api/src/studio_api.
+          sed -i 's|<source>src/studio_api</source>|<source>.</source>|; s|filename="|filename="api/src/studio_api/|g' \
+            api/coverage/coverage.xml
+
+      - name: Publish API coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-api
+          path: api/coverage/coverage.xml
 
       - name: Start the full stack for the interop smoke
         run: |
@@ -104,7 +124,17 @@ jobs:
 
       - name: Unit tests
         working-directory: web
-        run: bun run test
+        run: bun run test:coverage
+
+      - name: Point the coverage at the files as the repository has them
+        # bun names files relative to web/; Sonar resolves them from the root.
+        run: sed -i 's|^SF:|SF:web/|' web/coverage/lcov.info
+
+      - name: Publish web coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-web
+          path: web/coverage/lcov.info
       # Playwright flows 1 & 5 against studio-test moved to cd.yml — they now
       # run as a post-deploy smoke test against what was just deployed,
       # instead of racing an independent push-triggered job against whatever
@@ -120,3 +150,45 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Delivery-gate contract
         run: bun test scripts/ci
+
+  sonar:
+    # The quality gate (issue #76). Automatic analysis measured no coverage at
+    # all — every PR read 0.0% on new code — so the scan moved here, where the
+    # suites that just ran can hand it their reports. `sonar.qualitygate.wait`
+    # makes the gate's verdict this job's conclusion: a failed gate is a red
+    # run, not a check run that may or may not be posted.
+    needs: [test, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Blame data: shallow history makes every line look new.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: coverage-api
+          path: api/coverage
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: coverage-web
+          path: web/coverage
+
+      - name: Scan and wait for the quality gate
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.projectKey=renatobardi_studio
+            -Dsonar.organization=renatobardi
+            -Dsonar.sources=api/src,web/src,scripts,.github,api/Dockerfile
+            -Dsonar.tests=api/tests,web/src,web/e2e,scripts/ci
+            -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx
+            -Dsonar.exclusions=docs/UI/design/**,**/*.test.ts,**/*.test.tsx
+            -Dsonar.coverage.exclusions=web/src/preview/**,web/tools/**,scripts/**
+            -Dsonar.python.coverage.reportPaths=api/coverage/coverage.xml
+            -Dsonar.javascript.lcov.reportPaths=web/coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
