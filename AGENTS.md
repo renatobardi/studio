@@ -17,4 +17,5 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 ### Delivery gates
 
 What must pass before a commit reaches `studio-test`, and which repo settings
-enforce it: `docs/delivery-gates.md`.
+enforce it: `docs/delivery-gates.md`. Promotion to `studio-prd`, and
+rollback: `docs/production.md`.

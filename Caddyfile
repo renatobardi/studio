@@ -1,6 +1,15 @@
 {
 	auto_https off
 	admin off
+	servers {
+		# In production TLS ends at the host's Nginx (issue #54), which says so
+		# in X-Forwarded-Proto. Without trusting it Caddy overwrites the header
+		# with its own plain `http`, and the api — whose NIP-98 and NIP-42
+		# checks compare signed URLs with the one it was reached on — rejects
+		# every call made over https://. Nginx reaches the container from the
+		# LXD bridge, a private range.
+		trusted_proxies static private_ranges
+	}
 }
 
 # Plain HTTP inside the container: the network boundary is Tailscale (dev)
