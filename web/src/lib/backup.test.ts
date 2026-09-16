@@ -6,21 +6,35 @@ import {
   validateBackupPassphrase,
 } from "./backup";
 
+// age derives its key with scrypt, deliberately slowly, and coverage
+// instrumentation slows it further — these two sit just over bun's 5s default
+// on a CI runner. The limit is here, on the two tests that need it, rather
+// than raised for a suite that otherwise runs in milliseconds.
+const SCRYPT_TIMEOUT_MS = 30_000;
+
 describe("encryptBackup / decryptBackup", () => {
-  test("round-trips the nsec through an age passphrase file", async () => {
-    const nsec = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
-    const blob = await encryptBackup(nsec, "correct horse battery staple");
+  test(
+    "round-trips the nsec through an age passphrase file",
+    async () => {
+      const nsec = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+      const blob = await encryptBackup(nsec, "correct horse battery staple");
 
-    expect(blob).toBeInstanceOf(Uint8Array);
-    expect(await decryptBackup(blob, "correct horse battery staple")).toBe(nsec);
-  });
+      expect(blob).toBeInstanceOf(Uint8Array);
+      expect(await decryptBackup(blob, "correct horse battery staple")).toBe(nsec);
+    },
+    SCRYPT_TIMEOUT_MS,
+  );
 
-  test("rejects decryption with the wrong passphrase", async () => {
-    const nsec = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
-    const blob = await encryptBackup(nsec, "correct horse battery staple");
+  test(
+    "rejects decryption with the wrong passphrase",
+    async () => {
+      const nsec = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+      const blob = await encryptBackup(nsec, "correct horse battery staple");
 
-    await expect(decryptBackup(blob, "wrong passphrase")).rejects.toThrow();
-  });
+      await expect(decryptBackup(blob, "wrong passphrase")).rejects.toThrow();
+    },
+    SCRYPT_TIMEOUT_MS,
+  );
 });
 
 describe("validateBackupPassphrase", () => {
