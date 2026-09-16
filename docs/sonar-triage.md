@@ -21,5 +21,14 @@ re-keying that comes with a new analysis method.
 | `typescript:S7718` | `AdminPane.tsx`, `OnboardingScreen.tsx` ×2 | Won't fix | `catch (caught)` is the name this codebase uses where an `error` state variable is already in scope. The rule's `error_` is a lint artefact, not a clearer name. |
 | `typescript:S6819` | `AppearanceSettings.tsx`, `OnboardingScreen.tsx` ×2 | Won't fix | `role="group"` sits on the styled element the prototype draws; `<fieldset>`/`<progress>` carry user-agent appearance that cannot be styled back to the reference, and the visual baselines are accepted by a person (`docs/UI/REFERENCE.md`). The roles and labels are already what a screen reader needs. |
 
+Two findings on the workflows themselves are resolved in SonarCloud from the
+#77 analysis and are not open today. Should the CI scan raise them again, the
+reason they were accepted then still holds, and the script carries them:
+
+| Rule | Where | Resolution | Why |
+|---|---|---|---|
+| untrusted code from a fork | `.github/workflows/cd.yml` | Won't fix | It has the shape of a pwn request (`workflow_run` + a checkout whose ref comes from the event), but the `gate` job requires `workflow_run.event == 'push'` and a SHA equal to `main`'s tip before any checkout, so fork code is unreachable. `scripts/ci/delivery-gates.test.ts` holds that shut. |
+| unpredictable dependency version | `.github/workflows/ci.yml` | Won't fix | `go install github.com/fiatjaf/nak@v0.20.6` is pinned. The rule wants a command that enforces a lockfile, which `go install` has no form of. |
+
 Anything not listed here was fixed. A finding that comes back after a change
 is a new decision, not a re-run of this table.

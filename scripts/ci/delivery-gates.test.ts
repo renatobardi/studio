@@ -115,19 +115,18 @@ describe('ci.yml sonar job', () => {
   const sonar = ci.jobs.sonar
   const sonarCommands = commandsOf(sonar)
   const scan = sonar.steps.find((step) => (step.uses ?? '').includes('sonarqube-scan-action'))
+  const scanArgs = `${scan?.with?.args ?? ''}`
 
   test('waits for the quality gate, so a failed gate fails the run', () => {
     // Without the wait the scan is fire-and-forget: the job stays green
     // whatever the gate decides, which is exactly the hole #76 opened on.
-    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.qualitygate.wait=true')
+    expect(scanArgs).toContain('sonar.qualitygate.wait=true')
   })
 
   test('scans only after both suites ran, and takes their coverage', () => {
     expect(sonar.needs).toEqual(['test', 'web'])
-    expect(`${scan?.with?.args ?? ''}`).toContain('sonar.python.coverage.reportPaths=api/coverage/coverage.xml')
-    expect(`${scan?.with?.args ?? ''}`).toContain(
-      'sonar.javascript.lcov.reportPaths=web/coverage/lcov.info',
-    )
+    expect(scanArgs).toContain('sonar.python.coverage.reportPaths=api/coverage/coverage.xml')
+    expect(scanArgs).toContain('sonar.javascript.lcov.reportPaths=web/coverage/lcov.info')
   })
 
   test('reads the token from secrets, never from a file in the repo', () => {

@@ -5,8 +5,9 @@ it. Issue #51.
 
 ## The chain
 
-1. **PR opened** → `ci.yml` runs `test`, `web` and `gates`; SonarCloud analyses
-   the PR; CodeRabbit posts (or skips) a review.
+1. **PR opened** → `ci.yml` runs `test`, `web`, `gates` and `sonar` (the
+   SonarCloud scan, which waits for the quality gate); CodeRabbit posts (or
+   skips) a review.
 2. **Merge to `main`** is blocked by the `main` ruleset until the required
    checks pass (see below).
 3. **CI runs again on `main`.** Its conclusion — not the push — is what
@@ -58,8 +59,12 @@ mutable branch tip.
 
 ## Required checks on `main`
 
-The ruleset requires `test`, `web`, `gates` and `SonarCloud Code Analysis`, a
-pull request, resolved conversations, no force-push and no branch deletion.
+The ruleset requires `test`, `web`, `gates` and `sonar`, a pull request,
+resolved conversations, no force-push and no branch deletion. `sonar`
+replaced `SonarCloud Code Analysis` when the scan moved into CI (#76): with
+automatic analysis off, that check run is no longer the thing that carries
+the gate's verdict — and a required check nobody posts blocks every pull
+request.
 Repository admins are bypass actors: this is a single-maintainer repo, and a
 rule nobody can satisfy is a rule that gets turned off.
 
@@ -110,7 +115,8 @@ ever opened.
 What the gate does reject is real, and predates this: PR #77 was rejected on
 `new_security_rating`, and #110 on duplication and security. On `main` it
 still reports `Not computed` until a **New Code definition** is set
-(Administration > New Code) — every `Sonar way` condition is scoped to new
+(Administration > New Code — `Reference branch: main`, since the project
+publishes no version for `Previous version` to key on) — every `Sonar way` condition is scoped to new
 code, and on a pull request new code is the diff, which is why pull requests
 compute and `main` does not.
 
@@ -120,7 +126,13 @@ Configuration that is not in this repository:
   both on, the scan is rejected.
 - **`SONAR_TOKEN`** is an Actions secret. It is never written to a file here.
 - **The `sonar` job is a required check on `main`**, alongside `test`, `web`
-  and `gates`.
+  and `gates`, and `SonarCloud Code Analysis` is no longer required. Swap the
+  two in the same ruleset edit, before automatic analysis goes off.
+- **The gate itself is still the built-in `Sonar way`**, whose conditions are
+  all scoped to new code. Conditions over overall code — the other half of
+  what #76 weighed — would need a quality gate of the project's own, since
+  the built-in one is read-only. Coverage on new code is the condition that
+  was missing, and that is what this change supplies.
 - **Exclusions**: `docs/UI/design/**` — a vendored, generated design artefact
   nothing imports, once 321 of the project's 392 findings — is excluded in the
   scanner arguments in `ci.yml`. `.sonarcloud.properties` keeps the same

@@ -108,7 +108,9 @@ _NOT_A_MANAGER: _Responses = {403: {"description": "requires the Workspace owner
 _NOT_A_CHANNEL_MANAGER: _Responses = {403: {"description": "requires a Channel admin or a Workspace admin"}}
 _NOT_A_CHANNEL_MEMBER: _Responses = {403: {"description": "not a Channel Member"}}
 _NOT_AN_ACCOUNT: _Responses = {403: {"description": "only a Firebase-authenticated caller has an Account"}}
-_MEMBER_RULE: _Responses = {400: {"description": "the change the Workspace's own rules refuse"}}
+_REFUSED_BY_RULES: _Responses = {
+    400: {"description": "a change the Workspace's own rules refuse"}
+}
 
 _MANAGER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MANAGER}
 _MEMBER_ENDPOINT: _Responses = {**_NO_IDENTITY, **_NOT_A_MEMBER}
@@ -424,9 +426,9 @@ async def preview_invite(
 @router.post(
     "/invites/{code}/redeem",
     responses={
-        403: {"description": "redeeming an invite requires proving Identity (NIP-98)"},
-        404: {"description": "no such invite"},
-        410: {"description": "that invite admits nobody: revoked, expired or exhausted"},
+        403: {"description": "redeeming an Invite requires proving Identity (NIP-98)"},
+        404: {"description": "no such Invite"},
+        410: {"description": "that Invite admits nobody: revoked, expired or exhausted"},
     },
 )
 async def redeem_invite(
@@ -470,7 +472,7 @@ class SetRoleBody(BaseModel):
 
 @router.patch(
     "/workspaces/{slug}/members/{member_pubkey}",
-    responses={**_MANAGER_ENDPOINT, **_MEMBER_RULE},
+    responses={**_MANAGER_ENDPOINT, **_REFUSED_BY_RULES},
 )
 async def set_workspace_member_role(
     slug: str,
@@ -492,7 +494,7 @@ async def set_workspace_member_role(
 
 @router.delete(
     "/workspaces/{slug}/members/{member_pubkey}",
-    responses={**_MANAGER_ENDPOINT, **_MEMBER_RULE},
+    responses={**_MANAGER_ENDPOINT, **_REFUSED_BY_RULES},
 )
 async def remove_workspace_member(
     slug: str,
@@ -582,7 +584,7 @@ async def list_channels(
 
 @router.post(
     "/workspaces/{slug}/channels/{channel_id}/members",
-    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER, **_MEMBER_RULE},
+    responses={**_NO_IDENTITY, **_NOT_A_CHANNEL_MANAGER, **_REFUSED_BY_RULES},
 )
 async def add_channel_member(
     slug: str,
