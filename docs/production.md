@@ -59,15 +59,21 @@ Nothing beyond the repository and these files, all mode `600`, none committed:
 Environment **`studio-prd`**, with the repository owner as required reviewer,
 holding:
 
-- `TS_AUTHKEY_PRD` — reusable, ephemeral Tailscale key for the CD identity.
+- `TS_AUTHKEY_PRD` — reusable, ephemeral Tailscale key tagged `tag:cd-prd`.
+  **It expires** (the current one, generated 2026-09-17 for 90 days, on
+  2026-12-16): Promote then fails at "Connect to Tailscale". Renew before that
+  — Tailscale admin → Settings → Keys, same flags and tag — and replace the
+  secret with `gh secret set TS_AUTHKEY_PRD --env studio-prd`.
 - `STUDIO_CD_SSH_KEY` — deploy key allowed to `ssh oute-server` and `lxc exec`.
+  Production has its own (`studio-prd-deploy` in `authorized_keys`), so it can
+  be revoked without touching `studio-test`'s CD.
 - `STUDIO_PRD_SSH_HOST` — the SSH target for `oute-server`.
 
-Referenced by name only, as every CD credential is. The SSH deploy key may be
-the same one `studio-test` uses — it reaches `oute-server`, and from there any
-container — so what separates production is this Environment's required
-reviewer, not the key. The reviewer is repository configuration, not code:
-confirm it under Settings → Environments before the first promotion.
+Referenced by name only, as every CD credential is. The deploy key reaches
+`oute-server`, and from there any container, so what separates production is
+this Environment's required reviewer, not the key. The reviewer is repository
+configuration, not code: confirm it under Settings → Environments before the
+first promotion.
 
 ## Releasing
 
