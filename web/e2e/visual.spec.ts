@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
  * Flow 10 (#73): the MVP screens against their baselines, pixel for pixel.
  *
  * Runs over preview.html — the real components on fixed, signed fixtures (src/preview) — so
- * every run draws exactly the same bytes: same data, same clock (UTC), same fonts, no relay,
+ * every run draws exactly the same bytes: same data, same clock (UTC, fixed at 10:00), same fonts, no relay,
  * no Firebase. A baseline is accepted only after being checked against docs/UI/reference; see
  * docs/UI/REFERENCE.md ("Aceite visual"). Self-skips unless STUDIO_PREVIEW_URL points at a
  * dev server (`bun run test:visual` starts one).
@@ -60,6 +60,9 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
           const params = new URLSearchParams(entry.query ?? "");
           params.set("screen", entry.screen);
           if (dark) params.set("theme", "dark");
+          // "last reply 12m ago" is measured from now: pin it to where the reference captures
+          // stand, 10:00 on the fixtures' day (src/preview/fixtures.ts), so the text never drifts.
+          await page.clock.setFixedTime(new Date("2026-09-11T10:00:00Z"));
           await page.goto(`${previewUrl}/preview.html?${params}`);
           await page.waitForSelector("html[data-preview-ready]");
           await page.evaluate(() => document.fonts.ready);

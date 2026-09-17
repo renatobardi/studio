@@ -63,7 +63,7 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
     steps: [...ONBOARDING_TO.download, { type: [PASSPHRASE_FIELD, PASSPHRASE] }, { click: "text=Verify" }, { waitFor: "text=Connect" }],
   },
   channel: { mount: "app", steps: [] },
-  "channel-thread": { mount: "app", steps: [{ click: "text=4 replies" }] },
+  "channel-thread": { mount: "app", steps: [{ click: ".thread-open" }] },
   "channel-members": { mount: "app", steps: [{ click: '[aria-label="Members"]' }] },
   dm: { mount: "app", steps: [{ click: '[data-testid="conversation-list-item"]' }] },
   "new-message": { mount: "app", steps: [{ click: '[data-testid="dm-new-conversation"]' }] },

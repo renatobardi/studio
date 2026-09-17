@@ -5,8 +5,8 @@ import {
   buildReaction,
   buildReactionRemoval,
   buildThreadReply,
-  countThreadReplies,
   groupReactions,
+  summarizeThread,
 } from "./channelEvents";
 
 function sign(template: { kind: number; tags: string[][]; content: string }, secretKey: Uint8Array): VerifiedEvent {
@@ -102,13 +102,35 @@ describe("groupReactions", () => {
   });
 });
 
-describe("countThreadReplies", () => {
+describe("summarizeThread", () => {
+  const at = (author: Uint8Array, root: string, createdAt: number) =>
+    finalizeEvent({ kind: 1111, tags: [["E", root]], content: "r", created_at: createdAt }, author);
+
   test("counts kind 1111 events whose E tag matches the root", () => {
     const sk = generateSecretKey();
-    const reply1 = sign({ kind: 1111, tags: [["E", "root1"]], content: "a" }, sk);
-    const reply2 = sign({ kind: 1111, tags: [["E", "root1"]], content: "b" }, sk);
-    const otherRoot = sign({ kind: 1111, tags: [["E", "root2"]], content: "c" }, sk);
+    const replies = [at(sk, "root1", 10), at(sk, "root1", 20), at(sk, "root2", 30)];
 
-    expect(countThreadReplies([reply1, reply2, otherRoot], "root1")).toBe(2);
+    expect(summarizeThread(replies, "root1").count).toBe(2);
+  });
+
+  test("with no replies there is nothing to summarise", () => {
+    expect(summarizeThread([], "root1")).toEqual({ count: 0, participantPubkeys: [], lastReplyAt: null });
+  });
+
+  test("participants are distinct, latest reply first, at most three; lastReplyAt is the newest reply", () => {
+    const [ana, sprig, tomas, marina] = [0, 1, 2, 3].map(() => generateSecretKey());
+    const replies = [
+      at(marina!, "root1", 5),
+      at(ana!, "root1", 20),
+      at(sprig!, "root1", 21),
+      at(ana!, "root1", 48),
+      at(tomas!, "root1", 34),
+    ];
+
+    expect(summarizeThread(replies, "root1")).toEqual({
+      count: 5,
+      participantPubkeys: [getPublicKey(ana!), getPublicKey(tomas!), getPublicKey(sprig!)],
+      lastReplyAt: 48,
+    });
   });
 });

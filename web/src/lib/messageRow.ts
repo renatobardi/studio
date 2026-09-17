@@ -11,3 +11,13 @@ export function clockTime(createdAt: number, timeZone?: string): string {
 export function isContinuation(previous: { pubkey: string } | undefined, current: { pubkey: string }): boolean {
   return previous?.pubkey === current.pubkey;
 }
+
+/** "12m ago" — how long before `now` something happened, in the prototype's short form
+ * ("just now", "12m ago", "3h ago", "2d ago"), rounded down. Both in seconds. */
+export function relativeTime(at: number, now: number): string {
+  const seconds = now - at;
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}

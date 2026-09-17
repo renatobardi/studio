@@ -1,12 +1,12 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import {
   buildMessage,
   buildReaction,
   buildReactionRemoval,
-  countThreadReplies,
   groupReactions,
+  summarizeThread,
   type TargetRef,
 } from "../../lib/channelEvents";
 import {
@@ -22,7 +22,7 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
-import { isContinuation } from "../../lib/messageRow";
+import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
   MAX_UPLOAD_BYTES,
@@ -37,6 +37,7 @@ import { publishFailureMessage } from "../../lib/relayReasons";
 import { messagesWithDivider, type OpenedChannel } from "../../lib/unread";
 import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
+import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { MessageRow } from "./MessageRow";
 import { AttachmentImage } from "./AttachmentImage";
@@ -54,6 +55,8 @@ function imageDimensions(url: string): Promise<string | undefined> {
     image.src = url;
   });
 }
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 /** How close to the top counts as asking for older Messages (story 30, #1). */
 const TOP_OF_HISTORY_PX = 48;
@@ -106,6 +109,12 @@ export function Timeline({
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // "last reply 12m ago" is read against this, refreshed each minute so it does not go stale.
+  const [now, setNow] = useState(nowSeconds);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(nowSeconds()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const heightBeforePage = useRef<number | null>(null);
 
   // Older Messages prepend, which would otherwise leave the view pinned at the top and pull
@@ -229,7 +238,8 @@ export function Timeline({
             const deletionsForMessage = deletions.filter((d) =>
               d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
             );
-            const replyCount = countThreadReplies(replies, message.id);
+            const thread = summarizeThread(replies, message.id);
+            const replyCount = thread.count;
             const continuation = isContinuation(sorted[index - 1], message);
             const author = displayName(profiles, message.pubkey);
             let rowClass = "";
@@ -285,7 +295,25 @@ export function Timeline({
                         onClick={() => onOpenThread({ ...target, content: message.content })}
                         data-testid="open-thread"
                       >
-                        {replyCountLabel(replyCount)}
+                        <span className="thread-open-avatars">
+                          {thread.participantPubkeys.map((participant) => (
+                            <Avatar
+                              key={participant}
+                              profile={profiles.get(participant)}
+                              name={displayName(profiles, participant)}
+                              size={24}
+                            />
+                          ))}
+                        </span>
+                        <span className="thread-open-text">
+                          <span>{replyCountLabel(replyCount)}</span>
+                          {thread.lastReplyAt !== null && (
+                            <>
+                              <span className="thread-open-dot">·</span>
+                              <span className="thread-open-last">last reply {relativeTime(thread.lastReplyAt, now)}</span>
+                            </>
+                          )}
+                        </span>
                       </button>
                     </div>
                   )}
