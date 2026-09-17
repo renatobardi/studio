@@ -3,6 +3,7 @@ import { Sakura } from "../../components/brand/Sakura";
 import type { Theme } from "../../lib/appearance";
 import type { ConnectionState } from "../../lib/relay";
 import { initials, type SidebarGroup, type SidebarItem, type SidebarMode } from "../../lib/sidebar";
+import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { ConnectionBadge } from "./ConnectionBadge";
 
 /** The persistent 256px sidebar of the prototype: grouped destinations above, the account —
@@ -12,6 +13,8 @@ export function Sidebar({
   groups,
   onSelect,
   onSelectMode,
+  canCreateChannels,
+  onCreateChannel,
   ownName,
   workspaceName,
   role,
@@ -23,6 +26,8 @@ export function Sidebar({
   groups: SidebarGroup[];
   onSelect: (item: SidebarItem) => void;
   onSelectMode: (mode: SidebarMode) => void;
+  canCreateChannels: boolean;
+  onCreateChannel: () => void;
   ownName: string;
   workspaceName: string;
   role: string;
@@ -57,7 +62,9 @@ export function Sidebar({
                   {item.unread && <span className="unread-dot" aria-label="unread" />}
                 </button>
               ))}
-              {group.items.length === 0 && <p className="sidebar-empty">No Channels yet.</p>}
+              {group.items.length === 0 && (
+                <ChannelsEmptyState className="sidebar-empty" canCreate={canCreateChannels} onCreate={onCreateChannel} />
+              )}
             </nav>
           </section>
         ))}

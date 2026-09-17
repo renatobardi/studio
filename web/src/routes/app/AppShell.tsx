@@ -5,6 +5,7 @@ import {
   accessLostAfterRefresh,
   canManageChannels,
   initialSelection,
+  isWorkspaceManager,
   keepSelection,
 } from "../../lib/channelAccess";
 import {
@@ -19,7 +20,8 @@ import { humanRelayReason } from "../../lib/relayReasons";
 import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { sidebarGroups, type SidebarMode } from "../../lib/sidebar";
-import { AdminPane } from "./AdminPane";
+import { AdminPane, type AdminTab } from "./AdminPane";
+import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { ChannelView } from "./ChannelView";
 import { DirectMessagesPane } from "./DirectMessagesPane";
 import { SettingsView } from "./SettingsView";
@@ -59,6 +61,10 @@ export function AppShell({
   const [readAt, setReadAt] = useState<ReadState | null>(null);
   const [activityAt, setActivityAt] = useState<ReadState>({});
   const [mode, setMode] = useState<SidebarMode>("channels");
+  /** The Admin tab to open on — Channels when arriving from an empty Channel list (#136).
+   * `visit` changes on each such arrival, so the console re-opens on that tab even
+   * when it is already on screen. */
+  const [adminEntry, setAdminEntry] = useState<{ tab?: AdminTab; visit: number }>({ visit: 0 });
   /** Theme, density and font scale live here so the sidebar's theme toggle and
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
@@ -208,6 +214,15 @@ export function AppShell({
   const unread = unreadChannelIds(readAt ?? {}, activityAt);
   const canManage = canManageChannels(workspace.role, channels ?? []);
   const selectedChannel = channels?.find((c) => c.id === selectedChannelId) ?? null;
+  const canCreateChannels = isWorkspaceManager(workspace.role);
+  const openAdminChannels = () => {
+    setAdminEntry((entry) => ({ tab: "channels", visit: entry.visit + 1 }));
+    setMode("admin");
+  };
+  const selectMode = (next: SidebarMode) => {
+    setAdminEntry((entry) => ({ visit: entry.visit }));
+    setMode(next);
+  };
 
   return (
     <div className="app-shell">
@@ -221,9 +236,11 @@ export function AppShell({
         })}
         onSelect={(item) => {
           if (item.channelId) selectChannel(item.channelId);
-          setMode(item.mode);
+          selectMode(item.mode);
         }}
-        onSelectMode={setMode}
+        onSelectMode={selectMode}
+        canCreateChannels={canCreateChannels}
+        onCreateChannel={openAdminChannels}
         ownName={pubkey ? displayName(ownProfiles, pubkey) : "…"}
         workspaceName={workspace.name}
         role={workspace.role}
@@ -263,7 +280,9 @@ export function AppShell({
                 mediaUrl={workspace.media_url}
               />
             )}
-            {channels?.length === 0 && <p className="meta app-notice">No Channels yet.</p>}
+            {channels?.length === 0 && (
+              <ChannelsEmptyState className="meta app-notice" canCreate={canCreateChannels} onCreate={openAdminChannels} />
+            )}
           </>
         )}
         {mode === "dms" && pubkey && (
@@ -277,7 +296,14 @@ export function AppShell({
         )}
         {mode === "admin" && canManage && (
           <div className="app-scroll">
-            <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />
+            <AdminPane
+              key={adminEntry.visit}
+              client={client}
+              signer={signer}
+              slug={workspace.slug}
+              workspaceRole={workspace.role}
+              initialTab={adminEntry.tab}
+            />
           </div>
         )}
         {mode === "settings" && pubkey && (
