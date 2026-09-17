@@ -9,6 +9,7 @@ import {
   summarizeThread,
   type TargetRef,
 } from "../../lib/channelEvents";
+import { nowSeconds } from "../../lib/clock";
 import {
   addDraft,
   canSendWithDrafts,
@@ -54,8 +55,6 @@ function imageDimensions(url: string): Promise<string | undefined> {
     image.src = url;
   });
 }
-
-const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 /** How close to the top counts as asking for older Messages (story 30, #1). */
 const TOP_OF_HISTORY_PX = 48;
