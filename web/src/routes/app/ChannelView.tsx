@@ -20,7 +20,7 @@ type SidePane = { type: "thread"; root: TargetRef & { content: string; created_a
 export function ChannelView({
   client,
   channel,
-  pubkey,
+  ownPubkey,
   signer,
   mediaUrl,
   opened,
@@ -31,7 +31,8 @@ export function ChannelView({
 }: Readonly<{
   client: RelayClient;
   channel: ChannelOut;
-  pubkey: string;
+  /** The Identity this browser signs with. */
+  ownPubkey: string;
   signer: Signer;
   mediaUrl: string;
   opened: OpenedChannel | null;
@@ -110,7 +111,7 @@ export function ChannelView({
               client={client}
               channelId={channelId}
               channelName={channel.name}
-              pubkey={pubkey}
+              ownPubkey={ownPubkey}
               signer={signer}
               mediaUrl={mediaUrl}
               messages={feed.messages}
