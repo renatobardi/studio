@@ -5,9 +5,9 @@ it. Issue #51.
 
 ## The chain
 
-1. **PR opened** → `ci.yml` runs `test`, `web`, `gates` and `sonar` (the
-   SonarCloud scan, which waits for the quality gate); CodeRabbit posts (or
-   skips) a review.
+1. **PR opened** → `ci.yml` runs `test`, `web`, `visual` (flow 10 against
+   the `-linux` baselines), `gates` and `sonar` (the SonarCloud scan, which
+   waits for the quality gate); CodeRabbit posts (or skips) a review.
 2. **Merge to `main`** is blocked by the `main` ruleset until the required
    checks pass (see below).
 3. **CI runs again on `main`.** Its conclusion — not the push — is what
@@ -48,10 +48,10 @@ it. Issue #51.
    390×844, light and dark, into `web/test-results/visual-live/` — uploaded
    by the screenshots artifact — for comparison by hand against
    `docs/UI/reference`. Flow 10 (`visual.spec.ts`) compares preview.html
-   against committed baselines and runs only where a dev server exists
-   (`bun run test:visual`), never in CD: the production build has no
-   preview page, and a baseline is accepted by a person, not by a green run
-   (`docs/UI/REFERENCE.md`, "Aceite visual").
+   against committed baselines and runs only where a dev server exists —
+   locally, and in CI's `visual` job (see "The visual gate") — never in CD:
+   the production build has no preview page, and a baseline is accepted by a
+   person, not by a green run (`docs/UI/REFERENCE.md`, "Aceite visual").
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
@@ -59,7 +59,9 @@ mutable branch tip.
 
 ## Required checks on `main`
 
-The ruleset requires `test`, `web`, `gates` and `sonar`, a pull request,
+The ruleset requires `test`, `web`, `gates` and `sonar` — and `visual` once
+the owner runs `scripts/ops/require-visual-check.sh` (see "The visual gate") —
+a pull request,
 resolved conversations, no force-push and no branch deletion. `sonar`
 replaced `SonarCloud Code Analysis` when the scan moved into CI (#76): with
 automatic analysis off, that check run is no longer the thing that carries
@@ -93,6 +95,33 @@ that is the condition the original requirement was really written for.
 reports `Review skipped: manual review required for this OSS repository` and
 still marks the check green — a green that carries no review, so requiring it
 would only manufacture false assurance.
+
+## The visual gate
+
+Issue #155. Flow 10 had been a gate only on paper since #73: nothing set
+`STUDIO_PREVIEW_URL`, so it ran when someone remembered to. `ci.yml` job
+`visual` runs it on every pull request (and on `main`) against the `-linux`
+baselines, and a screen whose pixels differ by more than `maxDiffPixelRatio`
+turns the job red; the `actual`/`expected`/`diff` PNGs go up as the
+`visual-diffs` artifact.
+
+It runs through `web/tools/visual-linux.sh`, the same script a person uses to
+draw those baselines, inside the pinned
+`mcr.microsoft.com/playwright:v1.63.0-noble` image on linux/amd64 — not
+`setup-bun` on the runner. A baseline drawn with one Chromium and compared with
+another would fail on antialiasing alone, and a gate that is red for no reason
+gets bypassed. The image tag follows `@playwright/test` in `bun.lock`: bump
+both together and redraw the `-linux` baselines.
+
+A red `visual` is not fixed by `--update-snapshots`: a baseline is redrawn only
+for a screen the change meant to alter, and checked against
+`docs/UI/reference/` first (`docs/UI/REFERENCE.md`, "Aceite visual").
+
+**Not required yet.** Making it required is a ruleset edit, done by the owner
+after the job has run green on `main`:
+`scripts/ops/require-visual-check.sh` adds `visual` to the `main` ruleset's
+required checks, keeping the others. Requiring it before the job exists on
+`main` would block every pull request on a check nobody posts.
 
 ## The Sonar gate
 

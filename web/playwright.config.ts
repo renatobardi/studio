@@ -32,6 +32,15 @@ export default defineConfig({
           url: `${previewUrl}/preview.html`,
           reuseExistingServer: true,
           timeout: 60_000,
+          // preview.html mounts AuthScreen, which imports lib/firebase — and getAuth throws
+          // auth/invalid-api-key at load without a key. Placeholders, never real config: the
+          // preview talks to no Firebase, and CI has none to give it (#155).
+          env: {
+            VITE_FIREBASE_API_KEY: "preview-placeholder",
+            VITE_FIREBASE_AUTH_DOMAIN: "preview-placeholder.invalid",
+            VITE_FIREBASE_PROJECT_ID: "preview-placeholder",
+            VITE_FIREBASE_APP_ID: "preview-placeholder",
+          },
         },
       }
     : {}),

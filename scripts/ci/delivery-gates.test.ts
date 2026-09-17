@@ -13,6 +13,7 @@ type Step = {
   name?: string
   run?: string
   uses?: string
+  if?: string
   env?: Record<string, string>
   with?: Record<string, string>
 }
@@ -102,7 +103,24 @@ describe('ci.yml', () => {
   test('publishes the job names the main ruleset requires', () => {
     // scripts/ops/apply-main-ruleset.sh requires these contexts by name —
     // renaming a job here silently unprotects main.
-    expect(Object.keys(ci.jobs).sort()).toEqual(['gates', 'sonar', 'test', 'web'])
+    expect(Object.keys(ci.jobs).sort()).toEqual(['gates', 'sonar', 'test', 'visual', 'web'])
+  })
+})
+
+// Flow 10 on every pull request (issue #155). CI runs the same script a person
+// runs to draw the -linux baselines, so the two can never compare against
+// different Chromium builds; when it fails, the diff PNGs are the evidence.
+describe('ci.yml visual job', () => {
+  const visual = ci.jobs.visual
+
+  test('runs flow 10 through the script that draws the -linux baselines', () => {
+    expect(commandsOf(visual)).toContain('web/tools/visual-linux.sh')
+  })
+
+  test('uploads the diffs when the comparison fails', () => {
+    const upload = visual.steps.find((step) => (step.uses ?? '').includes('upload-artifact'))
+    expect(upload?.if).toBe('failure()')
+    expect(`${upload?.with?.path ?? ''}`).toContain('web/test-results')
   })
 })
 
