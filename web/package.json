@@ -8,12 +8,13 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "bun test src",
-    "test:coverage": "bun test src --coverage --coverage-reporter=lcov",
+    "test": "bun test src tools",
+    "test:coverage": "bun test src tools --coverage --coverage-reporter=lcov",
     "test:e2e": "playwright test",
     "test:visual": "STUDIO_PREVIEW_URL=http://localhost:5173 playwright test e2e/visual.spec.ts",
     "test:visual:linux": "tools/visual-linux.sh",
-    "capture:reference": "node tools/capture-reference.mjs"
+    "capture:reference": "node tools/capture-reference.mjs",
+    "compare:reference": "node tools/compare-reference.mjs"
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",

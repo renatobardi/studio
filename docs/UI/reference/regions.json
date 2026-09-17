@@ -1,0 +1,581 @@
+{
+  "threshold": 0.1,
+  "screens": {
+    "auth-signin": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "auth-signin-error": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": []
+      }
+    },
+    "auth-signup": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "auth-reset": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": []
+      }
+    },
+    "onboarding-invite": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "onboarding-profile": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "onboarding-avatar": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": []
+      }
+    },
+    "onboarding-backup": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "onboarding-backup-revealed": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": []
+      }
+    },
+    "onboarding-backup-options": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": []
+      }
+    },
+    "onboarding-download": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [],
+        "mobile": []
+      }
+    },
+    "onboarding-setup": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 300,
+            "y": 176,
+            "width": 840,
+            "height": 400,
+            "label": "agent harness cards and 'Looking for another harness?'"
+          }
+        ]
+      }
+    },
+    "channel": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 1222,
+            "y": 2,
+            "width": 108,
+            "height": 42,
+            "label": "header: huddle, screen share, canvas"
+          },
+          {
+            "x": 270,
+            "y": 374,
+            "width": 1156,
+            "height": 84,
+            "label": "message: huddle in progress"
+          },
+          {
+            "x": 264,
+            "y": 666,
+            "width": 1170,
+            "height": 50,
+            "label": "quick bots banner"
+          },
+          {
+            "x": 268,
+            "y": 860,
+            "width": 322,
+            "height": 38,
+            "label": "bottom bar: agents working, GIF, quick bots"
+          }
+        ],
+        "mobile": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 280,
+            "y": 2,
+            "width": 110,
+            "height": 44,
+            "label": "header: huddle, screen share, canvas"
+          },
+          {
+            "x": 264,
+            "y": 444,
+            "width": 122,
+            "height": 186,
+            "label": "quick bots banner"
+          },
+          {
+            "x": 270,
+            "y": 808,
+            "width": 120,
+            "height": 30,
+            "label": "bottom bar: agents working, GIF, quick bots"
+          }
+        ]
+      }
+    },
+    "channel-thread": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 878,
+            "y": 2,
+            "width": 72,
+            "height": 42,
+            "label": "header: huddle, canvas"
+          },
+          {
+            "x": 270,
+            "y": 374,
+            "width": 766,
+            "height": 84,
+            "label": "message: huddle in progress"
+          },
+          {
+            "x": 264,
+            "y": 666,
+            "width": 788,
+            "height": 50,
+            "label": "quick bots banner"
+          },
+          {
+            "x": 268,
+            "y": 860,
+            "width": 322,
+            "height": 38,
+            "label": "bottom bar: agents working, GIF, quick bots"
+          }
+        ],
+        "mobile": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          }
+        ]
+      }
+    },
+    "channel-members": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 958,
+            "y": 2,
+            "width": 72,
+            "height": 42,
+            "label": "header: huddle, canvas"
+          },
+          {
+            "x": 270,
+            "y": 374,
+            "width": 846,
+            "height": 84,
+            "label": "message: huddle in progress"
+          },
+          {
+            "x": 264,
+            "y": 666,
+            "width": 868,
+            "height": 50,
+            "label": "quick bots banner"
+          },
+          {
+            "x": 268,
+            "y": 860,
+            "width": 322,
+            "height": 38,
+            "label": "bottom bar: agents working, GIF, quick bots"
+          },
+          {
+            "x": 1144,
+            "y": 254,
+            "width": 296,
+            "height": 116,
+            "label": "members: Agents section"
+          }
+        ],
+        "mobile": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 90,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 90,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 90,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 90,
+            "y": 254,
+            "width": 300,
+            "height": 116,
+            "label": "members: Agents section"
+          }
+        ]
+      }
+    },
+    "dm": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 1356,
+            "y": 2,
+            "width": 42,
+            "height": 42,
+            "label": "header: search"
+          },
+          {
+            "x": 268,
+            "y": 864,
+            "width": 104,
+            "height": 30,
+            "label": "bottom bar: Start huddle"
+          }
+        ],
+        "mobile": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 308,
+            "y": 2,
+            "width": 38,
+            "height": 42,
+            "label": "header: search"
+          },
+          {
+            "x": 270,
+            "y": 810,
+            "width": 100,
+            "height": 30,
+            "label": "bottom bar: Start huddle"
+          }
+        ]
+      }
+    },
+    "settings-appearance": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 256,
+            "y": 138,
+            "width": 208,
+            "height": 128,
+            "label": "settings nav: Notifications, Voice, Custom emoji, Experiments"
+          },
+          {
+            "x": 256,
+            "y": 276,
+            "width": 208,
+            "height": 310,
+            "label": "settings nav: Communities and App sections"
+          }
+        ],
+        "mobile": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 256,
+            "y": 138,
+            "width": 134,
+            "height": 128,
+            "label": "settings nav: Notifications, Voice, Custom emoji, Experiments"
+          },
+          {
+            "x": 256,
+            "y": 276,
+            "width": 134,
+            "height": 310,
+            "label": "settings nav: Communities and App sections"
+          }
+        ]
+      }
+    },
+    "settings-profile": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 294,
+            "label": "sidebar: search and Inbox/Pulse/Projects/Agents/Workflows/Skills/Compute"
+          },
+          {
+            "x": 0,
+            "y": 302,
+            "width": 256,
+            "height": 96,
+            "label": "sidebar: Starred"
+          },
+          {
+            "x": 0,
+            "y": 512,
+            "width": 256,
+            "height": 94,
+            "label": "sidebar: Forums"
+          },
+          {
+            "x": 256,
+            "y": 138,
+            "width": 208,
+            "height": 128,
+            "label": "settings nav: Notifications, Voice, Custom emoji, Experiments"
+          },
+          {
+            "x": 256,
+            "y": 276,
+            "width": 208,
+            "height": 310,
+            "label": "settings nav: Communities and App sections"
+          }
+        ]
+      }
+    }
+  }
+}

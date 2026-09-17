@@ -133,6 +133,55 @@ rastreadas em #142–#153. Os baselines de #65 foram gerados no macOS
 (`-darwin`) e entram no PR para conferência do dono no review — a aceitação é dele, não do
 run. `--update-snapshots` para "deixar o CI verde" não é aceite.
 
+### Baseline × referência (issue #156)
+
+O flow 10 compara o app com o app; `web/tools/compare-reference.mjs` mede quanto cada baseline
+se afasta de `docs/UI/reference/<viewport>/<id>.png`. Para cada id de `matrix.json` com baseline
+(desktop, `-dark` e mobile), gera um PNG de diff e a razão de pixels diferentes:
+
+```sh
+cd web
+bun run compare:reference                        # baselines desta plataforma (-darwin no macOS)
+bun run compare:reference -- --platform linux    # os -linux, como o CI
+```
+
+Saída em `web/test-results/reference-compare/`: `report.md` (tabela por tela, ids sem baseline no
+fim) e `<viewport>-<id>.png` — referência esmaecida, pixels diferentes em vermelho, regiões
+ignoradas em azul. Um pixel difere quando um canal RGB anda mais que `threshold` (0–1). Tamanhos
+diferentes entram no relatório, sem métrica. Sem dependência nova: o PNG é lido pelo pngjs que o
+`playwright-core` já exporta (`playwright-core/lib/utilsBundle`).
+
+Regiões fora do MVP e o veredito do dono ficam em `docs/UI/reference/regions.json`, versionado:
+
+```json
+{
+  "threshold": 0.1,
+  "screens": {
+    "channel": {
+      "faithful": false,
+      "tolerance": null,
+      "ignore": {
+        "desktop": [{ "x": 0, "y": 0, "width": 256, "height": 294, "label": "sidebar: search and Inbox/…/Compute" }],
+        "mobile": []
+      }
+    }
+  }
+}
+```
+
+- `ignore` — retângulos em px da captura (1×), por viewport; a captura `-dark` usa os do id claro.
+  Declarados olhando a referência: busca e nav (Inbox…Compute), Starred e Forums da sidebar,
+  huddle/canvas/busca no cabeçalho, card de huddle, banner de quick bots, barra de agentes e
+  "Start huddle", seção Agents dos membros, seções de Settings além de Appearance/Profile, cards de
+  harness em onboarding-setup. Tela ausente do JSON: nada ignorado, só relatório.
+- `faithful` / `tolerance` — **só relatório por enquanto**: todas as telas saem `false`/`null`.
+  Quando o dono decide que uma tela é fiel, marca `faithful: true` e a `tolerance` (razão 0–1;
+  `null` = zero); aí a tela acima da tolerância, ou com tamanho diferente, faz o script sair 1.
+
+No CI o job `visual` roda a comparação dos `-linux` **antes** do flow 10 (que roda como root no
+container e limpa `web/test-results`) e publica `report.md` + diffs no artefato `reference-compare`
+em todo run (`if: always()`). O flow 10 roda mesmo se a comparação falhar.
+
 ## Teclado virtual (issue #72) — checklist para aparelho real
 
 Sem aparelho na sessão de implementação, a verificação é do dono. Em um iPhone (Safari) e um
