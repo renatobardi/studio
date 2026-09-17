@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
-import type { ChannelOut } from "../../lib/api";
+import type { ChannelOut, WorkspaceMemberOut } from "../../lib/api";
+import { manageableChannels, rosterPubkeys } from "../../lib/channelAccess";
 import type { Signer } from "../../lib/custody";
 import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
@@ -23,6 +24,9 @@ export function ChannelView({
   signer,
   mediaUrl,
   opened,
+  slug,
+  workspaceRole,
+  workspaceMembers,
 }: Readonly<{
   client: RelayClient;
   channel: ChannelOut;
@@ -30,6 +34,9 @@ export function ChannelView({
   signer: Signer;
   mediaUrl: string;
   opened: OpenedChannel | null;
+  slug: string;
+  workspaceRole: string;
+  workspaceMembers: WorkspaceMemberOut[];
 }>) {
   const channelId = channel.id;
   const feed = useChannelFeed(client, channelId);
@@ -37,6 +44,8 @@ export function ChannelView({
   const [sidePane, setSidePane] = useState<SidePane>(null);
   /** The Channel's roster (kind 39002) — the header pill counts it and MembersPane lists it (#143). */
   const memberPubkeys = useChannelRoster(client, channelId);
+  /** The Channel's admins (kind 39001), which MembersPane labels Admin (#145). */
+  const [channelAdmins, setChannelAdmins] = useState<string[]>([]);
   /** The Channel's own width, from the grid it lays out in — measured, not the viewport's,
    * because the sidebar and the shell zoom both eat into it (#72). */
   const gridRef = useRef<HTMLDivElement>(null);
@@ -54,6 +63,11 @@ export function ChannelView({
     measure();
     return () => observer.disconnect();
   }, []);
+
+  useEffect(
+    () => client.subscribe([{ kinds: [39001], "#d": [channelId] }], { onEvent: (event) => setChannelAdmins(rosterPubkeys(event)) }),
+    [client, channelId],
+  );
 
   const layout = channelLayout(width, { thread: sidePane?.type === "thread", members: sidePane?.type === "members" });
 
@@ -121,7 +135,13 @@ export function ChannelView({
         {sidePane?.type === "members" && (
           <MembersPane
             client={client}
+            signer={signer}
+            slug={slug}
+            channelId={channelId}
             memberPubkeys={memberPubkeys ?? []}
+            channelAdmins={channelAdmins}
+            workspaceMembers={workspaceMembers}
+            canManage={manageableChannels(workspaceRole, [channel]).length > 0}
             overlay={layout.membersOverlay}
             onClose={() => setSidePane(null)}
           />

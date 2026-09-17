@@ -339,6 +339,9 @@ export function AppShell({
                 signer={signer}
                 mediaUrl={workspace.media_url}
                 opened={opened}
+                slug={workspace.slug}
+                workspaceRole={workspace.role}
+                workspaceMembers={members}
               />
             )}
             {channels?.length === 0 && (
