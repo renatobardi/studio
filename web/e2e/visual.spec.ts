@@ -33,6 +33,7 @@ const SCREENS: { id: string; screen: string; mobile?: boolean; dark?: boolean; q
   { id: "channel-thread", screen: "channel-thread", mobile: true, dark: true },
   { id: "channel-members", screen: "channel-members", mobile: true },
   { id: "dm", screen: "dm", mobile: true, dark: true },
+  { id: "profile", screen: "profile", mobile: true },
   { id: "settings-appearance", screen: "settings", mobile: true, dark: true },
   { id: "settings-profile", screen: "settings-profile" },
   // Appearance at its extremes: nothing may overflow or clip (#71).

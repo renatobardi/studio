@@ -211,6 +211,8 @@ export function App() {
         <AppShell
           workspace={workspace}
           signer={signer}
+          user={user}
+          accountPassword={accountPassword}
           onSignOut={async () => {
             // What could not be wiped is said out loud on the screen this
             // returns to, rather than passed off as a clean sign-out (#39).

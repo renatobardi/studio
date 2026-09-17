@@ -47,7 +47,7 @@ mais `reference/matrix.json` (o patch de estado exato de cada tela).
 | onboarding-config | ✓ | | | app: "You're in …" + Finish (selects de harness são futuro) |
 | channel, channel-thread, channel-members | ✓ | ✓ | channel, thread | sim |
 | dm | ✓ | ✓ | ✓ | sim |
-| profile | ✓ | ✓ | | sim (`ProfileEditor` — edição própria; perfil de membro em `MemberProfile`) |
+| profile | ✓ | ✓ | | sim (`ProfileScreen` — a própria, com a edição em "Edit profile" (#150); perfil de membro em `MemberProfile`) |
 | settings-appearance, settings-profile | ✓ | appearance | appearance | sim |
 
 Fora do MVP e **não** capturados: Inbox, Pulse, Projects, Agents, Workflows, Skills, Compute,
@@ -87,7 +87,7 @@ Settings além de Appearance/Profile, popup Google simulado.
    aceite não é gravado no servidor. Workspaces abertos: #159.
 5. **Rodapé da sidebar e Sign out (#148).** O bloco de conta abre só Profile, Settings e Sign out
    ("Run onboarding again" e "Sign in screen" do HTML são atalhos do protótipo). Profile abre
-   Settings › Profile (`ProfileEditor`) até a tela `profile` existir (#150). O ponto de presença
+   a tela `profile` (`ProfileScreen`, #150). O ponto de presença
    é a conexão com o relay (verde só em `open`); `connecting`/`reconnecting`/`closed` viram o
    banner de `relayReasons.ts`. O diálogo "Sign out and wipe all data?" mantém checkbox e frase
    "wipe all my data", mas **omite a linha da chave privada com Reveal**: o `Signer` nunca entrega
@@ -114,6 +114,24 @@ Settings além de Appearance/Profile, popup Google simulado.
    Channel e adiciona pela mesma rota do Admin › Channels, escolhendo entre os Workspace Members
    por nome (#47), nunca por pubkey. Omitidos o ícone de configurações (não há tela de ajustes de
    Channel no MVP) e "Archived members" (não há Member arquivado no domínio).
+
+8. **Settings › Profile e a tela `profile` (#150).** Settings › Profile só lê (PROFILE INFO e
+   IDENTITY), como no HTML; a edição de nome, bio e avatar vive na tela `profile`, onde
+   "Edit profile" troca a mesma coluna pelo formulário — o protótipo manda o "Edit profile" para
+   Settings, que lá também só lê, então não há no HTML lugar nenhum que edite depois do
+   onboarding. Public key aparece como `npub…` (`shortNpub`), nunca em hex. "Private key backup"
+   diz Verified quando a Account guarda um Key Backup (`GET /api/account/key-backup`), que só
+   chega ao servidor depois de verificado (#36); "Manage" reabre os mesmos cartões do onboarding
+   (`KeyBackupSteps.tsx`) para criar e verificar um novo. Sob NIP-07 a linha diz que a extensão
+   guarda a chave e não há o que gerenciar. SIGN OUT traz o aviso do HTML e o "Delete my data"
+   tintado, que abre o mesmo `SignOutDialog` do menu da conta (#148); "Send feedback" abre
+   https://github.com/renatobardi/studio/issues/new em outra aba. **Exceção: NIP-05.** O Studio
+   não emite handle NIP-05 no MVP, então a linha some de Settings e da tela `profile`, e o nome
+   de baixo do avatar é o `npub` curto — emitir `nome@studio.oute.pro`: #162. Também de
+   fora, por não existirem no MVP: "Avatar type" (Emoji/Image/Animated — o avatar é o emoji que o
+   onboarding escolhe), Message/Huddle/Wave, as abas Info/Channels/Memories, "Joined" (a API de
+   Members não guarda data de entrada), a seção More (Activity log, Agent instructions) e o campo
+   "Avatar URL" do app antigo, que o HTML nunca teve.
 
 ## Aceite visual (issue #73)
 

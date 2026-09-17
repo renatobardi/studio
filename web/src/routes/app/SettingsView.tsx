@@ -1,12 +1,12 @@
+import type { User } from "firebase/auth";
 import { useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { Appearance } from "../../lib/appearance";
 import type { SettingsSection } from "../../lib/sidebar";
-import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { IosInstallHint } from "./IosInstallHint";
-import { ProfileEditor } from "./ProfileEditor";
+import { ProfileSettings } from "./ProfileSettings";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: "pencil" | "user"; description: string }[] = [
   { id: "appearance", label: "Appearance", icon: "pencil", description: "How Studio looks on this device." },
@@ -18,19 +18,24 @@ const SECTIONS: { id: SettingsSection; label: string; icon: "pencil" | "user"; d
 export function SettingsView({
   initialSection = "appearance",
   client,
-  signer,
   pubkey,
+  user,
+  accountPassword,
   appearance,
   onAppearanceChange,
+  onSignOut,
   onClose,
 }: Readonly<{
   /** Where it opens: Profile, from the account menu (#148). */
   initialSection?: SettingsSection;
   client: RelayClient;
-  signer: Signer;
   pubkey: string;
+  /** The Firebase session behind the Key Backup row, when there is one (#150). */
+  user: User | null;
+  accountPassword: string | null;
   appearance: Appearance;
   onAppearanceChange: (next: Appearance) => void;
+  onSignOut: () => void;
   onClose: () => void;
 }>) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -72,7 +77,15 @@ export function SettingsView({
               <AppearanceSettings appearance={appearance} onChange={onAppearanceChange} />
             </>
           )}
-          {section === "profile" && <ProfileEditor client={client} signer={signer} pubkey={pubkey} />}
+          {section === "profile" && (
+            <ProfileSettings
+              client={client}
+              pubkey={pubkey}
+              user={user}
+              accountPassword={accountPassword}
+              onSignOut={onSignOut}
+            />
+          )}
         </div>
       </div>
     </div>

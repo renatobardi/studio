@@ -70,6 +70,7 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
   admin: { mount: "app", steps: [{ click: '[data-testid="mode-admin"]' }] },
   settings: { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }] },
   "settings-profile": { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }, { click: "text=Profile" }] },
+  profile: { mount: "app", steps: [{ click: '[data-testid="account-menu-button"]' }, { click: "text=Profile" }] },
 };
 
 const params = new URLSearchParams(window.location.search);
@@ -123,7 +124,16 @@ function mountedScreen(client: RelayClient) {
       <OnboardingScreen user={PREVIEW_USER} account={null} accountPassword="preview-account-password" onComplete={() => {}} />
     );
   }
-  return <AppShell workspace={WORKSPACE} signer={previewSigner(OWN)} client={client} onSignOut={() => {}} />;
+  return (
+    <AppShell
+      workspace={WORKSPACE}
+      signer={previewSigner(OWN)}
+      user={PREVIEW_USER}
+      accountPassword="preview-account-password"
+      client={client}
+      onSignOut={() => {}}
+    />
+  );
 }
 
 async function main() {

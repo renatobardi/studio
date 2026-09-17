@@ -2549,3 +2549,157 @@ button.sidebar-group-label:hover {
 .settings-row-actions {
   justify-content: flex-end;
 }
+
+/* The prototype's subcopy and action row inside a card — the Sign out warning and its tinted
+   destructive button, then "Send feedback" loose under the card (#150). */
+.settings-card-subcopy {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+  text-wrap: pretty;
+}
+
+.settings-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  border-top: 1px solid color-mix(in oklab, var(--border) 35%, transparent);
+}
+
+/* "Send feedback" is a link that looks like the prototype's button. */
+a.btn {
+  text-decoration: none;
+}
+
+.settings-actions-loose {
+  padding: 0;
+  border-top: none;
+}
+
+/* "Your profile" (#150): one centred column — avatar, name, bio, then the Info card. The same
+   column carries the edit form, which is where a name, bio or avatar is changed. */
+.profile-screen {
+  display: flex;
+  justify-content: center;
+}
+
+.profile-column {
+  display: flex;
+  width: 100%;
+  max-width: 420px;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-subject {
+  margin: 0;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.profile-avatar-wrap .avatar {
+  border-radius: 999px;
+}
+
+.profile-presence {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--background);
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+
+.profile-presence[data-connection="open"] {
+  background: oklch(0.72 0.16 150);
+}
+
+.profile-name {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.profile-handle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.profile-bio {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.profile-emoji-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.profile-form {
+  width: 100%;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.profile-info-row {
+  gap: 10px;
+}
+
+.profile-info-row svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.profile-info-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-info-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.profile-info-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}

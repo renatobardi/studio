@@ -142,6 +142,16 @@ async function loadStoredNsec(): Promise<string | undefined> {
 }
 
 /**
+ * The locally-held nsec, for the Key Backup flow and nothing else: encrypting the key into an
+ * age file is the one thing that cannot be done through the signer (#150). Undefined under a
+ * NIP-07 extension, which never hands the key over — there is no backup to make there.
+ */
+export async function loadIdentityNsec(): Promise<string | undefined> {
+  if (hasNip07()) return undefined;
+  return loadStoredNsec();
+}
+
+/**
  * Returns a signer: the NIP-07 extension when present, otherwise the nsec
  * stored locally in IndexedDB. Returns null when neither is available.
  */
