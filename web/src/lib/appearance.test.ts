@@ -12,8 +12,13 @@ describe("zoomFor", () => {
 });
 
 describe("DEFAULT_APPEARANCE", () => {
-  test("starts where the prototype starts: light, compact, default size", () => {
-    expect(DEFAULT_APPEARANCE).toEqual({ theme: "light", density: "compact", fontScale: "default" });
+  test("starts where the prototype starts: light, compact, default size, split threads", () => {
+    expect(DEFAULT_APPEARANCE).toEqual({
+      theme: "light",
+      density: "compact",
+      fontScale: "default",
+      threadView: "split",
+    });
   });
 });
 
@@ -28,11 +33,15 @@ describe("parseAppearance", () => {
   });
 
   test("passes through a well-formed stored value", () => {
-    const stored = { theme: "dark", density: "compact", fontScale: "larger" };
+    const stored = { theme: "dark", density: "compact", fontScale: "larger", threadView: "focus" };
     expect(parseAppearance(stored)).toEqual(stored);
   });
 
   test("fills in defaults for a partially-formed stored value", () => {
     expect(parseAppearance({ theme: "dark" })).toEqual({ ...DEFAULT_APPEARANCE, theme: "dark" });
+  });
+
+  test("falls back to Split for a stored thread view it does not know", () => {
+    expect(parseAppearance({ ...DEFAULT_APPEARANCE, threadView: "sidebar" }).threadView).toBe("split");
   });
 });

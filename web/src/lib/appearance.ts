@@ -3,19 +3,28 @@ import { get, set } from "idb-keyval";
 export type Theme = "light" | "dark";
 export type Density = "compact" | "comfy" | "spacious";
 export type FontScale = "smaller" | "default" | "larger";
+/** Where a thread opens: Split in a side pane, Focus replacing the timeline (#151). */
+export type ThreadView = "focus" | "split";
 
 export interface Appearance {
   theme: Theme;
   density: Density;
   fontScale: FontScale;
+  threadView: ThreadView;
 }
 
 /** Where the prototype starts (docs/UI/REFERENCE.md): its own default density is compact. */
-export const DEFAULT_APPEARANCE: Appearance = { theme: "light", density: "compact", fontScale: "default" };
+export const DEFAULT_APPEARANCE: Appearance = {
+  theme: "light",
+  density: "compact",
+  fontScale: "default",
+  threadView: "split",
+};
 
 const THEMES = new Set<Theme>(["light", "dark"]);
 const DENSITIES = new Set<Density>(["compact", "comfy", "spacious"]);
 const FONT_SCALES = new Set<FontScale>(["smaller", "default", "larger"]);
+const THREAD_VIEWS = new Set<ThreadView>(["focus", "split"]);
 
 const STORE_KEY = "studio.appearance";
 
@@ -37,6 +46,9 @@ export function parseAppearance(value: unknown): Appearance {
     fontScale: FONT_SCALES.has(candidate.fontScale as FontScale)
       ? (candidate.fontScale as FontScale)
       : DEFAULT_APPEARANCE.fontScale,
+    threadView: THREAD_VIEWS.has(candidate.threadView as ThreadView)
+      ? (candidate.threadView as ThreadView)
+      : DEFAULT_APPEARANCE.threadView,
   };
 }
 
