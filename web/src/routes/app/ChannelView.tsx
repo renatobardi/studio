@@ -60,49 +60,51 @@ export function ChannelView({
 
   return (
     <section className="channel-view" aria-label={`Channel ${channel.name}`}>
-      <header className="pane-header">
-        <span className="pane-title">
-          <Icon name={channel.private ? "lock" : "hash"} className="pane-title-icon" />
-          <h1 className="pane-title-text">{channel.name}</h1>
-        </span>
-        <span className="pane-header-actions">
-          <button
-            className={`btn btn-outline${sidePane?.type === "members" ? " active" : ""}`}
-            aria-pressed={sidePane?.type === "members"}
-            title="Channel members"
-            onClick={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
-          >
-            <Icon name="user" />
-            Members
-          </button>
-        </span>
-      </header>
       <div
         className={`channel-view-body${layout.narrow ? " narrow" : ""}`}
         ref={gridRef}
         style={{ gridTemplateColumns: layout.columns }}
       >
         {layout.showTimeline && (
-        <Timeline
-          client={client}
-          channelId={channelId}
-          pubkey={pubkey}
-          signer={signer}
-          mediaUrl={mediaUrl}
-          messages={feed.messages}
-          replies={feed.replies}
-          reactions={feed.reactions}
-          deletions={feed.deletions}
-          hasMore={feed.hasMore}
-          onLoadOlder={feed.loadOlder}
-          profiles={profiles}
-          opened={opened}
-          openThreadRootId={sidePane?.type === "thread" ? sidePane.root.id : null}
-          onOpenThread={(root) => {
-            const message = feed.messages.find((m) => m.id === root.id);
-            setSidePane({ type: "thread", root: { ...root, created_at: message?.created_at } });
-          }}
-        />
+          <div className="channel-main">
+            <header className="pane-header">
+              <span className="pane-title">
+                <Icon name={channel.private ? "lock" : "hash"} className="pane-title-icon" />
+                <h1 className="pane-title-text">{channel.name}</h1>
+              </span>
+              <span className="pane-header-actions">
+                <button
+                  className={`btn btn-outline${sidePane?.type === "members" ? " active" : ""}`}
+                  aria-pressed={sidePane?.type === "members"}
+                  title="Channel members"
+                  onClick={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
+                >
+                  <Icon name="user" />
+                  Members
+                </button>
+              </span>
+            </header>
+            <Timeline
+              client={client}
+              channelId={channelId}
+              pubkey={pubkey}
+              signer={signer}
+              mediaUrl={mediaUrl}
+              messages={feed.messages}
+              replies={feed.replies}
+              reactions={feed.reactions}
+              deletions={feed.deletions}
+              hasMore={feed.hasMore}
+              onLoadOlder={feed.loadOlder}
+              profiles={profiles}
+              opened={opened}
+              openThreadRootId={sidePane?.type === "thread" ? sidePane.root.id : null}
+              onOpenThread={(root) => {
+                const message = feed.messages.find((m) => m.id === root.id);
+                setSidePane({ type: "thread", root: { ...root, created_at: message?.created_at } });
+              }}
+            />
+          </div>
         )}
         {sidePane?.type === "thread" && (
           <ThreadPane

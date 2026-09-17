@@ -1478,7 +1478,15 @@ button.sidebar-group-label:hover {
   min-height: 0;
 }
 
-/* The Channel's grid: timeline, then a side pane column sized by src/lib/paneLayout.ts. Under
+/* A Channel's header and timeline, one grid column: a side pane beside it runs full height. */
+.channel-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The Channel's grid: header and timeline, then a side pane column sized by src/lib/paneLayout.ts. Under
    600px it is one column — a thread replaces the timeline, the members list floats over it. */
 .channel-view-body {
   position: relative;
