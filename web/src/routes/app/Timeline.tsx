@@ -296,7 +296,8 @@ export function Timeline({
                         data-testid="open-thread"
                       >
                         <span className="thread-open-avatars">
-                          {thread.participantPubkeys.map((participant) => (
+                          {/* The pill draws three faces, as the prototype does. */}
+                          {thread.participantPubkeys.slice(0, 3).map((participant) => (
                             <Avatar
                               key={participant}
                               profile={profiles.get(participant)}

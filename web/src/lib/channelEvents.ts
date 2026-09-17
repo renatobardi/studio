@@ -90,14 +90,15 @@ export interface ThreadSummary {
 }
 
 /** The thread pill under a root Message: how many Thread Replies (kind 1111) are rooted at
- * `rootId`, who wrote them and when the latest one landed. */
+ * `rootId`, who wrote them — each once, whoever replied last first — and when the latest one
+ * landed. How many of those participants get an avatar is the pill's own business. */
 export function summarizeThread(replies: VerifiedEvent[], rootId: string): ThreadSummary {
   const thread = replies
     .filter((reply) => firstTag(reply, "E") === rootId)
     .sort((a, b) => b.created_at - a.created_at);
   return {
     count: thread.length,
-    participantPubkeys: [...new Set(thread.map((reply) => reply.pubkey))].slice(0, 3),
+    participantPubkeys: [...new Set(thread.map((reply) => reply.pubkey))],
     lastReplyAt: thread[0]?.created_at ?? null,
   };
 }
