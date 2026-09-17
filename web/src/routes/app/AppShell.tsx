@@ -28,7 +28,7 @@ import {
   seedMissing,
   touch,
   unreadChannelIds,
-  unreadConversationKeys,
+  unreadConversationCounts,
   type DmReadState,
   type OpenedChannel,
   type ReadState,
@@ -287,7 +287,7 @@ export function AppShell({
           canManage,
           conversations,
           selectedConversationKey,
-          unreadConversationKeys: dmRead && pubkey ? unreadConversationKeys(conversations, dmRead, pubkey) : new Set(),
+          unreadConversationCounts: dmRead && pubkey ? unreadConversationCounts(conversations, dmRead, pubkey) : new Map(),
           nameOf: (peer) => displayName(profiles, peer),
           isAgent: (peer) => members.some((m) => m.pubkey === peer && m.role === "agent"),
         })}

@@ -50,7 +50,7 @@ describe("Sidebar Direct messages", () => {
     label: "Direct messages",
     newMessageLabel: "New message",
     items: [
-      { id: "dm:a,me", label: "Ana Petrova", icon: "user", active: false, unread: true, testId: "conversation-list-item", mode: "dms", peerPubkeys: ["a"] },
+      { id: "dm:a,me", label: "Ana Petrova", icon: "user", active: false, unread: true, unreadCount: 3, testId: "conversation-list-item", mode: "dms", peerPubkeys: ["a"] },
     ],
   };
 
@@ -62,6 +62,12 @@ describe("Sidebar Direct messages", () => {
 
   test("a conversation row carries its other participants", () => {
     expect(render("open", [dms])).toContain('data-peers="a"');
+  });
+
+  test("an unread conversation shows how many Messages it has, as the prototype counts them", () => {
+    const html = render("open", [dms]);
+    expect(html).toContain('class="sidebar-item-count">3<');
+    expect(html).not.toContain("unread-dot");
   });
 
   test("an empty Direct messages section is not the Channels empty state", () => {

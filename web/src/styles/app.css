@@ -1019,12 +1019,11 @@ button.sidebar-group-label:hover {
   color: var(--muted-foreground);
 }
 
-.unread-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--primary);
+.sidebar-item-count {
   flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted-foreground);
 }
 
 .sidebar-footer {

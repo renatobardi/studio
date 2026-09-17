@@ -36,6 +36,9 @@ export interface SidebarItem {
   icon: "hash" | "lock" | "user" | "bot" | "shield" | "settings";
   active: boolean;
   unread: boolean;
+  /** How many Messages the row has unread, when that is known — the prototype's count beside
+   * the label. Null on a Channel row, which only knows that it has activity (#42). */
+  unreadCount: number | null;
   /** The Playwright hook the flows already drive: `channel-list-item` for a Channel row,
    * `conversation-list-item` for a Direct message one, `mode-*` for the rest. */
   testId: string;
@@ -70,7 +73,7 @@ export function sidebarGroups({
   canManage,
   conversations,
   selectedConversationKey,
-  unreadConversationKeys,
+  unreadConversationCounts,
   nameOf,
   isAgent,
 }: {
@@ -81,7 +84,7 @@ export function sidebarGroups({
   canManage: boolean;
   conversations: { key: string; peerPubkeys: string[] }[];
   selectedConversationKey: string | null;
-  unreadConversationKeys: Set<string>;
+  unreadConversationCounts: ReadonlyMap<string, number>;
   nameOf: (pubkey: string) => string;
   isAgent: (pubkey: string) => boolean;
 }): SidebarGroup[] {
@@ -91,6 +94,7 @@ export function sidebarGroups({
     icon: channel.private ? "lock" : "hash",
     active: mode === "channels" && channel.id === selectedChannelId,
     unread: unreadChannelIds.has(channel.id),
+    unreadCount: null,
     testId: "channel-list-item",
     mode: "channels",
     channelId: channel.id,
@@ -100,16 +104,17 @@ export function sidebarGroups({
     label: peerPubkeys.map(nameOf).join(", "),
     icon: peerPubkeys.length === 1 && isAgent(peerPubkeys[0]!) ? "bot" : "user",
     active: mode === "dms" && key === selectedConversationKey,
-    unread: unreadConversationKeys.has(key),
+    unread: (unreadConversationCounts.get(key) ?? 0) > 0,
+    unreadCount: unreadConversationCounts.get(key) ?? null,
     testId: "conversation-list-item",
     mode: "dms",
     peerPubkeys,
   }));
   const workspaceItems: SidebarItem[] = [
     ...(canManage
-      ? [{ id: "admin", label: "Admin", icon: "shield" as const, active: mode === "admin", unread: false, testId: "mode-admin", mode: "admin" as const }]
+      ? [{ id: "admin", label: "Admin", icon: "shield" as const, active: mode === "admin", unread: false, unreadCount: null, testId: "mode-admin", mode: "admin" as const }]
       : []),
-    { id: "settings", label: "Settings", icon: "settings", active: mode === "settings", unread: false, testId: "mode-settings", mode: "settings" },
+    { id: "settings", label: "Settings", icon: "settings", active: mode === "settings", unread: false, unreadCount: null, testId: "mode-settings", mode: "settings" },
   ];
   return [
     { label: "Channels", items: channelItems, mode: "channels", testId: "mode-channels" },

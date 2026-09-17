@@ -100,7 +100,7 @@ export function Sidebar({
                 >
                   <Icon name={item.icon} size={14} />
                   <span className="sidebar-item-label">{item.label}</span>
-                  {item.unread && <span className="unread-dot" aria-label="unread" />}
+                  {item.unreadCount !== null && <span className="sidebar-item-count">{item.unreadCount}</span>}
                 </button>
               ))}
               {group.mode === "channels" && group.items.length === 0 && (

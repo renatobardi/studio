@@ -10,7 +10,7 @@ const NAMES: Record<string, string> = { ana: "Ana Petrova", sprig: "Sprig", mari
 const noDms = {
   conversations: [],
   selectedConversationKey: null,
-  unreadConversationKeys: new Set<string>(),
+  unreadConversationCounts: new Map<string, number>(),
   nameOf: (pubkey: string) => NAMES[pubkey] ?? pubkey,
   isAgent: (pubkey: string) => pubkey === "sprig",
 };
@@ -93,12 +93,12 @@ describe("sidebarGroups › Direct messages", () => {
     expect(group?.newMessageLabel).toBe("New message");
   });
 
-  test("marks the open conversation and the unread ones", () => {
-    const group = dmGroup({ selectedConversationKey: "me,sprig", unreadConversationKeys: new Set(["ana,me"]) });
-    expect(group?.items.map((i) => [i.label, i.active, i.unread])).toEqual([
-      ["Ana Petrova", false, true],
-      ["Sprig", true, false],
-      ["Marina Silva, Sprig", false, false],
+  test("marks the open conversation and how many Messages each unread one has", () => {
+    const group = dmGroup({ selectedConversationKey: "me,sprig", unreadConversationCounts: new Map([["ana,me", 3]]) });
+    expect(group?.items.map((i) => [i.label, i.active, i.unread, i.unreadCount])).toEqual([
+      ["Ana Petrova", false, true, 3],
+      ["Sprig", true, false, null],
+      ["Marina Silva, Sprig", false, false, null],
     ]);
   });
 

@@ -73,18 +73,18 @@ export function messagesWithDivider<T extends { id: string; pubkey: string; crea
  * the marks started being kept — the mark of any conversation that has none yet. */
 export type DmReadState = Readonly<{ since: number; readAt: ReadState }>;
 
-/** The conversations with a Message from someone else after their last-read mark. */
-export function unreadConversationKeys(
+/** How many Messages someone else wrote in each conversation after its last-read mark — the
+ * count the prototype's sidebar row carries. Conversations with nothing unread are left out. */
+export function unreadConversationCounts(
   conversations: readonly { key: string; messages: readonly { pubkey: string; created_at: number }[] }[],
   state: DmReadState,
   ownPubkey: string,
-): Set<string> {
-  return new Set(
-    conversations
-      .filter(({ key, messages }) => {
-        const mark = state.readAt[key] ?? state.since;
-        return messages.some((m) => m.pubkey !== ownPubkey && m.created_at > mark);
-      })
-      .map(({ key }) => key),
-  );
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const { key, messages } of conversations) {
+    const mark = state.readAt[key] ?? state.since;
+    const unread = messages.filter((m) => m.pubkey !== ownPubkey && m.created_at > mark).length;
+    if (unread > 0) counts.set(key, unread);
+  }
+  return counts;
 }
