@@ -56,3 +56,9 @@ export function accessLostAfterRefresh(
 ): boolean {
   return shown || (selected !== null && kept === null);
 }
+
+/** The Channel Members a kind 39002 projection names — one `p` tag each. The control plane
+ * re-publishes it on every membership change, so the latest one is the roster (ADR-0002). */
+export function rosterPubkeys(roster: { tags: string[][] }): string[] {
+  return roster.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]);
+}

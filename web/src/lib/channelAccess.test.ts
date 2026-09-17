@@ -6,6 +6,7 @@ import {
   initialSelection,
   keepSelection,
   manageableChannels,
+  rosterPubkeys,
 } from "./channelAccess";
 
 function channel(id: string, role: string | null = null): ChannelOut {
@@ -83,5 +84,16 @@ describe("accessLostAfterRefresh", () => {
     // selection is already gone, so recomputing from it would take the notice
     // back down before anyone read it (#42).
     expect(accessLostAfterRefresh(true, null, null)).toBe(true);
+  });
+});
+
+describe("rosterPubkeys", () => {
+  test("lists the Channel Members a 39002 projection names, one per p tag", () => {
+    const roster = { tags: [["d", "c1"], ["p", "aa", "admin"], ["p", "bb"], ["e", "xx"]] };
+    expect(rosterPubkeys(roster)).toEqual(["aa", "bb"]);
+  });
+
+  test("is empty for a Channel with no Members left", () => {
+    expect(rosterPubkeys({ tags: [["d", "c1"]] })).toEqual([]);
   });
 });
