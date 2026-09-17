@@ -7,6 +7,7 @@ import {
   seedMissing,
   touch,
   unreadChannelIds,
+  unreadConversationKeys,
 } from "./unread";
 
 describe("seedMissing", () => {
@@ -121,5 +122,39 @@ describe("messagesWithDivider", () => {
     const result = messagesWithDivider([msg("a", 150)], null, me);
     expect(result.sorted.map((m) => m.id)).toEqual(["a"]);
     expect(result.newMessageId).toBeNull();
+  });
+});
+
+/** Direct messages in the sidebar (#142): a conversation is unread while someone else wrote in it
+ * after its last-read mark. */
+describe("unreadConversationKeys", () => {
+  const ME = "me";
+  const conversation = (key: string, ...messages: [pubkey: string, at: number][]) => ({
+    key,
+    messages: messages.map(([pubkey, created_at]) => ({ pubkey, created_at })),
+  });
+
+  test("a Message from someone else after the conversation's mark makes it unread", () => {
+    const keys = unreadConversationKeys(
+      [conversation("ana", ["ana", 200]), conversation("sprig", ["sprig", 90])],
+      { since: 0, readAt: { ana: 100, sprig: 100 } },
+      ME,
+    );
+    expect([...keys]).toEqual(["ana"]);
+  });
+
+  test("the caller's own Messages never make a conversation unread", () => {
+    expect(unreadConversationKeys([conversation("ana", [ME, 200])], { since: 0, readAt: { ana: 100 } }, ME).size).toBe(0);
+  });
+
+  test("with no mark yet, only what arrived after this browser started keeping marks is unread", () => {
+    // A restore onto a new browser must not open with every conversation's history unread,
+    // while a first Message someone sends later still has to show.
+    const keys = unreadConversationKeys(
+      [conversation("old", ["marina", 100]), conversation("new", ["tomas", 300])],
+      { since: 200, readAt: {} },
+      ME,
+    );
+    expect([...keys]).toEqual(["new"]);
   });
 });

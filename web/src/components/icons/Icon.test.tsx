@@ -24,7 +24,7 @@ describe("Icon", () => {
     const needed = [
       "hash", "lock", "user", "x", "plus", "paperclip", "arrow-up", "mail", "settings", "log-out",
       "sun", "moon", "chevron-right", "chevron-down", "shield", "check", "pencil", "eye", "eye-off",
-      "copy", "download", "message-square", "info", "triangle-alert", "image",
+      "copy", "download", "message-square", "info", "triangle-alert", "image", "bot",
     ];
     for (const name of needed) expect(ICON_PATHS[name]?.length ?? 0).toBeGreaterThan(0);
   });

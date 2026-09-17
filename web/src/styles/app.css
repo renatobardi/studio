@@ -912,6 +912,46 @@ body {
   color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
 }
 
+/* The section's quick action (#142): the prototype's "+", shown while the section is hovered —
+   and always where nothing can hover, or it could never be found. */
+.sidebar-group-header {
+  position: relative;
+}
+
+.sidebar-group-action {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in oklab, var(--sidebar-foreground) 60%, transparent);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sidebar-group:hover .sidebar-group-action,
+.sidebar-group-action:focus-visible {
+  opacity: 1;
+}
+
+.sidebar-group-action:hover {
+  background: color-mix(in oklab, var(--sidebar-border) 45%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+@media (hover: none) {
+  .sidebar-group-action {
+    opacity: 1;
+  }
+}
+
 button.sidebar-group-label {
   cursor: pointer;
 }
@@ -2046,33 +2086,9 @@ button.sidebar-group-label:hover {
   background: var(--muted);
 }
 
-.dm-pane {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
-.conversation-list {
-  width: 240px;
-  flex-shrink: 0;
-  min-height: 0;
-  overflow-y: auto;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  gap: 6px;
-}
-
 .conversation-list-new {
   display: flex;
   gap: 4px;
-}
-
-.conversation-list-item-button {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
 }
 
 .conversation-list-item-row {

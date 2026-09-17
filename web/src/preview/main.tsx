@@ -10,7 +10,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "../styles/app.css";
 import { applyAppearance, parseAppearance, storeAppearance } from "../lib/appearance";
-import { storeChannelId, storeChannelReadAt } from "../lib/custody";
+import { storeChannelId, storeChannelReadAt, storeDmReadAt } from "../lib/custody";
 import type { User } from "firebase/auth";
 import { AuthScreen } from "../routes/auth/AuthScreen";
 import { AppShell } from "../routes/app/AppShell";
@@ -18,7 +18,7 @@ import { OnboardingScreen } from "../routes/onboarding/OnboardingScreen";
 import type { RelayClient } from "../lib/relay";
 import { FakeRelayClient, previewSigner } from "./fakeRelay";
 import { Steps, type Step } from "./Steps";
-import { ALL_EVENTS, CHANNEL_READ_AT, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
+import { ALL_EVENTS, CHANNEL_READ_AT, CHANNELS, DM_READ, MEMBERS, OWN, WORKSPACE } from "./fixtures";
 
 const NEXT: Step = { click: "text=Continue" };
 const PASSPHRASE_FIELD = 'input[placeholder="Backup passphrase"]';
@@ -65,8 +65,8 @@ const SCREENS: Record<string, { mount: "auth" | "onboarding" | "app"; steps: Ste
   channel: { mount: "app", steps: [] },
   "channel-thread": { mount: "app", steps: [{ click: "text=4 replies" }] },
   "channel-members": { mount: "app", steps: [{ click: "text=Members" }] },
-  dm: { mount: "app", steps: [{ click: '[data-testid="mode-dms"]' }, { click: '[data-testid="conversation-list-item"]' }] },
-  "dm-list": { mount: "app", steps: [{ click: '[data-testid="mode-dms"]' }] },
+  dm: { mount: "app", steps: [{ click: '[data-testid="conversation-list-item"]' }] },
+  "new-message": { mount: "app", steps: [{ click: '[data-testid="dm-new-conversation"]' }] },
   admin: { mount: "app", steps: [{ click: '[data-testid="mode-admin"]' }] },
   settings: { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }] },
   "settings-profile": { mount: "app", steps: [{ click: '[data-testid="mode-settings"]' }, { click: "text=Profile" }] },
@@ -131,6 +131,7 @@ async function main() {
   applyAppearance(appearance);
   await storeChannelId(CHANNELS[0]!.id);
   await storeChannelReadAt(CHANNEL_READ_AT);
+  await storeDmReadAt(DM_READ);
   const client = new FakeRelayClient(ALL_EVENTS).asClient();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

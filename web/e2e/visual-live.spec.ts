@@ -54,8 +54,13 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
     await expect(page.getByTestId("members-pane")).toBeVisible();
     await shot(viewport, "channel-members");
     await page.getByRole("button", { name: "Close members" }).click();
-    await page.getByTestId("mode-dms").click();
-    await shot(viewport, "dm-list");
+    const conversation = page.getByTestId("conversation-list-item").first();
+    // Conversations reach the sidebar only once decrypted: give them a moment, not a failure.
+    if (await conversation.waitFor({ timeout: 5_000 }).then(() => true, () => false)) {
+      await conversation.click();
+      await expect(page.getByTestId("conversation-view")).toBeVisible();
+      await shot(viewport, "dm");
+    }
     await page.getByTestId("mode-settings").click();
     await shot(viewport, "settings-appearance");
     await toggleTheme();

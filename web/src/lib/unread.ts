@@ -68,3 +68,23 @@ export function messagesWithDivider<T extends { id: string; pubkey: string; crea
   const newMessageId = opened === null ? null : firstNewMessageId(sorted, opened, ownPubkey);
   return { sorted, newMessageId };
 }
+
+/** Where Direct Message reading stands on this browser (#142): a mark per conversation, and when
+ * the marks started being kept — the mark of any conversation that has none yet. */
+export type DmReadState = Readonly<{ since: number; readAt: ReadState }>;
+
+/** The conversations with a Message from someone else after their last-read mark. */
+export function unreadConversationKeys(
+  conversations: readonly { key: string; messages: readonly { pubkey: string; created_at: number }[] }[],
+  state: DmReadState,
+  ownPubkey: string,
+): Set<string> {
+  return new Set(
+    conversations
+      .filter(({ key, messages }) => {
+        const mark = state.readAt[key] ?? state.since;
+        return messages.some((m) => m.pubkey !== ownPubkey && m.created_at > mark);
+      })
+      .map(({ key }) => key),
+  );
+}

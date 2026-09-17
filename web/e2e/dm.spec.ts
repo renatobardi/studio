@@ -28,7 +28,7 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
 
-  await reachAppViaRestoreWithCredentials(pageA, {
+  const pubkeyA = await reachAppViaRestoreWithCredentials(pageA, {
     email: testAccount.email(),
     password: testAccount.password(),
     backupPassphrase: testBackupPassphrase(),
@@ -39,10 +39,10 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
     backupPassphrase: testBackupPassphraseTwo(),
   });
 
-  await pageA.getByTestId("mode-dms").click();
   // The MVP flow starts a DM only through the Workspace member selector — there is no pubkey
-  // field to paste into any more (#47). The option is picked by pubkey rather than by name
-  // because this Workspace accumulates Members across runs, several of them nameless.
+  // field to paste into any more (#47) — opened by the "+" of the sidebar's Direct messages
+  // (#142). The option is picked by pubkey rather than by name because this Workspace
+  // accumulates Members across runs, several of them nameless.
   await pageA.getByTestId("dm-new-conversation").click();
   await pageA.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
 
@@ -82,8 +82,8 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
     if (MEDIA_PATH.test(new URL(request.url()).pathname)) fetchedMedia.add(request.url());
   });
 
-  await pageB.getByTestId("mode-dms").click();
-  await pageB.getByTestId("conversation-list-item").first().click();
+  // The sidebar lists B's conversations as they arrive (#142); A's is picked by participant.
+  await pageB.locator(`[data-testid="conversation-list-item"][data-peers="${pubkeyA}"]`).click();
 
   const receivedMessage = pageB.getByTestId("dm-message").filter({ hasText: content });
   await expect(receivedMessage).toBeVisible({ timeout: 10_000 });
@@ -124,10 +124,9 @@ test("a Direct Message with a photo is delivered between two browser contexts", 
     backupPassphrase: testBackupPassphrase(),
   });
 
-  await pageC.getByTestId("mode-dms").click();
-  // Picked by its own last message rather than by position: this Account accumulates
-  // conversations across runs, and only this one is this run's.
-  await pageC.getByTestId("conversation-list-item").filter({ hasText: reply }).click();
+  // Picked by participant rather than by position: this Account accumulates conversations
+  // across runs, and the sidebar row shows only a name (#142).
+  await pageC.locator(`[data-testid="conversation-list-item"][data-peers="${pubkeyB}"]`).click();
   await expect(pageC.getByTestId("dm-message").filter({ hasText: content })).toBeVisible({ timeout: 15_000 });
   await expect(pageC.getByTestId("dm-message").filter({ hasText: reply })).toBeVisible({ timeout: 15_000 });
   await expect(

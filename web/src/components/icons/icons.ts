@@ -4,6 +4,7 @@
  * glyph is a list of `d` strings. */
 export const ICON_PATHS = {
   "arrow-up": ["m5 12 7-7 7 7", "M12 19V5"],
+  bot: ["M12 8V4H8", "M4 8h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z", "M2 14h2", "M20 14h2", "M15 13v2", "M9 13v2"],
   check: ["M20 6 9 17l-5-5"],
   "chevron-down": ["m6 9 6 6 6-6"],
   "chevron-right": ["m9 18 6-6-6-6"],

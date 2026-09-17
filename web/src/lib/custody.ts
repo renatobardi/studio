@@ -1,13 +1,14 @@
 import { del, get, set } from "idb-keyval";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEvent } from "nostr-tools";
 import { secretKeyFromNsec } from "./identity";
-import type { ReadState } from "./unread";
+import type { DmReadState, ReadState } from "./unread";
 import { pruneMediaCaches } from "./mediaCache";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
 const CHANNEL_ID_KEY = "studio.identity.channelId";
 const CHANNEL_READ_KEY = "studio.identity.channelReadAt";
+const DM_READ_KEY = "studio.identity.dmReadAt";
 
 /** True when a NIP-07 extension (window.nostr) is present — it always wins over local custody.
  * A `nostr` property left null or undefined is no extension: treating it as one
@@ -76,7 +77,7 @@ export async function storeIdentity(nsec: string): Promise<void> {
  */
 export async function clearIdentity(): Promise<void> {
   const failures = new Set<string>();
-  for (const key of [STORE_KEY, WORKSPACE_SLUG_KEY, CHANNEL_ID_KEY, CHANNEL_READ_KEY]) {
+  for (const key of [STORE_KEY, WORKSPACE_SLUG_KEY, CHANNEL_ID_KEY, CHANNEL_READ_KEY, DM_READ_KEY]) {
     try {
       await del(key);
     } catch {
@@ -125,6 +126,15 @@ export async function storeChannelReadAt(readAt: ReadState): Promise<void> {
 
 export async function loadChannelReadAt(): Promise<ReadState> {
   return (await get<ReadState>(CHANNEL_READ_KEY)) ?? {};
+}
+
+/** The same for Direct message conversations (#142). Undefined until the first time they are kept. */
+export async function storeDmReadAt(state: DmReadState): Promise<void> {
+  await set(DM_READ_KEY, state);
+}
+
+export async function loadDmReadAt(): Promise<DmReadState | undefined> {
+  return get<DmReadState>(DM_READ_KEY);
 }
 
 async function loadStoredNsec(): Promise<string | undefined> {

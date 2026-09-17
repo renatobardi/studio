@@ -93,6 +93,15 @@ Settings além de Appearance/Profile, popup Google simulado.
    "wipe all my data", mas **omite a linha da chave privada com Reveal**: o `Signer` nunca entrega
    a chave crua à UI e sob NIP-07 ela vive na extensão. Descrição sem "agent settings" (fora do
    MVP) e "return Studio to sign-in" no lugar de "first-run setup". Chave no diálogo: #160.
+6. **Direct messages na sidebar (#142).** A seção lista cada conversa (ícone `user`, `bot` para
+   Member com papel `agent`), da mais recente para a mais antiga; abrir uma mostra só a
+   `ConversationView`, em largura total. Unread segue o dos Channels — negrito com ponto, não a
+   contagem do HTML — com marca de leitura por conversa guardada no browser; uma conversa sem
+   marca conta a partir de quando o browser começou a guardá-las, para um restore não abrir com
+   todo o histórico não lido. O "+" (visível ao passar o mouse; sempre em telas sem hover) abre o
+   diálogo "New message" com o `MemberPicker` de #47: um clique no Member abre a conversa, sem o
+   campo "To" nem "Start conversation". Omitidos o menu "…" da seção (Invite someone, Mark all as
+   read) e o recolher do título, que os Channels também não têm.
 
 ## Aceite visual (issue #73)
 

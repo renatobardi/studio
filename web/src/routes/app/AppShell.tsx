@@ -8,25 +8,43 @@ import {
   isWorkspaceManager,
   keepSelection,
 } from "../../lib/channelAccess";
+import { groupConversations } from "../../lib/conversations";
 import {
   loadChannelId,
   loadChannelReadAt,
+  loadDmReadAt,
   storeChannelId,
   storeChannelReadAt,
+  storeDmReadAt,
   type Signer,
 } from "../../lib/custody";
+import { selectableMembers } from "../../lib/memberDirectory";
+import { conversationKey } from "../../lib/nip17";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { relayBanner } from "../../lib/relayReasons";
-import { oldestRead, openChannel, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
+import {
+  oldestRead,
+  openChannel,
+  seedMissing,
+  touch,
+  unreadChannelIds,
+  unreadConversationKeys,
+  type DmReadState,
+  type OpenedChannel,
+  type ReadState,
+} from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
 import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { ChannelView } from "./ChannelView";
-import { DirectMessagesPane } from "./DirectMessagesPane";
+import { ConversationView } from "./ConversationView";
+import { NewMessageDialog } from "./NewMessageDialog";
 import { SettingsView } from "./SettingsView";
 import { Sidebar } from "./Sidebar";
-import { ownDisplayName, shortNpub, useProfiles } from "./useProfiles";
+import { useDirectMessages } from "./useDirectMessages";
+import { displayName, ownDisplayName, profileName, shortNpub, useProfiles } from "./useProfiles";
+import { useWorkspaceMembers } from "./useWorkspaceMembers";
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -68,9 +86,18 @@ export function AppShell({
   /** Theme, density and font scale live here so the sidebar's theme toggle and
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
-  const { profiles: ownProfiles, ensure: ensureOwnProfile } = useProfiles(client);
+  const { profiles, ensure: ensureProfiles } = useProfiles(client);
   /** A choice made before the stored value came back wins over it. */
   const appearanceTouched = useRef(false);
+  /** Direct messages live in the sidebar (#142), so they are read from the moment the app opens. */
+  const rumors = useDirectMessages(client, signer, pubkey);
+  const { members, error: membersError } = useWorkspaceMembers(client, workspace.slug, signer);
+  /** The open conversation's other participants — kept apart from the conversation itself, which
+   * does not exist yet when a Member was just picked to start one. */
+  const [selectedPeerPubkeys, setSelectedPeerPubkeys] = useState<string[] | null>(null);
+  const [pickingMember, setPickingMember] = useState(false);
+  /** Null until the stored marks are read back, as `readAt`. */
+  const [dmRead, setDmRead] = useState<DmReadState | null>(null);
 
   const selectedRef = useRef<string | null>(null);
   const readAtRef = useRef<ReadState>({});
@@ -91,8 +118,32 @@ export function AppShell({
   }, [signer]);
 
   useEffect(() => {
-    if (pubkey) ensureOwnProfile([pubkey]);
-  }, [pubkey, ensureOwnProfile]);
+    if (pubkey) ensureProfiles([pubkey]);
+  }, [pubkey, ensureProfiles]);
+
+  const conversations = pubkey ? groupConversations(rumors, pubkey) : [];
+  const namedPubkeysKey = [...new Set([...members.map((m) => m.pubkey), ...conversations.flatMap((c) => c.peerPubkeys)])].join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- namedPubkeysKey already tracks the pubkeys' contents
+  useEffect(() => ensureProfiles(namedPubkeysKey.split(",").filter(Boolean)), [namedPubkeysKey, ensureProfiles]);
+
+  useEffect(() => {
+    loadDmReadAt().then((stored) => setDmRead((prev) => prev ?? stored ?? { since: nowSeconds(), readAt: {} }));
+  }, []);
+
+  useEffect(() => {
+    if (dmRead !== null) void storeDmReadAt(dmRead);
+  }, [dmRead]);
+
+  const selectedConversationKey = selectedPeerPubkeys && pubkey ? conversationKey([...selectedPeerPubkeys, pubkey]) : null;
+  const selectedConversation = conversations.find((c) => c.key === selectedConversationKey) ?? null;
+  const dmLoaded = dmRead !== null;
+  const selectedLatestAt = selectedConversation?.latest.created_at ?? 0;
+  // The open conversation is read as it arrives — and only while it is on screen.
+  useEffect(() => {
+    if (mode !== "dms" || selectedConversationKey === null || !dmLoaded) return;
+    const at = Math.max(nowSeconds(), selectedLatestAt);
+    setDmRead((prev) => prev && { ...prev, readAt: touch(prev.readAt, selectedConversationKey, at) });
+  }, [mode, selectedConversationKey, selectedLatestAt, dmLoaded]);
 
   useEffect(() => {
     loadAppearance().then((loaded) => {
@@ -215,6 +266,11 @@ export function AppShell({
     onSignOut();
   };
 
+  const openConversation = (peerPubkeys: string[]) => {
+    setSelectedPeerPubkeys(peerPubkeys);
+    navigate({ mode: "dms" });
+  };
+
   const unread = unreadChannelIds(readAt ?? {}, activityAt);
   const canManage = canManageChannels(workspace.role, channels ?? []);
   const selectedChannel = channels?.find((c) => c.id === selectedChannelId) ?? null;
@@ -229,15 +285,22 @@ export function AppShell({
           unreadChannelIds: unread,
           mode,
           canManage,
+          conversations,
+          selectedConversationKey,
+          unreadConversationKeys: dmRead && pubkey ? unreadConversationKeys(conversations, dmRead, pubkey) : new Set(),
+          nameOf: (peer) => displayName(profiles, peer),
+          isAgent: (peer) => members.some((m) => m.pubkey === peer && m.role === "agent"),
         })}
         onSelect={(item) => {
           if (item.channelId) selectChannel(item.channelId);
-          navigate({ mode: item.mode });
+          if (item.peerPubkeys) openConversation(item.peerPubkeys);
+          else navigate({ mode: item.mode });
         }}
         onSelectMode={(next) => navigate({ mode: next })}
+        onNewMessage={() => setPickingMember(true)}
         canCreateChannels={isWorkspaceManager(workspace.role)}
         onCreateChannel={() => navigate({ mode: "admin", adminTab: "channels" })}
-        ownName={ownDisplayName(ownProfiles, pubkey)}
+        ownName={ownDisplayName(profiles, pubkey)}
         ownHandle={pubkey ? shortNpub(pubkey) : "…"}
         workspaceName={workspace.name}
         connectionState={connectionState}
@@ -285,13 +348,16 @@ export function AppShell({
             )}
           </>
         )}
-        {mode === "dms" && pubkey && (
-          <DirectMessagesPane
+        {mode === "dms" && pubkey && selectedPeerPubkeys && (
+          <ConversationView
+            key={selectedConversationKey}
             client={client}
             myPubkey={pubkey}
+            peerPubkeys={selectedPeerPubkeys}
             signer={signer}
             mediaUrl={workspace.media_url}
-            workspaceSlug={workspace.slug}
+            messages={selectedConversation?.messages ?? []}
+            profiles={profiles}
           />
         )}
         {mode === "admin" && canManage && (
@@ -319,6 +385,18 @@ export function AppShell({
           />
         )}
       </main>
+      {pickingMember && pubkey && (
+        <NewMessageDialog
+          members={selectableMembers(members, pubkey, (member) => profileName(profiles, member))}
+          profiles={profiles}
+          error={membersError}
+          onPick={(member) => {
+            setPickingMember(false);
+            openConversation([member]);
+          }}
+          onCancel={() => setPickingMember(false)}
+        />
+      )}
     </div>
   );
 }

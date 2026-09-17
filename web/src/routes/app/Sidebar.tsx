@@ -7,7 +7,8 @@ import { initials, type SidebarGroup, type SidebarItem, type SidebarMode } from 
 import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { SignOutDialog } from "./SignOutDialog";
 
-/** The persistent 256px sidebar of the prototype: grouped destinations above, the account —
+/** The persistent 256px sidebar of the prototype: grouped destinations above — Channels, each Direct
+ * message conversation with a "+" to start one (#142), the Workspace's own — the account —
  * name, Workspace with the sakura, theme toggle — in the footer (#68). Only MVP destinations:
  * no search, no Inbox, no Workspace switching. The account block opens Profile, Settings and
  * Sign out; its presence dot is the relay connection, lit only while open (#148). */
@@ -15,6 +16,7 @@ export function Sidebar({
   groups,
   onSelect,
   onSelectMode,
+  onNewMessage,
   canCreateChannels,
   onCreateChannel,
   ownName,
@@ -30,6 +32,7 @@ export function Sidebar({
   groups: SidebarGroup[];
   onSelect: (item: SidebarItem) => void;
   onSelectMode: (mode: SidebarMode) => void;
+  onNewMessage: () => void;
   canCreateChannels: boolean;
   onCreateChannel: () => void;
   ownName: string;
@@ -65,13 +68,26 @@ export function Sidebar({
       <div className="sidebar-scroll">
         {groups.map((group) => (
           <section key={group.label} className="sidebar-group">
-            {group.mode ? (
-              <button className="sidebar-group-label" data-testid={group.testId} onClick={() => onSelectMode(group.mode!)}>
-                {group.label}
-              </button>
-            ) : (
-              <h2 className="sidebar-group-label">{group.label}</h2>
-            )}
+            <div className="sidebar-group-header">
+              {group.mode ? (
+                <button className="sidebar-group-label" data-testid={group.testId} onClick={() => onSelectMode(group.mode!)}>
+                  {group.label}
+                </button>
+              ) : (
+                <h2 className="sidebar-group-label">{group.label}</h2>
+              )}
+              {group.newMessageLabel && (
+                <button
+                  className="sidebar-group-action"
+                  onClick={onNewMessage}
+                  aria-label={group.newMessageLabel}
+                  title={group.newMessageLabel}
+                  data-testid="dm-new-conversation"
+                >
+                  <Icon name="plus" size={16} />
+                </button>
+              )}
+            </div>
             <nav className="sidebar-nav" aria-label={group.label}>
               {group.items.map((item) => (
                 <button
@@ -80,13 +96,14 @@ export function Sidebar({
                   aria-current={item.active ? "page" : undefined}
                   onClick={() => onSelect(item)}
                   data-testid={item.testId}
+                  data-peers={item.peerPubkeys?.join(",")}
                 >
                   <Icon name={item.icon} size={14} />
                   <span className="sidebar-item-label">{item.label}</span>
                   {item.unread && <span className="unread-dot" aria-label="unread" />}
                 </button>
               ))}
-              {group.items.length === 0 && (
+              {group.mode === "channels" && group.items.length === 0 && (
                 <ChannelsEmptyState className="sidebar-empty" canCreate={canCreateChannels} onCreate={onCreateChannel} />
               )}
             </nav>
