@@ -13,6 +13,28 @@ export function inviteCodeFromUrl(search: string): string | null {
   return code || null;
 }
 
+/** The code in what somebody pasted: the whole invite link, or just its code.
+ * A link without an invite is null — a code cannot start with a scheme
+ * (`token_urlsafe` never makes a `:`), so it was never meant as one. */
+export function inviteCodeFromInput(raw: string): string | null {
+  const input = raw.trim();
+  if (!input) return null;
+  if (!/^https?:\/\//i.test(input)) return input;
+  try {
+    return inviteCodeFromUrl(new URL(input).search);
+  } catch {
+    return null;
+  }
+}
+
+/** Why the invite may not be redeemed yet, or null once both are confirmed.
+ * Age first, then the terms — the order and words of the prototype. */
+export function invitePolicyError(accepted: { age: boolean; terms: boolean }): string | null {
+  if (!accepted.age) return "Confirm that you are at least 18 years old.";
+  if (!accepted.terms) return "Agree to the Terms of Service and Privacy Policy.";
+  return null;
+}
+
 /** The link an admin copies. Reaching the app this way is the whole point:
  * the code survives sign-in and onboarding without anybody re-typing it. */
 export function inviteLink(origin: string, code: string): string {

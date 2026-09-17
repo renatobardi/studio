@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   describeInvite,
+  inviteCodeFromInput,
   inviteCodeFromUrl,
   inviteLimits,
   inviteLink,
+  invitePolicyError,
   invitePreviewMessage,
   forgetInviteCode,
   pendingInviteCode,
@@ -45,6 +47,54 @@ describe("inviteCodeFromUrl", () => {
 
   test("trims, so a code copied with surrounding space still resolves", () => {
     expect(inviteCodeFromUrl("?invite=%20abc123%20")).toBe("abc123");
+  });
+});
+
+describe("inviteCodeFromInput", () => {
+  test("takes the link an admin copied, as it was copied", () => {
+    expect(inviteCodeFromInput("https://studio.example/?invite=abc123")).toBe("abc123");
+  });
+
+  test("the link is the one inviteLink builds, so what one side hands out the other reads", () => {
+    expect(inviteCodeFromInput(inviteLink("https://studio.example", "a&b=c"))).toBe("a&b=c");
+  });
+
+  test("takes a bare code too", () => {
+    expect(inviteCodeFromInput("abc123")).toBe("abc123");
+  });
+
+  test("ignores space pasted around either", () => {
+    expect(inviteCodeFromInput("  abc123 \n")).toBe("abc123");
+    expect(inviteCodeFromInput(" https://studio.example/?invite=abc123 ")).toBe("abc123");
+  });
+
+  test("a link that carries no invite is no code — not a code that looks like a URL", () => {
+    // Sent to the server as a code it would only come back "not found", which
+    // reads as a typo in something the person never typed.
+    expect(inviteCodeFromInput("https://studio.example/")).toBeNull();
+    expect(inviteCodeFromInput("https://studio.example/?invite=")).toBeNull();
+  });
+
+  test("nothing pasted is no code", () => {
+    expect(inviteCodeFromInput("")).toBeNull();
+    expect(inviteCodeFromInput("   ")).toBeNull();
+  });
+});
+
+describe("invitePolicyError", () => {
+  test("both confirmed lets the invite through", () => {
+    expect(invitePolicyError({ age: true, terms: true })).toBeNull();
+  });
+
+  test("the age comes first, as the prototype asks", () => {
+    expect(invitePolicyError({ age: false, terms: false })).toBe("Confirm that you are at least 18 years old.");
+    expect(invitePolicyError({ age: false, terms: true })).toBe("Confirm that you are at least 18 years old.");
+  });
+
+  test("then the terms", () => {
+    expect(invitePolicyError({ age: true, terms: false })).toBe(
+      "Agree to the Terms of Service and Privacy Policy.",
+    );
   });
 });
 

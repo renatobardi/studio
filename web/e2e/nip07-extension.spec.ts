@@ -4,6 +4,7 @@ import { generateSecretKey } from "nostr-tools";
 import {
   ensureChannelMembership,
   installFakeNip07,
+  redeemInviteOnOnboarding,
   sharedChannelItem,
   signIn,
   testExtensionAccount,
@@ -33,9 +34,8 @@ test("a refused extension says so, keeps what was typed, and lets you retry", as
   const fake = await installFakeNip07(page, { privateKeyHex: strangerKeyHex(), refusing: true });
 
   await signIn(page, credentials());
-  await expect(page.getByRole("heading", { name: "Enter your invite" })).toBeVisible({ timeout: 15_000 });
-  await page.getByPlaceholder("Invite code").fill(testInviteCode());
-  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Join your community" })).toBeVisible({ timeout: 15_000 });
+  await redeemInviteOnOnboarding(page, testInviteCode());
 
   await page.getByPlaceholder("Your name").fill("E2E Extension Person");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -62,7 +62,7 @@ test("an extension without NIP-44 is turned away before anything is joined", asy
   await expect(page.getByText(/turn it off and reload/)).toBeVisible();
   // Before the invite, not on the first Direct Message — and with no Identity
   // of our own generated as a way around it (ADR-0005).
-  await expect(page.getByRole("heading", { name: "Enter your invite" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Join your community" })).toHaveCount(0);
   await expect(page.locator(".nsec-reveal")).toHaveCount(0);
 });
 
@@ -74,8 +74,7 @@ test("first access with an extension onboards on the extension's own Identity", 
   // the extension's Identity, only the resume flow below is left to assert.
   test.skip(await opensOnShell(page), "this Account already onboarded — re-seed to exercise first access");
 
-  await page.getByPlaceholder("Invite code").fill(testInviteCode());
-  await page.getByRole("button", { name: "Continue" }).click();
+  await redeemInviteOnOnboarding(page, testInviteCode());
 
   await page.getByPlaceholder("Your name").fill("E2E Extension Person");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -126,8 +125,7 @@ async function reachApp(page: import("@playwright/test").Page, pubkey: string): 
   const shell = page.getByText(/Connected as/);
   if (await opensOnShell(page)) return;
 
-  await page.getByPlaceholder("Invite code").fill(testInviteCode());
-  await page.getByRole("button", { name: "Continue" }).click();
+  await redeemInviteOnOnboarding(page, testInviteCode());
   await page.getByPlaceholder("Your name").fill("E2E Extension Person");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click(); // avatar: keep default
@@ -157,6 +155,6 @@ async function opensOnShell(page: import("@playwright/test").Page): Promise<bool
       () => true,
       () => false,
     );
-  if (!resumed) await expect(page.getByRole("heading", { name: "Enter your invite" })).toBeVisible();
+  if (!resumed) await expect(page.getByRole("heading", { name: "Join your community" })).toBeVisible();
   return resumed;
 }

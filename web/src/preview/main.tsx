@@ -26,7 +26,12 @@ const PASSPHRASE = "preview passphrase 12";
 
 /** Onboarding is walked, not jumped to: each step's clicks are the previous step's plus its own. */
 const ONBOARDING_TO = (() => {
-  const profile: Step[] = [{ type: ['input[placeholder="Invite code"]', "PREVIEW"] }, NEXT];
+  const profile: Step[] = [
+    { type: ['.onboarding-form-full .field input', "PREVIEW"] },
+    { click: '.onboarding-check:nth-child(1) input' },
+    { click: '.onboarding-check:nth-child(2) input' },
+    { click: "text=Accept and redeem invite" },
+  ];
   const avatar: Step[] = [...profile, { type: ['input[placeholder="Your name"]', "Renato Bardi"] }, NEXT];
   const backup: Step[] = [...avatar, NEXT];
   const backupOptions: Step[] = [...backup, NEXT];

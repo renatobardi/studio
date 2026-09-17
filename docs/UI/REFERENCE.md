@@ -76,6 +76,15 @@ Settings além de Appearance/Profile, popup Google simulado.
 2. **Tela inicial após onboarding.** HTML vai para `inbox` (fora do MVP); o app abre Channels.
 3. **Etapas sem referência** (restore, gate de senha da conta, criar Workspace): seguem a
    composição da etapa mais próxima (título 20px/400, `max-width` do passo, CTA 320px).
+4. **Onboarding › invite sem "Relay URL" (#152).** O HTML pede Relay URL e diz "or the community
+   URL if the relay is open"; a API só admite ingresso por Invite (`_require_*`, #47) — não há
+   Workspace aberto para apontar. Omitidos o campo e essa frase; o corpo vira "Paste the invite
+   link a Workspace admin sent you, or just its code.". Pelo mesmo motivo a dica perde o
+   "or nostr:" (não existe link de Invite `nostr:`) e o placeholder mostra o formato real do link
+   (`/?invite=…`, `lib/invites.ts`). "I don't have an invite" abre, logo abaixo, as saídas sem
+   Invite que já existiam (criar Workspace, restaurar do Key Backup). Terms of Service e Privacy
+   Policy apontam para `web/public/legal.html`, **placeholder** até o dono fornecer os textos; o
+   aceite não é gravado no servidor. Workspaces abertos: #159.
 
 ## Aceite visual (issue #73)
 

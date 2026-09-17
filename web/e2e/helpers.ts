@@ -22,6 +22,15 @@ export const testAccount = {
 };
 
 export const testInviteCode = () => requiredEnv("STUDIO_TEST_INVITE_CODE");
+
+/** The invite step as a person walks it (#152): paste the code, confirm 18+ and the terms — the
+ * app refuses to redeem before both — and accept. */
+export async function redeemInviteOnOnboarding(page: import("@playwright/test").Page, code: string) {
+  await page.getByLabel("Invite link or code").fill(code);
+  await page.getByLabel("I am at least 18 years old").check();
+  await page.getByLabel("I agree to the Terms of Service and Privacy Policy").check();
+  await page.getByRole("button", { name: "Accept and redeem invite" }).click();
+}
 export const testBackupPassphrase = () => requiredEnv("STUDIO_TEST_BACKUP_PASSPHRASE");
 export const testWorkspaceSlug = () => requiredEnv("STUDIO_TEST_WORKSPACE_SLUG");
 
