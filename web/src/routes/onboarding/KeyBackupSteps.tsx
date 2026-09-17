@@ -1,4 +1,5 @@
 import { Icon } from "../../components/icons/Icon";
+import { KEY_BACKUP_FILENAME } from "../../lib/keyBackup";
 
 /**
  * The two Key Backup cards: pick a passphrase, then prove it unlocks the file (#31, #36).
@@ -69,7 +70,7 @@ export function BackupVerifyCard({
       <div className="auth-panel">
         <Icon name="shield" size={15} />
         <span className="auth-panel-text">
-          <span className="auth-panel-title auth-panel-mono">studio-key-backup.age</span>
+          <span className="auth-panel-title auth-panel-mono">{KEY_BACKUP_FILENAME}</span>
           <span className="auth-panel-meta">Created just now</span>
         </span>
       </div>

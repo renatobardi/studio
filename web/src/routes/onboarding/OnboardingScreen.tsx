@@ -11,8 +11,8 @@ import {
   decryptBackup,
   encryptBackup,
   needsAccountPassword,
-  validateBackupPassphrase,
 } from "../../lib/backup";
+import { downloadKeyBackup, keyBackupBase64, keyBackupPassphraseError } from "../../lib/keyBackup";
 import {
   forgetInviteCode,
   INITIAL_INVITE_STEP,
@@ -352,13 +352,9 @@ export function OnboardingScreen({
 
   const handleCreateBackup = () => {
     if (!identity) return;
-    const invalid = validateBackupPassphrase(passphrase, knownPassword ?? "");
+    const invalid = keyBackupPassphraseError(passphrase, passphraseConfirm, knownPassword ?? "");
     if (invalid) {
       setError(invalid);
-      return;
-    }
-    if (passphrase !== passphraseConfirm) {
-      setError("Passphrases don't match.");
       return;
     }
     return runStep(async () => {
@@ -397,21 +393,13 @@ export function OnboardingScreen({
       const linked = await linkAccountIdentity(token, localSigner(identity.secretKey, identity.publicKey));
       setLinkedPubkey(linked.pubkey);
       await storeIdentity(nsecFromSecretKey(identity.secretKey));
-      const blobBase64 = btoa(String.fromCodePoint(...backupBlob));
-      await api.putKeyBackup(token, blobBase64);
+      await api.putKeyBackup(token, keyBackupBase64(backupBlob));
       advance("download");
     }, "Couldn't store your Key Backup. Check the passphrase and try again.");
   };
 
   const handleDownload = () => {
-    if (!backupBlob) return;
-    const blob = new Blob([backupBlob as BlobPart], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "studio-key-backup.age";
-    a.click();
-    URL.revokeObjectURL(url);
+    if (backupBlob) downloadKeyBackup(backupBlob);
   };
 
   const localSigner = (secretKey: Uint8Array, publicKey: string): Signer => ({
