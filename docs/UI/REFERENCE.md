@@ -49,6 +49,7 @@ mais `reference/matrix.json` (o patch de estado exato de cada tela).
 | dm | ✓ | ✓ | ✓ | sim |
 | profile | ✓ | ✓ | | sim (`ProfileScreen` — a própria, com a edição em "Edit profile" (#150); perfil de membro em `MemberProfile`) |
 | settings-appearance, settings-profile | ✓ | appearance | appearance | sim |
+| new-message | — | — | | sim (`NewMessageDialog`) — **sem referência capturada**, ver Decisões 11 |
 
 Fora do MVP e **não** capturados: Inbox, Pulse, Projects, Agents, Workflows, Skills, Compute,
 busca global, Starred, Forums, huddle, canvas, quick bots, troca de Workspace, seções de
@@ -152,6 +153,15 @@ Settings além de Appearance/Profile, popup Google simulado.
     DM. **Exceção: identificador no header da DM.** O HTML mostra um e-mail/NIP-05
     (`ana@relay.studio`); sem NIP-05 no MVP (mesma razão de #150), o header mostra o `npub` curto
     (`shortNpub`), nunca hex — emitir handle NIP-05: **#162**.
+
+11. **`new-message` fica só no preview, por enquanto.** O diálogo existe no protótipo
+    (`dialog: "new-message"` em `docs/UI/design/Studio.dc.html`) e no app (`NewMessageDialog`,
+    #142), e `preview.html?screen=new-message` já o monta — mas `web/tools/capture-reference.mjs`
+    não tem estado para ele, então não há `docs/UI/reference/<viewport>/new-message.png`. Sem
+    referência não há como **aceitar** um baseline: a regra do aceite visual é conferir o PNG do
+    flow 10 contra o do protótipo, e `capture-reference.mjs` regrava a referência inteira, o que
+    não cabe num PR de limpeza. Enquanto isso o `new-message` é uma tela de preview sem baseline —
+    capturá-lo no protótipo e só então incluí-lo no flow 10 é trabalho do aceite visual (#154/#156).
 
 ## Aceite visual (issue #73)
 

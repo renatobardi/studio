@@ -18,8 +18,9 @@ Without it, the auth screens render but Firebase calls fail.
 bun dev          # http://localhost:5173
 bun run build    # typecheck + production build
 bun run lint
-bun test         # pure-logic unit tests (identity, backup crypto, routing, auth error mapping,
-                 # channel event builders/grouping, relay client reconnection)
+bun test         # unit tests over src and tools: the framework-free logic (identity, backup
+                 # crypto, routing, auth error mapping, channel event builders/grouping, relay
+                 # client reconnection) plus a few components rendered with renderToStaticMarkup
 bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see scripts/ops/seed-e2e-test-account.sh
 bun run test:visual      # flow 10: the MVP screens over preview.html against their baselines (docs/UI/REFERENCE.md)
 bun run capture:reference # re-captures docs/UI/reference from the prototype
