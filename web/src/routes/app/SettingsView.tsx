@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { Appearance } from "../../lib/appearance";
+import type { SettingsSection } from "../../lib/sidebar";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileEditor } from "./ProfileEditor";
 
-type Section = "appearance" | "profile";
-
-const SECTIONS: { id: Section; label: string; icon: "pencil" | "user"; description: string }[] = [
+const SECTIONS: { id: SettingsSection; label: string; icon: "pencil" | "user"; description: string }[] = [
   { id: "appearance", label: "Appearance", icon: "pencil", description: "How Studio looks on this device." },
   { id: "profile", label: "Profile", icon: "user", description: "Update how your name, avatar, and bio appear across Studio." },
 ];
@@ -17,6 +16,7 @@ const SECTIONS: { id: Section; label: string; icon: "pencil" | "user"; descripti
 /** Settings as the prototype lays it out (#71): a 208px list of sections on the left, the
  * chosen section's header and content on the right. Only the MVP sections exist. */
 export function SettingsView({
+  initialSection = "appearance",
   client,
   signer,
   pubkey,
@@ -24,6 +24,8 @@ export function SettingsView({
   onAppearanceChange,
   onClose,
 }: Readonly<{
+  /** Where it opens: Profile, from the account menu (#148). */
+  initialSection?: SettingsSection;
   client: RelayClient;
   signer: Signer;
   pubkey: string;
@@ -31,7 +33,7 @@ export function SettingsView({
   onAppearanceChange: (next: Appearance) => void;
   onClose: () => void;
 }>) {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]!;
 
   return (

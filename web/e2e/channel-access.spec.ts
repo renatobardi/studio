@@ -15,7 +15,7 @@ test.use({ storageState: undefined });
 
 test("another admin's Channel and membership changes land without a reload", async ({ page }) => {
   const pubkey = await reachAppViaRestore(page);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
   const apiBase = new URL(page.url()).origin;
   const channelName = `e2e-access-${Date.now()}`;
   const listItem = page.getByTestId("channel-list-item").filter({ hasText: channelName });

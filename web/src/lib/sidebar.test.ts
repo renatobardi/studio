@@ -70,8 +70,17 @@ describe("navigateTo", () => {
   test("ordinary navigation asks for no tab and leaves an open console as it is", () => {
     const inAdmin = navigateTo(START_NAVIGATION, { mode: "admin", adminTab: "channels" });
     const viaSidebar = navigateTo(inAdmin, { mode: "admin" });
-    expect(viaSidebar).toEqual({ mode: "admin", adminTab: undefined, adminVisit: inAdmin.adminVisit });
+    expect(viaSidebar).toMatchObject({ mode: "admin", adminTab: undefined, adminVisit: inAdmin.adminVisit });
     expect(navigateTo(viaSidebar, { mode: "dms" }).mode).toBe("dms");
+  });
+
+  test("the account menu opens Settings on Profile, again each time it is asked for (#148)", () => {
+    const first = navigateTo(START_NAVIGATION, { mode: "settings", settingsSection: "profile" });
+    expect(first).toMatchObject({ mode: "settings", settingsSection: "profile" });
+    const again = navigateTo(first, { mode: "settings", settingsSection: "profile" });
+    expect(again.settingsVisit).not.toBe(first.settingsVisit);
+    // Settings from the sidebar list asks for no section.
+    expect(navigateTo(again, { mode: "settings" })).toMatchObject({ settingsSection: undefined, settingsVisit: again.settingsVisit });
   });
 });
 

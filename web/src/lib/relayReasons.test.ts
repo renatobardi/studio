@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { humanRelayReason, isAlreadyStored, publishFailureMessage, relayRejection } from "./relayReasons";
+import { humanRelayReason, isAlreadyStored, publishFailureMessage, relayBanner, relayRejection } from "./relayReasons";
 
 describe("humanRelayReason", () => {
   test("names what the relay refused, keeping its own detail", () => {
@@ -69,5 +69,33 @@ describe("isAlreadyStored", () => {
     expect(isAlreadyStored(new Error("duplicate: already have this event"))).toBe(true);
     expect(isAlreadyStored(new Error("restricted: not a member of this workspace"))).toBe(false);
     expect(isAlreadyStored(new Error("connection lost before the relay confirmed the event"))).toBe(false);
+  });
+});
+
+/** The one line above the main area that says why nothing is arriving (#148): the footer no
+ * longer spells out the connection, so a socket that is not open has to be said here. */
+describe("relayBanner", () => {
+  test("an open connection the relay refused nothing on shows no banner", () => {
+    expect(relayBanner("open", null)).toBeNull();
+  });
+
+  test("a connection that is not open says so, and stays until it is", () => {
+    expect(relayBanner("connecting", null)).toEqual({ message: "Connecting to the Workspace…", dismissible: false });
+    expect(relayBanner("reconnecting", null)).toEqual({
+      message: "Lost the connection to the Workspace. Reconnecting…",
+      dismissible: false,
+    });
+    expect(relayBanner("closed", null)).toEqual({ message: "Disconnected from the Workspace.", dismissible: false });
+  });
+
+  test("what the relay refused wins over the connection state, and only a refused AUTH cannot be put away", () => {
+    expect(relayBanner("open", { kind: "notice", reason: "error: this subscription fell too far behind" })).toEqual({
+      message: "The Workspace hit an error: this subscription fell too far behind.",
+      dismissible: true,
+    });
+    expect(relayBanner("reconnecting", { kind: "auth", reason: "restricted: removed from the Workspace" })).toEqual({
+      message: "The Workspace refused this request: removed from the Workspace.",
+      dismissible: false,
+    });
   });
 });

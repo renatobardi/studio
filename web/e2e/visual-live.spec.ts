@@ -28,7 +28,7 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
   }
   await page.setViewportSize(VIEWPORTS.desktop);
   await reachAppViaRestore(page);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
   // The footer holds "…" until the own kind 0 arrives (#149): wait for the name, so desktop
   // and mobile capture the same one.
   await expect(page.locator(".account-name")).not.toHaveText("…");

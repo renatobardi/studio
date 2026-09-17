@@ -1,3 +1,5 @@
+import type { ConnectionState, RelayProblem } from "./relay";
+
 /**
  * Turns a relay's machine-readable reason into something a reader can act on.
  *
@@ -53,4 +55,23 @@ export function humanRelayReason(reason: string): string {
  * OK that would have said so was lost, not a refusal — whoever it was for has it (#106). */
 export function isAlreadyStored(error: unknown): boolean {
   return error instanceof Error && error.message.trim().startsWith("duplicate:");
+}
+
+const CONNECTION_NOTICE: Record<Exclude<ConnectionState, "open">, string> = {
+  connecting: "Connecting to the Workspace…",
+  reconnecting: "Lost the connection to the Workspace. Reconnecting…",
+  closed: "Disconnected from the Workspace.",
+};
+
+/** The banner above the main area, if any (#148). The sidebar footer only lights its presence
+ * dot when the socket is open, so a socket that is not open is said here — after whatever the
+ * relay refused, which carries the reason. A refused AUTH keeps being true until the connection
+ * is re-made, so only the one-off refusals (a lagging subscription, a NOTICE) can be put away. */
+export function relayBanner(
+  state: ConnectionState,
+  problem: RelayProblem | null,
+): { message: string; dismissible: boolean } | null {
+  if (problem) return { message: humanRelayReason(problem.reason), dismissible: problem.kind !== "auth" };
+  if (state === "open") return null;
+  return { message: CONNECTION_NOTICE[state], dismissible: false };
 }

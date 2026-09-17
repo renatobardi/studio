@@ -44,7 +44,7 @@ test("restore Identity from Key Backup on a fresh browser, with no invite, and s
   await expect(page.getByRole("heading", { name: /You're in/ })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Finish" }).click();
 
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   // Nothing of it was left in this browser: it can only have come back from the relay.
   await sharedChannelItem(page).click();

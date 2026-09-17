@@ -85,6 +85,14 @@ Settings além de Appearance/Profile, popup Google simulado.
    Invite que já existiam (criar Workspace, restaurar do Key Backup). Terms of Service e Privacy
    Policy apontam para `web/public/legal.html`, **placeholder** até o dono fornecer os textos; o
    aceite não é gravado no servidor. Workspaces abertos: #159.
+5. **Rodapé da sidebar e Sign out (#148).** O bloco de conta abre só Profile, Settings e Sign out
+   ("Run onboarding again" e "Sign in screen" do HTML são atalhos do protótipo). Profile abre
+   Settings › Profile (`ProfileEditor`) até a tela `profile` existir (#150). O ponto de presença
+   é a conexão com o relay (verde só em `open`); `connecting`/`reconnecting`/`closed` viram o
+   banner de `relayReasons.ts`. O diálogo "Sign out and wipe all data?" mantém checkbox e frase
+   "wipe all my data", mas **omite a linha da chave privada com Reveal**: o `Signer` nunca entrega
+   a chave crua à UI e sob NIP-07 ela vive na extensão. Descrição sem "agent settings" (fora do
+   MVP) e "return Studio to sign-in" no lugar de "first-run setup". Chave no diálogo: #160.
 
 ## Aceite visual (issue #73)
 
