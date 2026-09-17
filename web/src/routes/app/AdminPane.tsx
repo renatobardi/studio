@@ -5,10 +5,9 @@ import { ACCESS_PROJECTION_KINDS, isWorkspaceManager, manageableChannels } from 
 import { describeInvite, inviteLimits, inviteLink } from "../../lib/invites";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
+import type { AdminTab } from "../../lib/sidebar";
 import { displayName, useProfiles } from "./useProfiles";
 import { MemberProfile } from "./MemberProfile";
-
-type AdminTab = "invites" | "members" | "channels";
 
 /** The admin console. A Workspace owner/admin gets all of it: Invites,
  * Workspace Members and Channels — the REST admin surface (ADR-0002: this is
@@ -20,9 +19,10 @@ export function AdminPane({
   signer,
   slug,
   workspaceRole,
-}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string }>) {
+  initialTab,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string; initialTab?: AdminTab }>) {
   const isManager = isWorkspaceManager(workspaceRole);
-  const [tab, setTab] = useState<AdminTab>(isManager ? "invites" : "channels");
+  const [tab, setTab] = useState<AdminTab>(initialTab ?? (isManager ? "invites" : "channels"));
 
   return (
     <div className="card stack" data-testid="admin-pane">

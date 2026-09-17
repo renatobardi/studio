@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
   ACCESS_PROJECTION_KINDS,
   accessLostAfterRefresh,
   canManageChannels,
   initialSelection,
+  isWorkspaceManager,
   keepSelection,
 } from "../../lib/channelAccess";
 import {
@@ -18,8 +19,9 @@ import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/
 import { humanRelayReason } from "../../lib/relayReasons";
 import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
-import { sidebarGroups, type SidebarMode } from "../../lib/sidebar";
+import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
+import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { ChannelView } from "./ChannelView";
 import { DirectMessagesPane } from "./DirectMessagesPane";
 import { SettingsView } from "./SettingsView";
@@ -58,7 +60,8 @@ export function AppShell({
    * race the load and wipe them. */
   const [readAt, setReadAt] = useState<ReadState | null>(null);
   const [activityAt, setActivityAt] = useState<ReadState>({});
-  const [mode, setMode] = useState<SidebarMode>("channels");
+  const [navigation, navigate] = useReducer(navigateTo, START_NAVIGATION);
+  const { mode } = navigation;
   /** Theme, density and font scale live here so the sidebar's theme toggle and
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
@@ -221,9 +224,11 @@ export function AppShell({
         })}
         onSelect={(item) => {
           if (item.channelId) selectChannel(item.channelId);
-          setMode(item.mode);
+          navigate({ mode: item.mode });
         }}
-        onSelectMode={setMode}
+        onSelectMode={(next) => navigate({ mode: next })}
+        canCreateChannels={isWorkspaceManager(workspace.role)}
+        onCreateChannel={() => navigate({ mode: "admin", adminTab: "channels" })}
         ownName={pubkey ? displayName(ownProfiles, pubkey) : "…"}
         workspaceName={workspace.name}
         role={workspace.role}
@@ -263,7 +268,13 @@ export function AppShell({
                 mediaUrl={workspace.media_url}
               />
             )}
-            {channels?.length === 0 && <p className="meta app-notice">No Channels yet.</p>}
+            {channels?.length === 0 && (
+              <ChannelsEmptyState
+                className="meta app-notice"
+                canCreate={isWorkspaceManager(workspace.role)}
+                onCreate={() => navigate({ mode: "admin", adminTab: "channels" })}
+              />
+            )}
           </>
         )}
         {mode === "dms" && pubkey && (
@@ -277,7 +288,14 @@ export function AppShell({
         )}
         {mode === "admin" && canManage && (
           <div className="app-scroll">
-            <AdminPane client={client} signer={signer} slug={workspace.slug} workspaceRole={workspace.role} />
+            <AdminPane
+              key={navigation.adminVisit}
+              client={client}
+              signer={signer}
+              slug={workspace.slug}
+              workspaceRole={workspace.role}
+              initialTab={navigation.adminTab}
+            />
           </div>
         )}
         {mode === "settings" && pubkey && (
@@ -287,7 +305,7 @@ export function AppShell({
             pubkey={pubkey}
             appearance={appearance}
             onAppearanceChange={updateAppearance}
-            onClose={() => setMode("channels")}
+            onClose={() => navigate({ mode: "channels" })}
           />
         )}
       </main>
