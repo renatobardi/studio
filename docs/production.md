@@ -50,9 +50,16 @@ Nothing beyond the repository and these files, all mode `600`, none committed:
 - `X-Forwarded-Proto https` set by that vhost.
 - Backup: `studio-prd` in `lab`'s `inventory.yaml` with the same strategy as
   `studio-test` (`surreal`, `app_dir: /opt/app`, `backup_service:
-  app-surrealdb-1`, bucket `studio-media` on `app-minio-1`), then `lab`'s
-  `tools/deploy-backup.sh`. Prove it with the restore drill pointed at
-  `studio-prd` before the first real user.
+  app-surrealdb-1`, bucket `studio-media` on `app-minio-1`). Then regenerate
+  `backup-all.sh` from that inventory (`lab`'s `tools/gen-backup-configs.py`)
+  and install only that file over `/opt/oute/backup/backup-all.sh`. **Do not
+  run `lab`'s `tools/deploy-backup.sh` for this**: every run disables and
+  stops the backup timers of the whole server (renatobardi/lab#132), so it
+  would silently end the backups of every container, not just add this one.
+  Afterwards `systemctl is-enabled` and `is-active` must still report both
+  `oute-backup-daily.timer` and `oute-backup-weekly.timer` on. Prove it with a
+  targeted run (`BACKUP_CONTAINERS=studio-prd`) and the restore drill pointed
+  at `studio-prd` before the first real user.
 
 ## GitHub
 
