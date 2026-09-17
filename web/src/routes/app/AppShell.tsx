@@ -17,7 +17,7 @@ import {
 } from "../../lib/custody";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { humanRelayReason } from "../../lib/relayReasons";
-import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
+import { oldestRead, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
@@ -60,6 +60,9 @@ export function AppShell({
    * race the load and wipe them. */
   const [readAt, setReadAt] = useState<ReadState | null>(null);
   const [activityAt, setActivityAt] = useState<ReadState>({});
+  /** The selected Channel's last-read mark as it was when opened — opening reads it at once,
+   * so this is what still tells the timeline where "New" starts (#147). */
+  const [opened, setOpened] = useState<OpenedChannel | null>(null);
   const [navigation, navigate] = useReducer(navigateTo, START_NAVIGATION);
   const { mode } = navigation;
   /** Theme, density and font scale live here so the sidebar's theme toggle and
@@ -134,7 +137,10 @@ export function AppShell({
       const now = nowSeconds();
       let marks = seedMissing(storedReadAt, list.map((c) => c.id), now);
       // Opening a Channel reads it — including the one resumed from last time.
-      if (resumed !== null) marks = touch(marks, resumed, now);
+      if (resumed !== null) {
+        setOpened({ readAt: marks[resumed] ?? now, openedAt: now });
+        marks = touch(marks, resumed, now);
+      }
       // All three setState calls together, in the same tick — keeping them batched into one
       // render (as they were before this file needed a second, async lastChannelId source)
       // matters: a channels-then-selectedChannelId split across two renders churns the
@@ -198,7 +204,9 @@ export function AppShell({
     setAccessLost(false);
     setSelectedChannelId(channelId);
     void storeChannelId(channelId);
-    setReadAt((prev) => touch(prev ?? {}, channelId, nowSeconds()));
+    const now = nowSeconds();
+    setOpened({ readAt: readAtRef.current[channelId] ?? now, openedAt: now });
+    setReadAt((prev) => touch(prev ?? {}, channelId, now));
   };
 
   const handleSignOut = async () => {
@@ -266,6 +274,7 @@ export function AppShell({
                 pubkey={pubkey}
                 signer={signer}
                 mediaUrl={workspace.media_url}
+                opened={opened}
               />
             )}
             {channels?.length === 0 && (

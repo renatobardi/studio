@@ -5,6 +5,7 @@ import type { Signer } from "../../lib/custody";
 import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
+import type { OpenedChannel } from "../../lib/unread";
 import { MembersPane } from "./MembersPane";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
@@ -19,12 +20,14 @@ export function ChannelView({
   pubkey,
   signer,
   mediaUrl,
+  opened,
 }: Readonly<{
   client: RelayClient;
   channel: ChannelOut;
   pubkey: string;
   signer: Signer;
   mediaUrl: string;
+  opened: OpenedChannel | null;
 }>) {
   const channelId = channel.id;
   const feed = useChannelFeed(client, channelId);
@@ -93,6 +96,7 @@ export function ChannelView({
           hasMore={feed.hasMore}
           onLoadOlder={feed.loadOlder}
           profiles={profiles}
+          opened={opened}
           openThreadRootId={sidePane?.type === "thread" ? sidePane.root.id : null}
           onOpenThread={(root) => {
             const message = feed.messages.find((m) => m.id === root.id);

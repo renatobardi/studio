@@ -10,7 +10,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "../styles/app.css";
 import { applyAppearance, parseAppearance, storeAppearance } from "../lib/appearance";
-import { storeChannelId } from "../lib/custody";
+import { storeChannelId, storeChannelReadAt } from "../lib/custody";
 import type { User } from "firebase/auth";
 import { AuthScreen } from "../routes/auth/AuthScreen";
 import { AppShell } from "../routes/app/AppShell";
@@ -18,7 +18,7 @@ import { OnboardingScreen } from "../routes/onboarding/OnboardingScreen";
 import type { RelayClient } from "../lib/relay";
 import { FakeRelayClient, previewSigner } from "./fakeRelay";
 import { Steps, type Step } from "./Steps";
-import { ALL_EVENTS, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
+import { ALL_EVENTS, CHANNEL_READ_AT, CHANNELS, MEMBERS, OWN, WORKSPACE } from "./fixtures";
 
 const NEXT: Step = { click: "text=Continue" };
 const PASSPHRASE_FIELD = 'input[placeholder="Backup passphrase"]';
@@ -125,6 +125,7 @@ async function main() {
   await storeAppearance(appearance);
   applyAppearance(appearance);
   await storeChannelId(CHANNELS[0]!.id);
+  await storeChannelReadAt(CHANNEL_READ_AT);
   const client = new FakeRelayClient(ALL_EVENTS).asClient();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

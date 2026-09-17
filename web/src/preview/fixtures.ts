@@ -97,6 +97,10 @@ const m2 = signed(
   at(8, 11),
 );
 const m3 = signed(MARINA, 9, [["h", channel]], "Moving the huddle to 15h so the Lisbon folks can join.", at(9, 5));
+/** Where eng-platform was last read: between Marina's and Harbor's Messages, which is where the
+ * reference captures draw the "New" divider (#147). */
+export const CHANNEL_READ_AT = { [channel]: at(9, 30) };
+
 const m4 = signed(
   HARBOR,
   9,

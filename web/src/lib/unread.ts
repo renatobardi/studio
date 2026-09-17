@@ -32,3 +32,21 @@ export function oldestRead(readAt: ReadState, channelIds: string[], fallback: nu
   const marks = channelIds.map((id) => readAt[id]).filter((at): at is number => at !== undefined);
   return marks.length === 0 ? fallback : Math.min(...marks);
 }
+
+/** Where a Channel stood the moment it was opened: its last-read mark then, and when. */
+export type OpenedChannel = Readonly<{ readAt: number; openedAt: number }>;
+
+/** The Message the "New" divider goes above: the oldest one someone else sent after the
+ * Channel's last-read mark and before it was opened — what arrived while it was not on
+ * screen. Messages arriving while it is open are read as they come, so they never qualify. */
+export function firstNewMessageId(
+  messages: readonly { id: string; pubkey: string; created_at: number }[],
+  opened: OpenedChannel,
+  ownPubkey: string,
+): string | null {
+  const unread = messages.filter(
+    (m) => m.pubkey !== ownPubkey && m.created_at > opened.readAt && m.created_at <= opened.openedAt,
+  );
+  if (unread.length === 0) return null;
+  return unread.reduce((oldest, m) => (m.created_at < oldest.created_at ? m : oldest)).id;
+}

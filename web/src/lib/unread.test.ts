@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { oldestRead, seedMissing, touch, unreadChannelIds } from "./unread";
+import { firstNewMessageId, oldestRead, seedMissing, touch, unreadChannelIds } from "./unread";
 
 describe("seedMissing", () => {
   test("treats a Channel seen for the first time as read up to now", () => {
@@ -57,5 +57,29 @@ describe("oldestRead", () => {
 
   test("falls back when nothing has ever been read", () => {
     expect(oldestRead({}, ["a"], 999)).toBe(999);
+  });
+});
+
+describe("firstNewMessageId", () => {
+  const me = "me";
+  const msg = (id: string, created_at: number, pubkey = "other") => ({ id, created_at, pubkey });
+  const opened = { readAt: 100, openedAt: 200 };
+
+  test("is the oldest Message after the last-read mark the Channel was opened with", () => {
+    const messages = [msg("c", 150), msg("a", 50), msg("b", 120)];
+    expect(firstNewMessageId(messages, opened, me)).toBe("b");
+  });
+
+  test("is null when everything was already read", () => {
+    expect(firstNewMessageId([msg("a", 50), msg("b", 100)], opened, me)).toBeNull();
+  });
+
+  test("ignores Messages that arrive while the Channel is on screen", () => {
+    // They are read as they arrive — a divider over them would announce nothing new.
+    expect(firstNewMessageId([msg("a", 50), msg("b", 201)], opened, me)).toBeNull();
+  });
+
+  test("ignores the caller's own Messages, which never count as unread", () => {
+    expect(firstNewMessageId([msg("a", 120, me), msg("b", 150)], opened, me)).toBe("b");
   });
 });

@@ -1142,6 +1142,28 @@ button.sidebar-group-label:hover {
   align-self: center;
 }
 
+/* The "New" divider (#147): a primary hairline either side of an uppercase label, above the
+   first Message that arrived while the Channel was not on screen. */
+.new-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.new-divider::before,
+.new-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklab, var(--primary) 40%, transparent);
+}
+
 /* Messages (#70): avatar in the gutter, author and time on a baseline, 11px body, the
    reactions and the thread pill underneath — a row highlights on hover as in the prototype. */
 .message-list {
