@@ -118,4 +118,16 @@ describe("ProfileStore.close", () => {
     expect(subscriptions).toHaveLength(2);
     expect(subscriptions[1]!.filters).toEqual([{ kinds: [0], authors: ["a", "b"] }]);
   });
+
+  test("subscribes again for the same pubkeys after a close — StrictMode replays the mount (#143)", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    store.close();
+
+    store.ensure(["a"]);
+
+    expect(subscriptions).toHaveLength(2);
+    expect(subscriptions[1]!.filters).toEqual([{ kinds: [0], authors: ["a"] }]);
+  });
 });
