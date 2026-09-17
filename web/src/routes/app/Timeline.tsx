@@ -11,7 +11,6 @@ import {
 } from "../../lib/channelEvents";
 import {
   addDraft,
-  attachmentLimitLabel,
   canSendWithDrafts,
   failDraft,
   invalidDraft,
@@ -22,10 +21,10 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
+import { channelComposerPlaceholder } from "../../lib/conversationCopy";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
-  MAX_UPLOAD_BYTES,
   buildImetaTag,
   parseImetaTags,
   uploadBlob,
@@ -71,6 +70,7 @@ function replyCountLabel(count: number): string {
 export function Timeline({
   client,
   channelId,
+  channelName,
   pubkey,
   signer,
   mediaUrl,
@@ -87,6 +87,7 @@ export function Timeline({
 }: Readonly<{
   client: RelayClient;
   channelId: string;
+  channelName: string;
   pubkey: string;
   signer: Signer;
   mediaUrl: string;
@@ -327,16 +328,11 @@ export function Timeline({
         value={draft}
         onChange={setDraft}
         onSend={() => void send()}
-        placeholder="Message the channel…"
+        placeholder={channelComposerPlaceholder(channelName)}
         canSend={canSend && !sending}
         onAttach={() => fileInputRef.current?.click()}
         testId="message-composer"
         attachTestId="attach-button"
-        trailing={
-          <span className="meta" data-testid="attach-limit">
-            {attachmentLimitLabel(MAX_UPLOAD_BYTES)}
-          </span>
-        }
       >
         <input
           ref={fileInputRef}

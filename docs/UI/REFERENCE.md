@@ -143,6 +143,16 @@ Settings além de Appearance/Profile, popup Google simulado.
    terceiros, o que vaza o IP do leitor a partir de um app fim-a-fim e pede um proxy nosso; até
    existir essa feature o controle fica **oculto**, não falso. Preview de link com proxy: #164.
 
+10. **Copy das conversas (#153).** Placeholder do composer com o destino, como no HTML:
+    `Message #<canal>` no Channel e `Message <nome>` na DM (`web/src/lib/conversationCopy.ts`);
+    a dica fica só com "Enter to send · Shift+Enter for new line" e o aviso da DM passa a ser
+    "Direct messages are end-to-end encrypted on this relay.". O "Photos up to N MB" não existe
+    no HTML: sai da dica e o limite só aparece como erro ao anexar um arquivo grande
+    (`validateAttachment`/`validateDmAttachment`), que já nomeia os 10 MB do Channel e os 5 MB da
+    DM. **Exceção: identificador no header da DM.** O HTML mostra um e-mail/NIP-05
+    (`ana@relay.studio`); sem NIP-05 no MVP (mesma razão de #150), o header mostra o `npub` curto
+    (`shortNpub`), nunca hex — emitir handle NIP-05: **#162**.
+
 ## Aceite visual (issue #73)
 
 Duas frentes, uma determinística e uma autenticada:

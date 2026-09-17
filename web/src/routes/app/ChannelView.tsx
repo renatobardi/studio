@@ -109,6 +109,7 @@ export function ChannelView({
             <Timeline
               client={client}
               channelId={channelId}
+              channelName={channel.name}
               pubkey={pubkey}
               signer={signer}
               mediaUrl={mediaUrl}

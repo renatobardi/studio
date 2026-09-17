@@ -33,8 +33,15 @@ test("attach photos, see each one's upload progress, and see them rendered inlin
 
   await sharedChannelItem(page).click();
 
-  // #107: the Channel's limit is on screen before anything is picked.
-  await expect(page.getByTestId("attach-limit")).toHaveText("Photos up to 10 MB");
+  // #153: the limit is no longer written under the composer — a photo over it is refused
+  // there, naming the limit, and a refused file offers no Retry (#107).
+  await page.getByTestId("attach-input").setInputFiles({
+    name: "too-big.png", mimeType: "image/png", buffer: Buffer.from(makePng(10 * 1024 * 1024 + 1)),
+  });
+  await expect(page.getByTestId("attachment-error")).toContainText("10 MB");
+  await expect(page.getByTestId("attachment-preview").getByRole("button", { name: "Retry" })).toHaveCount(0);
+  await page.getByTestId("attachment-preview").getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByTestId("attachment-preview")).toHaveCount(0);
 
   // #48: more than one photo per Message, one of them the size of a real phone photo.
   await page.getByTestId("attach-input").setInputFiles([
