@@ -345,10 +345,8 @@ export function AppShell({
                 channel={selectedChannel}
                 pubkey={pubkey}
                 signer={signer}
-                mediaUrl={workspace.media_url}
                 opened={opened}
-                slug={workspace.slug}
-                workspaceRole={workspace.role}
+                workspace={workspace}
                 workspaceMembers={members}
                 threadView={appearance.threadView}
               />
