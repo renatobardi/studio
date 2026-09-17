@@ -26,7 +26,7 @@ import { ChannelView } from "./ChannelView";
 import { DirectMessagesPane } from "./DirectMessagesPane";
 import { SettingsView } from "./SettingsView";
 import { Sidebar } from "./Sidebar";
-import { displayName, useProfiles } from "./useProfiles";
+import { ownDisplayName, useProfiles } from "./useProfiles";
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -229,7 +229,7 @@ export function AppShell({
         onSelectMode={(next) => navigate({ mode: next })}
         canCreateChannels={isWorkspaceManager(workspace.role)}
         onCreateChannel={() => navigate({ mode: "admin", adminTab: "channels" })}
-        ownName={pubkey ? displayName(ownProfiles, pubkey) : "…"}
+        ownName={ownDisplayName(ownProfiles, pubkey)}
         workspaceName={workspace.name}
         role={workspace.role}
         connectionState={connectionState}

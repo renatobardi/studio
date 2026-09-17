@@ -29,6 +29,9 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
   await page.setViewportSize(VIEWPORTS.desktop);
   await reachAppViaRestore(page);
   await expect(page.getByText(/Connected as/)).toBeVisible();
+  // The footer holds "…" until the own kind 0 arrives (#149): wait for the name, so desktop
+  // and mobile capture the same one.
+  await expect(page.locator(".account-name")).not.toHaveText("…");
 
   const shot = async (viewport: "desktop" | "mobile", name: string) => {
     await page.screenshot({ path: `${OUT}/${viewport}/${name}.png`, animations: "disabled", caret: "hide" });

@@ -1,3 +1,4 @@
+import { nip19 } from "nostr-tools";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { ProfileStore, type Profile } from "../../lib/profileStore";
 import type { RelayClient } from "../../lib/relay";
@@ -22,6 +23,18 @@ export function profileName(profiles: Map<string, Profile>, pubkey: string): str
   return profiles.get(pubkey)?.name || null;
 }
 
+/** A pubkey as the prototype shows one without a name: `npub1rb92…7ktz` — never hex. */
+export function shortNpub(pubkey: string): string {
+  const npub = nip19.npubEncode(pubkey);
+  return `${npub.slice(0, 9)}…${npub.slice(-4)}`;
+}
+
 export function displayName(profiles: Map<string, Profile>, pubkey: string): string {
-  return profiles.get(pubkey)?.name || `${pubkey.slice(0, 8)}…`;
+  return profiles.get(pubkey)?.name || shortNpub(pubkey);
+}
+
+/** The signed-in Identity's own name: a neutral "…" until its kind 0 arrives, so the
+ * footer never flashes a key where every other session already shows the name. */
+export function ownDisplayName(profiles: Map<string, Profile>, pubkey: string | null): string {
+  return (pubkey && profileName(profiles, pubkey)) || "…";
 }
