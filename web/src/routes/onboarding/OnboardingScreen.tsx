@@ -15,10 +15,13 @@ import {
 } from "../../lib/backup";
 import {
   forgetInviteCode,
+  INITIAL_INVITE_STEP,
   inviteCodeFromInput,
-  invitePolicyError,
+  inviteFieldHint,
   invitePreviewMessage,
+  inviteStepHandlers,
   pendingInviteCode,
+  type InviteStepState,
 } from "../../lib/invites";
 import { slugFromName, workspaceForm } from "../../lib/workspaceForm";
 import {
@@ -90,14 +93,10 @@ export function OnboardingScreen({
   // being the code somebody is joining with (#46).
   const [inviteCode, setInviteCode] = useState(() => pendingInviteCode() ?? "");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
-  // Confirmed on the invite step before anything is redeemed, as the prototype
-  // asks (`onboardingTerms`, `onboardingPolicyError`). Its error sits under the
-  // boxes, where they are, not in the banner.
-  const [acceptedAge, setAcceptedAge] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [policyError, setPolicyError] = useState<string | null>(null);
-  // "I don't have an invite" opens the ways in that need none.
-  const [noInvite, setNoInvite] = useState(false);
+  // The confirmations the invite step asks for before anything is redeemed,
+  // and whether the ways in that need no invite are showing. What each answer
+  // means lives in lib/invites.ts (`onboardingTerms`, `onboardingPolicyError`).
+  const [invite, setInvite] = useState<InviteStepState>(INITIAL_INVITE_STEP);
 
   // Where this Identity's Workspace comes from: somebody's invite, or one it
   // founds. Founding one from the interface is what the first Workspace on a
@@ -235,16 +234,8 @@ export function OnboardingScreen({
     }
   };
 
-  const handleInviteNext = () => {
-    const refused = invitePolicyError({ age: acceptedAge, terms: acceptedTerms });
-    setPolicyError(refused);
-    if (refused) return;
-    const code = inviteCodeFromInput(inviteCode);
-    if (!code) {
-      setError("Paste the invite link you were sent, or just its code.");
-      return;
-    }
-    return runStep(async () => {
+  const redeemInvite = (code: string) =>
+    runStep(async () => {
       const preview = await api.previewInvite(code);
       if (!preview.valid) {
         // Why, not just "not valid": a revoked or used-up code is not a typo,
@@ -256,7 +247,16 @@ export function OnboardingScreen({
       setWorkspaceName(preview.workspace_name);
       setStep("profile");
     }, "Couldn't reach the server to check that invite. Try again.");
-  };
+
+  // The boxes and the button only report what happened; what each of them
+  // means is decided in lib/invites.ts.
+  const inviteStep = inviteStepHandlers({
+    state: invite,
+    typed: inviteCode,
+    setState: setInvite,
+    setError,
+    redeem: redeemInvite,
+  });
 
   /** Founding a Workspace needs an Identity to own it, so it takes the same
    * path as joining one and only diverges at the last step. */
@@ -614,36 +614,20 @@ export function OnboardingScreen({
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value)}
                   />
-                  <span className="field-hint">
-                    {workspaceName ? `Joining ${workspaceName}` : "The link should start with https://"}
-                  </span>
+                  <span className="field-hint">{inviteFieldHint(workspaceName)}</span>
                 </label>
                 <div className="onboarding-checks">
                   <label className="onboarding-check">
-                    <input
-                      type="checkbox"
-                      checked={acceptedAge}
-                      onChange={(e) => {
-                        setAcceptedAge(e.target.checked);
-                        setPolicyError(null);
-                      }}
-                    />
+                    <input type="checkbox" checked={invite.age} onChange={inviteStep.onAge} />
                     <span className="onboarding-checkbox" aria-hidden="true">
-                      {acceptedAge && <Icon name="check" size={10} />}
+                      {invite.age && <Icon name="check" size={10} />}
                     </span>
                     <span>I am at least 18 years old</span>
                   </label>
                   <label className="onboarding-check">
-                    <input
-                      type="checkbox"
-                      checked={acceptedTerms}
-                      onChange={(e) => {
-                        setAcceptedTerms(e.target.checked);
-                        setPolicyError(null);
-                      }}
-                    />
+                    <input type="checkbox" checked={invite.terms} onChange={inviteStep.onTerms} />
                     <span className="onboarding-checkbox" aria-hidden="true">
-                      {acceptedTerms && <Icon name="check" size={10} />}
+                      {invite.terms && <Icon name="check" size={10} />}
                     </span>
                     <span>
                       I agree to the{" "}
@@ -657,16 +641,16 @@ export function OnboardingScreen({
                     </span>
                   </label>
                 </div>
-                {policyError && <p className="onboarding-policy-error">{policyError}</p>}
+                {invite.policyError && <p className="onboarding-policy-error">{invite.policyError}</p>}
               </div>
               <div className="onboarding-actions">
-                <button className="btn btn-primary btn-block" disabled={busy} onClick={handleInviteNext}>
+                <button className="btn btn-primary btn-block" disabled={busy} onClick={inviteStep.onSubmit}>
                   Accept and redeem invite
                 </button>
-                <button type="button" className="link" aria-expanded={noInvite} onClick={() => setNoInvite((v) => !v)}>
+                <button type="button" className="link" aria-expanded={invite.noInvite} onClick={inviteStep.onNoInvite}>
                   I don’t have an invite
                 </button>
-                {noInvite && (
+                {invite.noInvite && (
                   <>
                     <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
                       Create a new Workspace instead

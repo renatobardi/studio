@@ -1,16 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   describeInvite,
+  INITIAL_INVITE_STEP,
   inviteCodeFromInput,
   inviteCodeFromUrl,
   inviteLimits,
   inviteLink,
   invitePolicyError,
   invitePreviewMessage,
+  inviteFieldHint,
+  inviteStepHandlers,
+  submitInviteStep,
+  withAgeAccepted,
+  withNoInviteToggled,
+  withTermsAccepted,
   forgetInviteCode,
   pendingInviteCode,
   rememberInviteCode,
 } from "./invites";
+import type { InviteStepState } from "./invites";
 import type { InviteOut } from "./api";
 
 const NOW = 1_757_000_000;
@@ -53,6 +61,12 @@ describe("inviteCodeFromUrl", () => {
 describe("inviteCodeFromInput", () => {
   test("takes the link an admin copied, as it was copied", () => {
     expect(inviteCodeFromInput("https://studio.example/?invite=abc123")).toBe("abc123");
+  });
+
+  test("a link that is not one is no code, however much it looks like a URL", () => {
+    // `new URL` throws on this, and a scheme with nothing after it was never
+    // somebody's invite code.
+    expect(inviteCodeFromInput("https://")).toBeNull();
   });
 
   test("the link is the one inviteLink builds, so what one side hands out the other reads", () => {
@@ -249,5 +263,150 @@ describe("the pending invite", () => {
     expect(() => rememberInviteCode("abc123")).not.toThrow();
     expect(pendingInviteCode()).toBeNull();
     expect(() => forgetInviteCode()).not.toThrow();
+  });
+});
+
+describe("the invite step's state", () => {
+  test("starts with nothing agreed, nothing refused and the other ways in closed", () => {
+    expect(INITIAL_INVITE_STEP).toEqual({ age: false, terms: false, policyError: null, noInvite: false });
+  });
+
+  test("ticking a box takes the refusal away, because it was about that box", () => {
+    const refused = { ...INITIAL_INVITE_STEP, policyError: "Confirm that you are at least 18 years old." };
+    expect(withAgeAccepted(refused, true)).toEqual({ age: true, terms: false, policyError: null, noInvite: false });
+    expect(withTermsAccepted(refused, true)).toEqual({ age: false, terms: true, policyError: null, noInvite: false });
+  });
+
+  test("unticking a box is remembered too", () => {
+    const agreed = withTermsAccepted(withAgeAccepted(INITIAL_INVITE_STEP, true), true);
+    expect(withAgeAccepted(agreed, false).age).toBe(false);
+    expect(withTermsAccepted(agreed, false).terms).toBe(false);
+  });
+
+  test("\"I don't have an invite\" opens and closes the ways in that need none", () => {
+    const open = withNoInviteToggled(INITIAL_INVITE_STEP);
+    expect(open.noInvite).toBe(true);
+    expect(withNoInviteToggled(open).noInvite).toBe(false);
+  });
+
+  test("toggling it leaves what was already agreed alone", () => {
+    const agreed = withTermsAccepted(withAgeAccepted(INITIAL_INVITE_STEP, true), true);
+    expect(withNoInviteToggled(agreed)).toEqual({ ...agreed, noInvite: true });
+  });
+});
+
+describe("submitInviteStep", () => {
+  const agreed = { ...INITIAL_INVITE_STEP, age: true, terms: true };
+
+  test("hands over the code an invite link carries", () => {
+    const attempt = submitInviteStep(agreed, " https://studio.example/?invite=abc123 ");
+    expect(attempt.code).toBe("abc123");
+    expect(attempt.error).toBeNull();
+    expect(attempt.state.policyError).toBeNull();
+  });
+
+  test("a bare code is a code", () => {
+    expect(submitInviteStep(agreed, "abc123").code).toBe("abc123");
+  });
+
+  test("consent is asked for before the server is, and age comes first", () => {
+    // Previewing a code nobody has agreed to would answer "this invite is
+    // good" to somebody who is not allowed to use it.
+    const refused = submitInviteStep(INITIAL_INVITE_STEP, "abc123");
+    expect(refused.code).toBeNull();
+    expect(refused.state.policyError).toBe("Confirm that you are at least 18 years old.");
+    // The banner stays out of it: the refusal belongs under the boxes.
+    expect(refused.error).toBeNull();
+  });
+
+  test("the terms are what is left to agree to once the age is confirmed", () => {
+    const attempt = submitInviteStep({ ...INITIAL_INVITE_STEP, age: true }, "abc123");
+    expect(attempt.code).toBeNull();
+    expect(attempt.state.policyError).toBe("Agree to the Terms of Service and Privacy Policy.");
+  });
+
+  test("nothing to redeem asks for the link in the banner, not under the boxes", () => {
+    for (const typed of ["", "   ", "https://studio.example/", "https://"]) {
+      const attempt = submitInviteStep(agreed, typed);
+      expect(attempt.code).toBeNull();
+      expect(attempt.error).toBe("Paste the invite link you were sent, or just its code.");
+      expect(attempt.state.policyError).toBeNull();
+    }
+  });
+
+  test("a refusal that has been answered does not survive the next press", () => {
+    const stale = { ...agreed, policyError: "Confirm that you are at least 18 years old." };
+    expect(submitInviteStep(stale, "abc123").state.policyError).toBeNull();
+  });
+});
+
+describe("inviteFieldHint", () => {
+  test("names the Workspace once the code is known to admit to one", () => {
+    expect(inviteFieldHint("Family")).toBe("Joining Family");
+  });
+
+  test("until then it says what the link looks like", () => {
+    expect(inviteFieldHint(null)).toBe("The link should start with https://");
+  });
+});
+
+describe("the invite step's controls", () => {
+  const agreed = { ...INITIAL_INVITE_STEP, age: true, terms: true };
+
+  function wire(state = INITIAL_INVITE_STEP, typed = "abc123") {
+    const states: InviteStepState[] = [];
+    const errors: string[] = [];
+    const redeemed: string[] = [];
+    const handlers = inviteStepHandlers({
+      state,
+      typed,
+      setState: (next) => states.push(next),
+      setError: (message) => errors.push(message),
+      redeem: (code) => redeemed.push(code),
+    });
+    return { handlers, states, errors, redeemed };
+  }
+
+  test("the boxes report what they were set to", () => {
+    const age = wire();
+    age.handlers.onAge({ target: { checked: true } });
+    expect(age.states).toEqual([{ ...INITIAL_INVITE_STEP, age: true }]);
+
+    const terms = wire();
+    terms.handlers.onTerms({ target: { checked: true } });
+    expect(terms.states).toEqual([{ ...INITIAL_INVITE_STEP, terms: true }]);
+
+    const unticked = wire(agreed);
+    unticked.handlers.onAge({ target: { checked: false } });
+    expect(unticked.states[0]?.age).toBe(false);
+  });
+
+  test("\"I don't have an invite\" opens the other ways in", () => {
+    const { handlers, states } = wire();
+    handlers.onNoInvite();
+    expect(states).toEqual([{ ...INITIAL_INVITE_STEP, noInvite: true }]);
+  });
+
+  test("the button hands the code over once both boxes are ticked", () => {
+    const { handlers, states, errors, redeemed } = wire(agreed, "https://studio.example/?invite=abc123");
+    handlers.onSubmit();
+    expect(redeemed).toEqual(["abc123"]);
+    expect(errors).toEqual([]);
+    expect(states[0]?.policyError).toBeNull();
+  });
+
+  test("without consent it redeems nothing and says which box is missing", () => {
+    const { handlers, states, errors, redeemed } = wire();
+    handlers.onSubmit();
+    expect(redeemed).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(states[0]?.policyError).toBe("Confirm that you are at least 18 years old.");
+  });
+
+  test("with consent but nothing to redeem it asks for the link in the banner", () => {
+    const { handlers, errors, redeemed } = wire(agreed, "   ");
+    handlers.onSubmit();
+    expect(redeemed).toEqual([]);
+    expect(errors).toEqual(["Paste the invite link you were sent, or just its code."]);
   });
 });
