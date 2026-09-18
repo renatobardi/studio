@@ -30,7 +30,9 @@ test("thread reply and reaction", async ({ page }) => {
   await expect(page.getByTestId("thread-reply").filter({ hasText: replyContent })).toBeVisible({
     timeout: 10_000,
   });
-  await expect(rootMessage.getByTestId("open-thread")).toContainText("1 reply · last reply");
+  // No space around the "·": the prototype puts it there with `margin: 0 4px`, not with text
+  // (docs/UI/design/Studio.dc.html), and the app's `.thread-open-dot` follows it.
+  await expect(rootMessage.getByTestId("open-thread")).toContainText("1 reply·last reply");
 
   await rootMessage.hover();
   await rootMessage.getByTestId("reaction-add").filter({ hasText: "🔥" }).click();

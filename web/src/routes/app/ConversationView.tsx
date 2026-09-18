@@ -198,7 +198,8 @@ export function ConversationView({
                 testId="dm-message"
               >
                 {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
-                  <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} />
+                  // `priority={index}`: the newest Message's photos are the ones being waited on.
+                  <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} priority={index} />
                 ))}
               </MessageRow>
             );

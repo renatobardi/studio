@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import { fetchDmAttachmentObjectUrl, type DmAttachment } from "../../lib/dmMedia";
+import { createPriorityQueue } from "../../lib/fetchQueue";
+
+/** Opening a conversation asks for every photo it ever carried at once. They share the origin's
+ * few connections newest-Message-first, so the photo someone just sent never waits behind a
+ * history of blobs — some of which answer slowly, or not at all. */
+const downloads = createPriorityQueue(4);
 
 /** A photo attached to a Direct Message: fetched with Blossom auth, decrypted client-side with
  * the per-file NIP-44 key carried in the rumor (ticket #7), rendered inline, and expandable to
  * full size on click — the server never sees the plaintext. */
-export function DmAttachmentImage({ attachment, signer }: Readonly<{ attachment: DmAttachment; signer: Signer }>) {
+export function DmAttachmentImage({ attachment, signer, priority }: Readonly<{ attachment: DmAttachment; signer: Signer; priority: number }>) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fullSize, setFullSize] = useState(false);
@@ -13,7 +19,7 @@ export function DmAttachmentImage({ attachment, signer }: Readonly<{ attachment:
   useEffect(() => {
     let cancelled = false;
     let created: string | null = null;
-    fetchDmAttachmentObjectUrl(attachment.url, attachment.sha256, attachment.key, attachment.originalMime, signer)
+    downloads.run(priority, () => fetchDmAttachmentObjectUrl(attachment.url, attachment.sha256, attachment.key, attachment.originalMime, signer))
       .then((url) => {
         if (cancelled) {
           URL.revokeObjectURL(url);
