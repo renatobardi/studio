@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { Encrypter } from "age-encryption";
+import * as idb from "idb-keyval";
 import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
-import { encryptBackup } from "./backup";
 import {
   CREATE_FAILED_MESSAGE,
   NO_LOCAL_KEY_MESSAGE,
@@ -21,6 +22,20 @@ import {
 const secretKey = generateSecretKey();
 const nsec = nip19.nsecEncode(secretKey);
 const pubkey = getPublicKey(secretKey);
+
+/**
+ * The same age file `encryptBackup` produces, at a scrypt work factor these tests can afford.
+ * What is checked here is keyBackup's orchestration — what it validates, what it sends, what it
+ * refuses — and the production work factor costs seconds per call on a CI runner, which is what
+ * timed these tests out. The file is still a real one: `decryptBackup` reads the factor from its
+ * own header, so the real decrypt path runs, and `backup.test.ts` covers encryptBackup itself.
+ */
+async function backupFile(passphrase: string): Promise<Uint8Array> {
+  const encrypter = new Encrypter();
+  encrypter.setPassphrase(passphrase);
+  encrypter.setScryptWorkFactor(2);
+  return encrypter.encrypt(nsec);
+}
 
 /** Which of the two Key Backup cards the dialog is on (#150) — the onboarding order, and
  * "verified" only ever after the file proved it unlocks. */
@@ -78,14 +93,14 @@ describe("createKeyBackup", () => {
 
 describe("verifyKeyBackup", () => {
   test("true only when the file decrypts to this Identity's key", async () => {
-    const blob = await encryptBackup(nsec, "correct horse");
+    const blob = await backupFile("correct horse");
     expect(await verifyKeyBackup(blob, "correct horse", pubkey)).toBe(true);
     expect(await verifyKeyBackup(blob, "correct horse", getPublicKey(generateSecretKey()))).toBe(false);
   });
 
   test("rejects when the passphrase does not open the file at all", async () => {
-    const blob = await encryptBackup(nsec, "correct horse");
-    expect(verifyKeyBackup(blob, "wrong passphrase", pubkey)).rejects.toBeDefined();
+    const blob = await backupFile("correct horse");
+    await expect(verifyKeyBackup(blob, "wrong passphrase", pubkey)).rejects.toBeDefined();
   });
 });
 
@@ -158,7 +173,7 @@ describe("confirmKeyBackup", () => {
 
   const confirm = async (passphrase: string, identity = pubkey) => {
     const unlocked: string[] = [];
-    const blob = await encryptBackup(nsec, "correct horse");
+    const blob = await backupFile("correct horse");
     const error = await confirmKeyBackup({
       blob,
       passphrase,
@@ -218,14 +233,22 @@ describe("requestKeyBackup", () => {
   });
 
   test("a browser whose key store will not open says the backup could not be made", async () => {
-    // No IndexedDB here, which is the same dead end as a browser that refuses it.
-    const problem = await requestKeyBackup({
-      passphrase: "correct horse",
-      confirm: "correct horse",
-      accountPassword: "hunter22",
-      onCreated: () => {},
-    });
-    expect(problem).toBe(CREATE_FAILED_MESSAGE);
+    // The key store is made to refuse here rather than left to be absent: another test file's
+    // `mock.module("idb-keyval", …)` reaches this one — bun's module mocks are process-wide —
+    // and then the read answers "nothing stored" instead of throwing, which is a different
+    // dead end with a different message.
+    const store = spyOn(idb, "get").mockRejectedValue(new Error("the key store will not open"));
+    try {
+      const problem = await requestKeyBackup({
+        passphrase: "correct horse",
+        confirm: "correct horse",
+        accountPassword: "hunter22",
+        onCreated: () => {},
+      });
+      expect(problem).toBe(CREATE_FAILED_MESSAGE);
+    } finally {
+      store.mockRestore();
+    }
   });
 
   test("says there is nothing to back up when the key is the extension's", async () => {
