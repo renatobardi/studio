@@ -70,7 +70,7 @@ export function Timeline({
   client,
   channelId,
   channelName,
-  pubkey,
+  ownPubkey,
   signer,
   mediaUrl,
   messages,
@@ -87,7 +87,8 @@ export function Timeline({
   client: RelayClient;
   channelId: string;
   channelName: string;
-  pubkey: string;
+  /** The Identity this browser signs with. */
+  ownPubkey: string;
   signer: Signer;
   mediaUrl: string;
   messages: VerifiedEvent[];
@@ -206,14 +207,14 @@ export function Timeline({
   const unreact = async (targetId: string, emoji: string) => {
     const own = reactions.find((r) => {
       const targetTag = r.tags.find((t) => t[0] === "e")?.[1];
-      return r.pubkey === pubkey && r.content === emoji && targetTag === targetId;
+      return r.pubkey === ownPubkey && r.content === emoji && targetTag === targetId;
     });
     if (!own) return;
     const signed = await signer.signEvent(buildReactionRemoval(channelId, own.id));
     await client.publish(signed);
   };
 
-  const { sorted, newMessageId } = messagesWithDivider(messages, opened, pubkey);
+  const { sorted, newMessageId } = messagesWithDivider(messages, opened, ownPubkey);
 
   return (
     <div className="timeline">
@@ -282,7 +283,7 @@ export function Timeline({
                   ))}
                   <ReactionBar
                     groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                    ownPubkey={pubkey}
+                    ownPubkey={ownPubkey}
                     onAdd={(emoji) => void react(target, emoji)}
                     onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
                   />

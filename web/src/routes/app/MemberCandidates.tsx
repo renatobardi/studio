@@ -24,7 +24,7 @@ export function MemberCandidates({
             profiles={profiles}
             onClick={() => onAdd(member.pubkey)}
             testId="member-add-option"
-            subtitle="Add to this Channel"
+            caption={{ text: "Add to this Channel", at: "subtitle" }}
             agent={member.role === "agent"}
           />
         </li>

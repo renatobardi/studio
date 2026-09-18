@@ -26,7 +26,7 @@ export function MemberGroup({
               profiles={profiles}
               onClick={() => onView(pubkey)}
               testId="member-list-item"
-              subtitle={role}
+              caption={{ text: role, at: "subtitle" }}
               agent={role === "Agent"}
             />
           </li>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
-import type { ChannelOut, WorkspaceMemberOut } from "../../lib/api";
+import type { ChannelOut, WorkspaceMemberOut, WorkspaceOut } from "../../lib/api";
 import { manageableChannels, subscribeRoster } from "../../lib/channelAccess";
 import type { Signer } from "../../lib/custody";
 import type { ThreadView } from "../../lib/appearance";
@@ -22,10 +22,8 @@ export function ChannelView({
   channel,
   ownPubkey,
   signer,
-  mediaUrl,
   opened,
-  slug,
-  workspaceRole,
+  workspace,
   workspaceMembers,
   threadView,
 }: Readonly<{
@@ -34,10 +32,10 @@ export function ChannelView({
   /** The Identity this browser signs with. */
   ownPubkey: string;
   signer: Signer;
-  mediaUrl: string;
   opened: OpenedChannel | null;
-  slug: string;
-  workspaceRole: string;
+  /** The Workspace this Channel belongs to: its slug addresses the members API, its role says
+   * whether they may be managed, and its media_url is where attachments go. */
+  workspace: WorkspaceOut;
   workspaceMembers: WorkspaceMemberOut[];
   /** Settings › Appearance › Thread view (#151). */
   threadView: ThreadView;
@@ -113,7 +111,7 @@ export function ChannelView({
               channelName={channel.name}
               ownPubkey={ownPubkey}
               signer={signer}
-              mediaUrl={mediaUrl}
+              mediaUrl={workspace.media_url}
               messages={feed.messages}
               replies={feed.replies}
               reactions={feed.reactions}
@@ -146,12 +144,12 @@ export function ChannelView({
           <MembersPane
             client={client}
             signer={signer}
-            slug={slug}
+            slug={workspace.slug}
             channelId={channelId}
             memberPubkeys={memberPubkeys ?? []}
             channelAdmins={channelAdmins}
             workspaceMembers={workspaceMembers}
-            canManage={manageableChannels(workspaceRole, [channel]).length > 0}
+            canManage={manageableChannels(workspace.role, [channel]).length > 0}
             overlay={layout.membersOverlay}
             onClose={() => setSidePane(null)}
           />
