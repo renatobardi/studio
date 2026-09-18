@@ -10,6 +10,10 @@ import { secretKeyFromNsec } from "./identity";
  * first one was (#31, #36) and the dialog is left with nothing but state and markup.
  */
 
+/** The name the encrypted key file carries everywhere: the download, the card that shows it,
+ * and the Settings row that says a backup exists (#36, #150). */
+export const KEY_BACKUP_FILENAME = "studio-key-backup.age";
+
 /** Which of the two cards the flow is on: pick a passphrase, prove it unlocks, done. */
 export type KeyBackupStep = "passphrase" | "verify" | "verified";
 
@@ -65,9 +69,16 @@ export async function verifyKeyBackup(blob: Uint8Array, passphrase: string, pubk
   return getPublicKey(secretKeyFromNsec(decrypted)) === pubkey;
 }
 
-/** Hands the verified file to the Account, base64 so the bytes survive the JSON body. */
+/** The encrypted file as PUT /account/key-backup takes it: base64, so the bytes survive the
+ * JSON body. Onboarding stores its first backup itself, between linking the Identity and
+ * storing the key, and encodes it through here too. */
+export function keyBackupBase64(blob: Uint8Array): string {
+  return btoa(String.fromCodePoint(...blob));
+}
+
+/** Hands the verified file to the Account. */
 export async function storeKeyBackup(firebaseIdToken: string, blob: Uint8Array): Promise<void> {
-  await api.putKeyBackup(firebaseIdToken, btoa(String.fromCodePoint(...blob)));
+  await api.putKeyBackup(firebaseIdToken, keyBackupBase64(blob));
 }
 
 /** The optional local copy of the same file, named as the rest of the app names it. */
@@ -76,7 +87,7 @@ export function downloadKeyBackup(blob: Uint8Array): void {
   const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "studio-key-backup.age";
+  a.download = KEY_BACKUP_FILENAME;
   a.click();
   URL.revokeObjectURL(url);
 }

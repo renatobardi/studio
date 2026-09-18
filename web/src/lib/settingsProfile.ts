@@ -1,4 +1,5 @@
 import * as api from "./api";
+import { KEY_BACKUP_FILENAME } from "./keyBackup";
 import type { Custody } from "./onboardingSteps";
 
 /** Where "Send feedback" goes, as the owner decided for the prototype's button (#150). */
@@ -20,7 +21,7 @@ export interface KeyBackupRow {
 export function keyBackupRow(custody: Custody, stored: boolean | null): KeyBackupRow {
   if (custody === "extension") return { value: "Your Nostr extension holds your private key.", manage: false };
   if (stored === null) return { value: "Checking…", manage: false };
-  return { value: stored ? "Verified · studio-key-backup.age" : "Not verified", manage: true };
+  return { value: stored ? `Verified · ${KEY_BACKUP_FILENAME}` : "Not verified", manage: true };
 }
 
 /**

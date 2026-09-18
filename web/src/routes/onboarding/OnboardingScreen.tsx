@@ -12,7 +12,7 @@ import {
   encryptBackup,
   needsAccountPassword,
 } from "../../lib/backup";
-import { downloadKeyBackup, keyBackupBase64, keyBackupPassphraseError } from "../../lib/keyBackup";
+import { downloadKeyBackup, keyBackupBase64, newBackupPassphraseProblem } from "../../lib/keyBackup";
 import {
   forgetInviteCode,
   INITIAL_INVITE_STEP,
@@ -352,7 +352,7 @@ export function OnboardingScreen({
 
   const handleCreateBackup = () => {
     if (!identity) return;
-    const invalid = keyBackupPassphraseError(passphrase, passphraseConfirm, knownPassword ?? "");
+    const invalid = newBackupPassphraseProblem(passphrase, passphraseConfirm, knownPassword);
     if (invalid) {
       setError(invalid);
       return;
