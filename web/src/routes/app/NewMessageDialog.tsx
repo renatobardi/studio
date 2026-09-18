@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { WorkspaceMemberOut } from "../../lib/api";
+import { isEscape, isOutsideClick } from "../../lib/signOut";
 import { MemberPicker } from "./MemberPicker";
 import type { useProfiles } from "./useProfiles";
 
@@ -20,24 +21,20 @@ export function NewMessageDialog({
   onPick: (pubkey: string) => void;
   onCancel: () => void;
 }>) {
+  // Escape closes wherever the focus is, which the backdrop's own handler cannot see.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
+    const onKey = (event: KeyboardEvent) => isEscape(event) && onCancel();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-message-title"
-        onClick={(event) => event.stopPropagation()}
-        data-testid="new-message-dialog"
-      >
+    <div
+      className="dialog-backdrop"
+      onClick={(event) => isOutsideClick(event) && onCancel()}
+      onKeyDown={(event) => isEscape(event) && onCancel()}
+    >
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-message-title" data-testid="new-message-dialog">
         <div className="dialog-header">
           <button className="dialog-close" onClick={onCancel} aria-label="Close" title="Close">
             <Icon name="x" size={16} />
