@@ -55,7 +55,7 @@ test("first access onboards through a verified Key Backup, and restore skips the
   const pubkey = await page.getByTestId("own-pubkey").textContent();
   expect(pubkey).toMatch(/^[0-9a-f]{64}$/);
   await page.getByRole("button", { name: "Finish" }).click();
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   try {
     // The Invite admitted exactly one person, and this was it.
@@ -81,7 +81,7 @@ test("first access onboards through a verified Key Backup, and restore skips the
     await expect(restorePage.getByRole("heading", { name: /You're in/ })).toBeVisible({ timeout: 15_000 });
     await expect(restorePage.getByTestId("own-pubkey")).toHaveText(pubkey!);
     await restorePage.getByRole("button", { name: "Finish" }).click();
-    await expect(restorePage.getByText(/Connected as/)).toBeVisible();
+    await expect(restorePage.getByTestId("account-menu-button")).toBeVisible();
     await second.close();
   } finally {
     // The Account is recreated on the next deploy, its Identity is not: without this the

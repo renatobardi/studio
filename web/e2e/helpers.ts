@@ -347,3 +347,13 @@ export async function signIn(
   await page.getByLabel("Password", { exact: true }).fill(credentials.password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
+
+/** Sign out through the account menu and its confirmation (#148), which wipes this device. */
+export async function signOutAndWipe(page: import("@playwright/test").Page): Promise<void> {
+  await page.getByTestId("account-menu-button").click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  const dialog = page.getByTestId("sign-out-dialog");
+  await dialog.getByRole("checkbox").click();
+  await dialog.getByRole("textbox").fill("wipe all my data");
+  await dialog.getByRole("button", { name: "Delete my data" }).click();
+}

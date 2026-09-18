@@ -8,6 +8,7 @@ import {
   testBackupPassphrase,
   testBackupPassphraseTwo,
   sharedChannelItem,
+  signOutAndWipe,
 } from "./helpers";
 
 const TEST_IMAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/test-image.png");
@@ -24,7 +25,7 @@ function mediaCacheNames(page: import("@playwright/test").Page): Promise<string[
 }
 
 async function signOut(page: import("@playwright/test").Page): Promise<void> {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutAndWipe(page);
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible({ timeout: 15_000 });
 }
 
@@ -53,7 +54,7 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
     password: testAccount.password(),
     backupPassphrase: testBackupPassphrase(),
   });
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   // The regression guarded here is a service worker answering `/media/…` by
   // URL, ahead of any authorization — so the worker has to be running, and

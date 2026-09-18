@@ -14,7 +14,7 @@ test.use({ storageState: undefined });
 
 test("send a Message and see it in the Channel timeline", async ({ page }) => {
   await reachAppViaRestore(page);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   await sharedChannelItem(page).click();
 
@@ -29,7 +29,7 @@ test("send a Message and see it in the Channel timeline", async ({ page }) => {
 
 test("attach photos, see each one's upload progress, and see them rendered inline", async ({ page }) => {
   await reachAppViaRestore(page);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   await sharedChannelItem(page).click();
 

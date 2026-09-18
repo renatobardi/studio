@@ -16,7 +16,7 @@ import {
   type Signer,
 } from "../../lib/custody";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
-import { humanRelayReason } from "../../lib/relayReasons";
+import { relayBanner } from "../../lib/relayReasons";
 import { oldestRead, openChannel, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
@@ -26,7 +26,7 @@ import { ChannelView } from "./ChannelView";
 import { DirectMessagesPane } from "./DirectMessagesPane";
 import { SettingsView } from "./SettingsView";
 import { Sidebar } from "./Sidebar";
-import { ownDisplayName, useProfiles } from "./useProfiles";
+import { ownDisplayName, shortNpub, useProfiles } from "./useProfiles";
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -218,6 +218,7 @@ export function AppShell({
   const unread = unreadChannelIds(readAt ?? {}, activityAt);
   const canManage = canManageChannels(workspace.role, channels ?? []);
   const selectedChannel = channels?.find((c) => c.id === selectedChannelId) ?? null;
+  const banner = relayBanner(connectionState, relayProblem);
 
   return (
     <div className="app-shell">
@@ -237,21 +238,20 @@ export function AppShell({
         canCreateChannels={isWorkspaceManager(workspace.role)}
         onCreateChannel={() => navigate({ mode: "admin", adminTab: "channels" })}
         ownName={ownDisplayName(ownProfiles, pubkey)}
+        ownHandle={pubkey ? shortNpub(pubkey) : "…"}
         workspaceName={workspace.name}
-        role={workspace.role}
         connectionState={connectionState}
         theme={appearance.theme}
         onToggleTheme={() => updateAppearance({ ...appearance, theme: appearance.theme === "dark" ? "light" : "dark" })}
+        onOpenProfile={() => navigate({ mode: "settings", settingsSection: "profile" })}
+        onOpenSettings={() => navigate({ mode: "settings", settingsSection: "appearance" })}
         onSignOut={() => void handleSignOut()}
       />
       <main className="app-main">
-        {relayProblem && (
+        {banner && (
           <div className="error-banner app-banner" data-testid="relay-problem">
-            {humanRelayReason(relayProblem.reason)}
-            {/* A refused AUTH keeps being true until the connection is re-made, so
-                only the one-off refusals (a lagging subscription, a NOTICE) can be
-                put away by hand. */}
-            {relayProblem.kind !== "auth" && (
+            {banner.message}
+            {banner.dismissible && (
               <button className="link link-inline" onClick={() => setRelayProblem(null)} data-testid="relay-problem-dismiss">
                 Dismiss
               </button>
@@ -308,6 +308,8 @@ export function AppShell({
         )}
         {mode === "settings" && pubkey && (
           <SettingsView
+            key={navigation.settingsVisit}
+            initialSection={navigation.settingsSection}
             client={client}
             signer={signer}
             pubkey={pubkey}

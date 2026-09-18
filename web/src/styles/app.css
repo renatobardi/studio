@@ -988,14 +988,8 @@ button.sidebar-group-label:hover {
 }
 
 .sidebar-footer {
+  position: relative;
   padding: 8px 11px 12px;
-}
-
-.sidebar-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 6px;
 }
 
 .account-row {
@@ -1005,6 +999,277 @@ button.sidebar-group-label:hover {
   min-width: 0;
   padding: 8px;
   border-radius: 12px;
+}
+
+.account-row:hover {
+  background: color-mix(in oklab, var(--sidebar-border) 35%, transparent);
+}
+
+/* Avatar and name open the account menu (#148); the theme toggle beside them stays its own button. */
+.account-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* The prototype's presence dot is the relay connection here: green only while open. */
+.account-presence {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--sidebar);
+}
+
+.account-presence::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+
+.account-presence[data-connection="open"]::after {
+  background: oklch(0.72 0.16 150);
+}
+
+.menu-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+/* Opens above the account block, right edges aligned, 6px clear of it — the prototype's flip. */
+.account-menu {
+  position: absolute;
+  right: 11px;
+  bottom: calc(100% - 2px);
+  z-index: 160;
+  min-width: 208px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.account-menu-header {
+  padding: 6px 8px 8px;
+}
+
+.account-menu-name {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.account-menu-handle {
+  margin: 2px 0 0;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item svg {
+  color: var(--muted-foreground);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  outline: none;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+}
+
+.menu-item.destructive,
+.menu-item.destructive svg {
+  color: var(--destructive);
+}
+
+.menu-item.destructive:hover,
+.menu-item.destructive:focus-visible {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in oklab, var(--border) 60%, transparent);
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: color-mix(in oklab, oklch(0 0 0) 45%, transparent);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 512px;
+  max-height: 76vh;
+  overflow: hidden;
+  border-radius: var(--radius-4xl);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+}
+
+.dialog-header {
+  position: relative;
+  flex-shrink: 0;
+  padding: 20px 48px 8px 24px;
+}
+
+.dialog-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.dialog-close:hover {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  color: var(--foreground);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.dialog-description {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 24px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px 20px;
+}
+
+.sign-out-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sign-out-phrase {
+  gap: 6px;
+}
+
+.sign-out-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sign-out-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sign-out-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  border-radius: 4px;
+  color: var(--primary-foreground);
+}
+
+.sign-out-box.checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.sign-out-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
 }
 
 .account-avatar {
@@ -1770,25 +2035,6 @@ button.sidebar-group-label:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.connection-badge {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  background: var(--muted);
-  color: var(--muted-foreground);
-}
-
-.connection-badge-open {
-  background: color-mix(in oklab, var(--primary) 20%, transparent);
-  color: var(--primary);
-}
-
-.connection-badge-reconnecting,
-.connection-badge-connecting {
-  background: color-mix(in oklab, var(--destructive) 15%, transparent);
-  color: var(--destructive);
 }
 
 .button-group {

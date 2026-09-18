@@ -24,6 +24,6 @@ test("signing in again on a new browser restores the same Identity", async ({ br
   const secondPubkey = await reachAppViaRestoreWithCredentials(page, credentials);
 
   expect(secondPubkey).toBe(firstPubkey);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
   await second.close();
 });

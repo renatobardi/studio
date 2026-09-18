@@ -7,6 +7,7 @@ import {
   redeemInviteOnOnboarding,
   sharedChannelItem,
   signIn,
+  signOutAndWipe,
   testExtensionAccount,
   testInviteCode,
 } from "./helpers";
@@ -92,7 +93,7 @@ test("first access with an extension onboards on the extension's own Identity", 
   await ensureChannelMembership(page.url(), fake.pubkey);
 
   await page.getByRole("button", { name: "Finish" }).click();
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 });
 
 test("reload, signing and sign-out all go through the extension", async ({ page }) => {
@@ -103,7 +104,7 @@ test("reload, signing and sign-out all go through the extension", async ({ page 
   // Reload: the session resumes from the extension, with no onboarding and no
   // passphrase — there is no Key Backup under this custody.
   await page.reload();
-  await expect(page.getByText(/Connected as/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("account-menu-button")).toBeVisible({ timeout: 15_000 });
 
   await sharedChannelItem(page).click();
   const content = `e2e extension message ${Date.now()}`;
@@ -115,14 +116,14 @@ test("reload, signing and sign-out all go through the extension", async ({ page 
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutAndWipe(page);
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
 /** Into the app shell with the extension holding the key — by resuming when the
  * Account already linked that Identity, or by onboarding the first time. */
 async function reachApp(page: import("@playwright/test").Page, pubkey: string): Promise<void> {
-  const shell = page.getByText(/Connected as/);
+  const shell = page.getByTestId("account-menu-button");
   if (await opensOnShell(page)) return;
 
   await redeemInviteOnOnboarding(page, testInviteCode());
@@ -149,7 +150,7 @@ async function reachApp(page: import("@playwright/test").Page, pubkey: string): 
 async function opensOnShell(page: import("@playwright/test").Page): Promise<boolean> {
   await signIn(page, credentials());
   const resumed = await page
-    .getByText(/Connected as/)
+    .getByTestId("account-menu-button")
     .waitFor({ timeout: 15_000 })
     .then(
       () => true,

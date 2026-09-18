@@ -4,20 +4,29 @@ export type SidebarMode = "channels" | "dms" | "admin" | "settings";
 
 export type AdminTab = "invites" | "members" | "channels";
 
+export type SettingsSection = "appearance" | "profile";
+
 /** What the main area shows. `adminTab` is the tab Admin was asked to open on — Channels,
  * from an empty Channel list (#136) — and `adminVisit` changes with each such request, so
- * the console re-opens on that tab even when it is already on screen. */
+ * the console re-opens on that tab even when it is already on screen. `settingsSection` and
+ * `settingsVisit` do the same for Settings, opened on Profile from the account menu (#148). */
 export interface Navigation {
   mode: SidebarMode;
   adminTab?: AdminTab;
   adminVisit: number;
+  settingsSection?: SettingsSection;
+  settingsVisit: number;
 }
 
-export const START_NAVIGATION: Navigation = { mode: "channels", adminTab: undefined, adminVisit: 0 };
+export const START_NAVIGATION: Navigation = { mode: "channels", adminTab: undefined, adminVisit: 0, settingsVisit: 0 };
 
-export function navigateTo(current: Navigation, to: { mode: SidebarMode; adminTab?: AdminTab }): Navigation {
+export function navigateTo(
+  current: Navigation,
+  to: { mode: SidebarMode; adminTab?: AdminTab; settingsSection?: SettingsSection },
+): Navigation {
   const adminVisit = to.adminTab ? current.adminVisit + 1 : current.adminVisit;
-  return { mode: to.mode, adminTab: to.adminTab, adminVisit };
+  const settingsVisit = to.settingsSection ? current.settingsVisit + 1 : current.settingsVisit;
+  return { mode: to.mode, adminTab: to.adminTab, adminVisit, settingsSection: to.settingsSection, settingsVisit };
 }
 
 export interface SidebarItem {

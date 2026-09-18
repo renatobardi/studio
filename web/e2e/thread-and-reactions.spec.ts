@@ -8,7 +8,7 @@ test.use({ storageState: undefined });
 
 test("thread reply and reaction", async ({ page }) => {
   await reachAppViaRestore(page);
-  await expect(page.getByText(/Connected as/)).toBeVisible();
+  await expect(page.getByTestId("account-menu-button")).toBeVisible();
 
   await sharedChannelItem(page).click();
 
