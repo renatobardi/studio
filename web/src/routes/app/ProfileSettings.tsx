@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { hasNip07 } from "../../lib/custody";
 import type { Custody } from "../../lib/onboardingSteps";
 import type { RelayClient } from "../../lib/relay";
-import { FEEDBACK_URL, askForKeyBackup, keyBackupRow } from "../../lib/settingsProfile";
+import { askForKeyBackup, keyBackupRow } from "../../lib/settingsProfile";
 import { KeyBackupDialog } from "./KeyBackupDialog";
 import { SignOutDialog } from "./SignOutDialog";
 import { shortNpub, useProfiles, type Profile } from "./useProfiles";
@@ -105,11 +105,6 @@ export function ProfileSettingsCards({
             Delete my data
           </button>
         </div>
-      </div>
-      <div className="settings-card-actions settings-actions-loose">
-        <a className="btn btn-outline btn-xs" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">
-          Send feedback
-        </a>
       </div>
       {managing && user && (
         <KeyBackupDialog

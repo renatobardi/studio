@@ -52,10 +52,8 @@ describe("ProfileSettings", () => {
     expect(html).not.toContain('data-testid="sign-out-dialog"');
   });
 
-  test("Send feedback opens the issue tracker in a new tab, without handing it this one", () => {
-    const html = render(undefined);
-    expect(html).toContain('href="https://github.com/renatobardi/studio/issues/new"');
-    expect(html).toContain('rel="noopener noreferrer"');
+  test("leaves Send feedback to the Settings shell, which closes every section with it (#151)", () => {
+    expect(render(undefined)).not.toContain("Send feedback");
   });
 
   test("renders without a Firebase session, which the preview harness has none of", () => {

@@ -1,4 +1,4 @@
-import type { Appearance, Density, FontScale, Theme } from "../../lib/appearance";
+import type { Appearance, Density, FontScale, Theme, ThreadView } from "../../lib/appearance";
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: "light", label: "Light" },
@@ -14,10 +14,17 @@ const FONT_SCALES: { value: FontScale; label: string }[] = [
   { value: "default", label: "Default" },
   { value: "larger", label: "Larger" },
 ];
+const THREAD_VIEWS: { value: ThreadView; label: string }[] = [
+  { value: "focus", label: "Focus" },
+  { value: "split", label: "Split" },
+];
 
-/** Theme, density and font scale, as in the prototype's Settings > Appearance screen. The
- * value is owned by the shell (the sidebar's theme toggle changes the same thing); changes
- * apply immediately and persist across launches (studio.appearance in IndexedDB). */
+/** Theme, density, font scale and thread view, as in the prototype's Settings > Appearance
+ * screen. The value is owned by the shell (the sidebar's theme toggle changes the same thing);
+ * changes apply immediately and persist across launches (studio.appearance in IndexedDB).
+ * The prototype's "Link previews Compact/Rich" row is left out: a preview means fetching
+ * metadata from third-party URLs, which leaks the reader's IP from an end-to-end encrypted app
+ * and needs a proxy of our own (docs/UI/REFERENCE.md > Decisões, #164). */
 export function AppearanceSettings({
   appearance,
   onChange,
@@ -52,6 +59,7 @@ export function AppearanceSettings({
       {group("Theme", THEMES, appearance.theme, (theme) => onChange({ ...appearance, theme }))}
       {group("Density", DENSITIES, appearance.density, (density) => onChange({ ...appearance, density }))}
       {group("Font size", FONT_SCALES, appearance.fontScale, (fontScale) => onChange({ ...appearance, fontScale }))}
+      {group("Thread view", THREAD_VIEWS, appearance.threadView, (threadView) => onChange({ ...appearance, threadView }))}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Icon } from "../../components/icons/Icon";
 import type { Appearance } from "../../lib/appearance";
 import type { SettingsSection } from "../../lib/sidebar";
 import type { RelayClient } from "../../lib/relay";
+import { FEEDBACK_URL } from "../../lib/settingsProfile";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileSettings } from "./ProfileSettings";
@@ -86,6 +87,12 @@ export function SettingsView({
               onSignOut={onSignOut}
             />
           )}
+          {/* The prototype closes every Settings section with it, not just one (#151). */}
+          <div className="settings-card-actions settings-actions-loose">
+            <a className="btn btn-outline btn-xs" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">
+              Send feedback
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { Icon } from "../../components/icons/Icon";
 import type { ChannelOut, WorkspaceMemberOut } from "../../lib/api";
 import { manageableChannels, subscribeRoster } from "../../lib/channelAccess";
 import type { Signer } from "../../lib/custody";
+import type { ThreadView } from "../../lib/appearance";
 import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
@@ -26,6 +27,7 @@ export function ChannelView({
   slug,
   workspaceRole,
   workspaceMembers,
+  threadView,
 }: Readonly<{
   client: RelayClient;
   channel: ChannelOut;
@@ -36,6 +38,8 @@ export function ChannelView({
   slug: string;
   workspaceRole: string;
   workspaceMembers: WorkspaceMemberOut[];
+  /** Settings › Appearance › Thread view (#151). */
+  threadView: ThreadView;
 }>) {
   const channelId = channel.id;
   const feed = useChannelFeed(client, channelId);
@@ -69,7 +73,11 @@ export function ChannelView({
     [client, channelId],
   );
 
-  const layout = channelLayout(width, { thread: sidePane?.type === "thread", members: sidePane?.type === "members" });
+  const layout = channelLayout(
+    width,
+    { thread: sidePane?.type === "thread", members: sidePane?.type === "members" },
+    threadView,
+  );
 
   const authorPubkeys = [...new Set([...feed.messages, ...feed.replies].map((e) => e.pubkey))];
   const authorPubkeysKey = authorPubkeys.join(",");

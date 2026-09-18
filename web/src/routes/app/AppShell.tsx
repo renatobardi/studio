@@ -350,6 +350,7 @@ export function AppShell({
                 slug={workspace.slug}
                 workspaceRole={workspace.role}
                 workspaceMembers={members}
+                threadView={appearance.threadView}
               />
             )}
             {channels?.length === 0 && (

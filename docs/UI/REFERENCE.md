@@ -133,6 +133,16 @@ Settings além de Appearance/Profile, popup Google simulado.
    Members não guarda data de entrada), a seção More (Activity log, Agent instructions) e o campo
    "Avatar URL" do app antigo, que o HTML nunca teve.
 
+9. **Settings › Appearance: Thread view e Link previews (#151).** "Thread view Focus/Split" entra
+   como no HTML e é persistido com os demais (`web/src/lib/appearance.ts`, padrão **Split** — o
+   comportamento que o app já tinha): Split abre a thread no painel lateral, Focus deixa a thread
+   substituir a timeline (`web/src/lib/paneLayout.ts`). Abaixo de 600px o canal já é de uma coluna
+   e a thread substitui a timeline de qualquer jeito — a preferência não briga com o breakpoint.
+   "Send feedback" passa a fechar **todas** as seções de Settings, como no HTML, e não só Profile.
+   **Exceção: Link previews (Compact/Rich).** Gerar preview exige buscar metadados de URLs de
+   terceiros, o que vaza o IP do leitor a partir de um app fim-a-fim e pede um proxy nosso; até
+   existir essa feature o controle fica **oculto**, não falso. Preview de link com proxy: #164.
+
 ## Aceite visual (issue #73)
 
 Duas frentes, uma determinística e uma autenticada:
