@@ -85,7 +85,13 @@ Duas frentes, uma determinística e uma autenticada:
   `web/preview.html` (componentes reais sobre fixtures assinadas, relay e API falsos, relógio UTC,
   Inter conferida) com baselines em `web/e2e/visual.spec.ts-snapshots/`. Roda com
   `cd web && bun run test:visual` (sobe/reaproveita o Vite). Sem `STUDIO_PREVIEW_URL` o flow se
-  pula — o CD roda contra o build de produção, onde `preview.html` não existe.
+  pula — o CD roda contra o build de produção, onde `preview.html` não existe. O Vite do flow sobe
+  com `VITE_FIREBASE_*` placeholder (`playwright.config.ts`): o preview não fala com Firebase, e
+  sem chave `getAuth` lança na carga.
+- **No CI (issue #155)** o job `visual` do `ci.yml` roda o flow 10 em todo PR contra os baselines
+  `-linux`, via `web/tools/visual-linux.sh` — o mesmo script local, dentro de
+  `mcr.microsoft.com/playwright:v1.63.0-noble` (linux/amd64). Diff acima da tolerância deixa o job
+  vermelho e sobe `actual`/`expected`/`diff` no artefato `visual-diffs`.
 - **Flow 11 — `web/e2e/visual-live.spec.ts`** entra no studio-test com a conta de teste e
   captura canal, thread, membros, DMs e Settings em 1440×900 e 390×844, light e dark, para
   `web/test-results/visual-live/` (+ `manifest.json` com SHA, URL e browser). O CD liga
@@ -99,7 +105,22 @@ disso com folga. Nada é mascarado: as fixtures são fixas. Os baselines levam s
 é comparado no Linux.
 
 **Política de baseline:** gerar com `bun run test:visual -- --update-snapshots`, conferir cada PNG
-contra `docs/UI/reference/` e só então commitar. Os baselines de #65 foram gerados no macOS
+contra `docs/UI/reference/` e só então commitar. Toda tela alterada leva os dois baselines: o
+`-darwin` pelo comando acima e o `-linux` (o que o CI compara) por Docker, com a mesma imagem do CI:
+
+```sh
+cd web
+bun run test:visual:linux                                      # compara, como o CI
+bun run test:visual:linux --update-snapshots -g "<nome>"       # redesenha só essa tela
+```
+
+O container instala as próprias dependências num volume Docker (`studio-web-linux-node-modules`)
+— nunca em `web/node_modules`, que tem binários nativos do macOS. No Apple Silicon roda emulado
+(amd64, ~2 min a matriz inteira); é o preço de rasterizar igual ao runner. A imagem acompanha
+`@playwright/test` do `bun.lock`: subir um, subir o outro e redesenhar os `-linux`. Os `-linux`
+de #155 foram gerados assim e conferidos par a par contra os `-darwin` (mesma composição, só a
+rasterização do texto muda); as divergências de ambos contra `docs/UI/reference/` são as
+rastreadas em #142–#153. Os baselines de #65 foram gerados no macOS
 (`-darwin`) e entram no PR para conferência do dono no review — a aceitação é dele, não do
 run. `--update-snapshots` para "deixar o CI verde" não é aceite.
 

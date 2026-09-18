@@ -143,6 +143,28 @@ jobs:
       # instead of racing an independent push-triggered job against whatever
       # studio-test happened to be running at the time.
 
+  visual:
+    # Flow 10 (issue #155): preview.html against the committed -linux
+    # baselines, on every pull request. Through the same script a person uses
+    # to draw those baselines — the Playwright image pinned there, not
+    # setup-bun on the runner — so CI and the baselines share one Chromium and
+    # one rasterisation. A diff above maxDiffPixelRatio fails the job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Flow 10 against the -linux baselines
+        run: web/tools/visual-linux.sh
+
+      - name: Publish the visual diffs
+        # expected / actual / diff PNGs per failing screen — PNGs only, as in
+        # cd.yml: a retry records trace.zip, which is not what this is for.
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: visual-diffs
+          path: web/test-results/**/*.png
+
   gates:
     # The delivery-gate contract itself (issue #51): asserts cd.yml still
     # deploys only CI-validated SHAs, and (issue #54) that docker-compose.yml

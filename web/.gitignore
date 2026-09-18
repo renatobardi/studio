@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# vite-plugin-pwa devOptions: the dev server (and so flow 10) writes its worker here
+dev-dist
 *.local
 
 # Playwright

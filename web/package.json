@@ -12,6 +12,7 @@
     "test:coverage": "bun test src --coverage --coverage-reporter=lcov",
     "test:e2e": "playwright test",
     "test:visual": "STUDIO_PREVIEW_URL=http://localhost:5173 playwright test e2e/visual.spec.ts",
+    "test:visual:linux": "tools/visual-linux.sh",
     "capture:reference": "node tools/capture-reference.mjs"
   },
   "dependencies": {
