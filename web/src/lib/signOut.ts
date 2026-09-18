@@ -8,3 +8,14 @@ export function signOutBlocker({ backupConfirmed, phrase }: { backupConfirmed: b
   if (phrase.trim() !== SIGN_OUT_PHRASE) return "Type the phrase exactly to enable the button.";
   return null;
 }
+
+/** A click on the dimmed backdrop, not one that bubbled up from the dialog box inside it —
+ * which is how the backdrop dismisses without the box carrying a handler of its own. */
+export function isOutsideClick(event: { target: unknown; currentTarget: unknown }): boolean {
+  return event.target === event.currentTarget;
+}
+
+/** Escape, the key that dismisses the dialog from the keyboard. */
+export function isEscape(event: { key: string }): boolean {
+  return event.key === "Escape";
+}

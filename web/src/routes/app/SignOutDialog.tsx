@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
-import { SIGN_OUT_PHRASE, signOutBlocker } from "../../lib/signOut";
+import { isEscape, isOutsideClick, SIGN_OUT_PHRASE, signOutBlocker } from "../../lib/signOut";
 
 /** The prototype's "sign-out" dialog (#148): wiping this device's Identity and data is only armed
  * once the backup is confirmed and the phrase typed. The private key the prototype shows in step 1
@@ -12,22 +12,23 @@ export function SignOutDialog({ onCancel, onConfirm }: Readonly<{ onCancel: () =
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (isEscape(event)) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="sign-out-title"
-        onClick={(event) => event.stopPropagation()}
-        data-testid="sign-out-dialog"
-      >
+    <div
+      className="dialog-backdrop"
+      onClick={(event) => {
+        if (isOutsideClick(event)) onCancel();
+      }}
+      onKeyDown={(event) => {
+        if (isEscape(event)) onCancel();
+      }}
+    >
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="sign-out-title" data-testid="sign-out-dialog">
         <div className="dialog-header">
           <button className="dialog-close" onClick={onCancel} aria-label="Close" title="Close">
             <Icon name="x" size={16} />
