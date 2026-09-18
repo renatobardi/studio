@@ -34,7 +34,9 @@ export class ProfileStore {
 
   ensure = (pubkeys: string[]): void => {
     const missing = pubkeys.filter((pubkey) => !this.requested.has(pubkey));
-    if (missing.length === 0) return;
+    // A closed store resumes when asked again, even for pubkeys it already had: StrictMode
+    // closes it and replays the same ensure on remount (#143).
+    if (missing.length === 0 && (this.handle !== null || pubkeys.length === 0)) return;
     for (const pubkey of missing) this.requested.add(pubkey);
     const filters: Filter[] = [{ kinds: [0], authors: [...this.requested] }];
     if (this.handle !== null) this.handle.update(filters);

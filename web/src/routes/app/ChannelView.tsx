@@ -7,9 +7,11 @@ import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import type { OpenedChannel } from "../../lib/unread";
 import { MembersPane } from "./MembersPane";
+import { MembersPill } from "./MembersPill";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
 import { useChannelFeed } from "./useChannelFeed";
+import { useChannelRoster } from "./useChannelRoster";
 import { useProfiles } from "./useProfiles";
 
 type SidePane = { type: "thread"; root: TargetRef & { content: string; created_at?: number } } | { type: "members" } | null;
@@ -33,6 +35,8 @@ export function ChannelView({
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
   const [sidePane, setSidePane] = useState<SidePane>(null);
+  /** The Channel's roster (kind 39002) — the header pill counts it and MembersPane lists it (#143). */
+  const memberPubkeys = useChannelRoster(client, channelId);
   /** The Channel's own width, from the grid it lays out in — measured, not the viewport's,
    * because the sidebar and the shell zoom both eat into it (#72). */
   const gridRef = useRef<HTMLDivElement>(null);
@@ -73,15 +77,11 @@ export function ChannelView({
                 <h1 className="pane-title-text">{channel.name}</h1>
               </span>
               <span className="pane-header-actions">
-                <button
-                  className={`btn btn-outline${sidePane?.type === "members" ? " active" : ""}`}
-                  aria-pressed={sidePane?.type === "members"}
-                  title="Channel members"
-                  onClick={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
-                >
-                  <Icon name="user" />
-                  Members
-                </button>
+                <MembersPill
+                  pubkeys={memberPubkeys}
+                  open={sidePane?.type === "members"}
+                  onToggle={() => setSidePane((prev) => (prev?.type === "members" ? null : { type: "members" }))}
+                />
               </span>
             </header>
             <Timeline
@@ -121,7 +121,7 @@ export function ChannelView({
         {sidePane?.type === "members" && (
           <MembersPane
             client={client}
-            channelId={channelId}
+            memberPubkeys={memberPubkeys ?? []}
             overlay={layout.membersOverlay}
             onClose={() => setSidePane(null)}
           />

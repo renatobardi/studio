@@ -1,4 +1,3 @@
-import type { VerifiedEvent } from "nostr-tools";
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { RelayClient } from "../../lib/relay";
@@ -6,29 +5,18 @@ import { MemberProfile } from "./MemberProfile";
 import { MemberRow } from "./MemberRow";
 import { useProfiles } from "./useProfiles";
 
-/** Channel Members from the kind 39002 projection (ADR-0002) — a `d`-addressable event the
- * control plane re-publishes on every membership change, so the latest one is the roster.
+/** Channel Members from the kind 39002 projection (ADR-0002), read by ChannelView so the
+ * header pill can count them without a second subscription (#143).
  * Every row opens that Member's profile: reading someone else's kind 0 is not an
  * administrative act, so it is not behind the admin console (#47). */
 export function MembersPane({
   client,
-  channelId,
+  memberPubkeys,
   overlay = false,
   onClose,
-}: Readonly<{ client: RelayClient; channelId: string; overlay?: boolean; onClose: () => void }>) {
-  const [memberPubkeys, setMemberPubkeys] = useState<string[]>([]);
+}: Readonly<{ client: RelayClient; memberPubkeys: string[]; overlay?: boolean; onClose: () => void }>) {
   const [viewing, setViewing] = useState<string | null>(null);
   const { profiles, ensure } = useProfiles(client);
-
-  useEffect(() => {
-    const unsubscribe = client.subscribe([{ kinds: [39002], "#d": [channelId] }], {
-      onEvent: (event: VerifiedEvent) => {
-        const pubkeys = event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]);
-        setMemberPubkeys(pubkeys);
-      },
-    });
-    return unsubscribe;
-  }, [client, channelId]);
 
   useEffect(() => ensure(memberPubkeys), [memberPubkeys, ensure]);
 
