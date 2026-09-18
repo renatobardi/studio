@@ -1,5 +1,26 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { extensionSupportsNip44, hasNip07 } from "./custody";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
+/** `idb-keyval` in a Map: bun has no IndexedDB, and what these tests ask about is what custody
+ * keeps and reads back, not the database underneath. */
+const stored = new Map<string, unknown>();
+mock.module("idb-keyval", () => ({
+  get: async (key: string) => stored.get(key),
+  set: async (key: string, value: unknown) => {
+    stored.set(key, value);
+  },
+  del: async (key: string) => {
+    stored.delete(key);
+  },
+}));
+
+import {
+  extensionSupportsNip44,
+  hasNip07,
+  loadChannelReadAt,
+  loadDmReadAt,
+  storeChannelReadAt,
+  storeDmReadAt,
+} from "./custody";
 
 describe("hasNip07", () => {
   afterEach(() => {
@@ -65,5 +86,26 @@ describe("extensionSupportsNip44", () => {
   test("true when nip44 encrypts and decrypts", () => {
     stub({ nip44: { encrypt() {}, decrypt() {} } });
     expect(extensionSupportsNip44()).toBe(true);
+  });
+});
+
+/** This browser's Direct message read marks (#142). The store is `idb-keyval`, stubbed here
+ * because bun has no IndexedDB — what is under test is the round trip, not the database. */
+describe("the Direct message read marks", () => {
+  beforeEach(() => stored.clear());
+
+  test("are undefined until they are first kept, so the shell can start them at now", async () => {
+    expect(await loadDmReadAt()).toBeUndefined();
+  });
+
+  test("come back as they were kept", async () => {
+    await storeDmReadAt({ since: 100, readAt: { "ana,me": 300 } });
+    expect(await loadDmReadAt()).toEqual({ since: 100, readAt: { "ana,me": 300 } });
+  });
+
+  test("are kept apart from the Channel ones — reading a DM never reads a Channel", async () => {
+    await storeChannelReadAt({ c1: 700 });
+    await storeDmReadAt({ since: 100, readAt: {} });
+    expect(await loadChannelReadAt()).toEqual({ c1: 700 });
   });
 });
