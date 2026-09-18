@@ -1,13 +1,11 @@
 import { nip19 } from "nostr-tools";
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { Signer } from "../../lib/custody";
-import { profileEventTemplate } from "../../lib/identity";
-import { profileFormSeed } from "../../lib/profileForm";
+import { NEW_PROFILE_FORM, profileFormReducer, profileFormSeed, saveProfile } from "../../lib/profileForm";
 import type { ConnectionState, RelayClient } from "../../lib/relay";
-import { relayRejection } from "../../lib/relayReasons";
 import { Avatar } from "./Avatar";
-import { displayName, shortNpub, useProfiles } from "./useProfiles";
+import { displayName, shortNpub, useProfiles, type Profile } from "./useProfiles";
 
 /** The avatars onboarding offers — the only ones the MVP publishes (#150). */
 const EMOJIS = ["🌸", "🦊", "🐙", "🌊", "🔥", "🌙", "🍄", "🐝"];
@@ -36,49 +34,52 @@ export function ProfileScreen({
 }>) {
   const { profiles, ensure } = useProfiles(client);
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
+  return (
+    <ProfileScreenBody
+      profile={profiles.get(pubkey)}
+      shownName={displayName(profiles, pubkey)}
+      client={client}
+      signer={signer}
+      pubkey={pubkey}
+      relayUrl={relayUrl}
+      connectionState={connectionState}
+      onClose={onClose}
+    />
+  );
+}
 
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
-  const [picture, setPicture] = useState("");
-  const [about, setAbout] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [seededFor, setSeededFor] = useState<string | null>(null);
+/** The screen over the profile the pane above already has, so everything below is what this
+ * Identity published and what the form is doing to it. */
+export function ProfileScreenBody({
+  profile,
+  shownName,
+  client,
+  signer,
+  pubkey,
+  relayUrl,
+  connectionState,
+  onClose,
+}: Readonly<{
+  profile: Profile | undefined;
+  shownName: string;
+  client: Pick<RelayClient, "publish">;
+  signer: Pick<Signer, "signEvent">;
+  pubkey: string;
+  relayUrl: string;
+  connectionState: ConnectionState;
+  onClose: () => void;
+}>) {
+  const [form, dispatch] = useReducer(profileFormReducer, NEW_PROFILE_FORM);
+  const { editing, saving, error } = form;
+  const { name, picture, about } = form.fields;
 
-  // Adjusted during render, not in an effect: the profile is already in hand by
+  // Seeded during render, not in an effect: the profile is already in hand by
   // the time this runs, so there is nothing to synchronise with afterwards.
-  const seed = profileFormSeed(profiles.get(pubkey), seededFor, pubkey);
-  if (seed) {
-    setSeededFor(pubkey);
-    setName(seed.name);
-    setPicture(seed.picture);
-    setAbout(seed.about);
-  }
-
-  const profile = profiles.get(pubkey);
-  const shownName = displayName(profiles, pubkey);
+  if (profileFormSeed(profile, form.seededFor, pubkey)) dispatch({ type: "seed", profile, pubkey });
 
   const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const template = profileEventTemplate({ name, picture: picture || undefined, about: about || undefined });
-      await client.publish(await signer.signEvent(template));
-      setEditing(false);
-    } catch (error) {
-      setError(relayRejection(error) ?? "Couldn't save your profile. Check your connection and try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cancel = () => {
-    setEditing(false);
-    setError(null);
-    const current = profiles.get(pubkey);
-    setName(current?.name ?? "");
-    setPicture(current?.picture ?? "");
-    setAbout(current?.about ?? "");
+    dispatch({ type: "saving" });
+    dispatch({ type: "saved", problem: await saveProfile(client, signer, form.fields) });
   };
 
   return (
@@ -87,7 +88,7 @@ export function ProfileScreen({
         <header className="profile-header">
           <h1 className="profile-subject">Your profile</h1>
           {!editing && (
-            <button className="btn btn-outline btn-xs" onClick={() => setEditing(true)}>
+            <button className="btn btn-outline btn-xs" onClick={() => dispatch({ type: "edit" })}>
               <Icon name="pencil" size={13} />
               <span>Edit profile</span>
             </button>
@@ -102,51 +103,18 @@ export function ProfileScreen({
             <span className="profile-presence" data-connection={connectionState} aria-hidden="true" />
           </span>
           {editing ? (
-            <>
-              <div className="profile-emoji-picker" role="group" aria-label="Avatar">
-                {EMOJIS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={`onboarding-emoji${picture === option ? " active" : ""}`}
-                    aria-pressed={picture === option}
-                    onClick={() => setPicture(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-              <div className="settings-card profile-form">
-                <label className="settings-row">
-                  <span className="settings-row-label">Display name</span>
-                  <input
-                    className="input settings-row-input"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Display name"
-                  />
-                </label>
-                <label className="settings-row">
-                  <span className="settings-row-label">Bio</span>
-                  <textarea
-                    className="settings-row-input settings-row-textarea"
-                    value={about}
-                    onChange={(e) => setAbout(e.target.value)}
-                    placeholder="A little about you"
-                    rows={2}
-                  />
-                </label>
-                <div className="settings-row settings-row-actions">
-                  {error && <span className="error-banner">{error}</span>}
-                  <button className="btn btn-outline btn-xs" disabled={saving} onClick={cancel}>
-                    Cancel
-                  </button>
-                  <button className="btn btn-primary btn-xs" disabled={saving} onClick={() => void handleSave()}>
-                    {saving ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
-            </>
+            <ProfileEditForm
+              name={name}
+              picture={picture}
+              about={about}
+              saving={saving}
+              error={error}
+              onName={(value) => dispatch({ type: "field", field: "name", value })}
+              onPicture={(value) => dispatch({ type: "field", field: "picture", value })}
+              onAbout={(value) => dispatch({ type: "field", field: "about", value })}
+              onCancel={() => dispatch({ type: "cancel", profile })}
+              onSave={() => void handleSave()}
+            />
           ) : (
             <>
               <h2 className="profile-name">{shownName}</h2>
@@ -177,5 +145,79 @@ export function ProfileScreen({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The same screen turned into the form "Edit profile" opens: the avatars onboarding offers,
+ * the display name and the bio — nothing the MVP does not publish. */
+export function ProfileEditForm({
+  name,
+  picture,
+  about,
+  saving,
+  error,
+  onName,
+  onPicture,
+  onAbout,
+  onCancel,
+  onSave,
+}: Readonly<{
+  name: string;
+  picture: string;
+  about: string;
+  saving: boolean;
+  error: string | null;
+  onName: (value: string) => void;
+  onPicture: (value: string) => void;
+  onAbout: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}>) {
+  return (
+    <>
+      <div className="profile-emoji-picker" role="group" aria-label="Avatar">
+        {EMOJIS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`onboarding-emoji${picture === option ? " active" : ""}`}
+            aria-pressed={picture === option}
+            onClick={() => onPicture(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      <div className="settings-card profile-form">
+        <label className="settings-row">
+          <span className="settings-row-label">Display name</span>
+          <input
+            className="input settings-row-input"
+            value={name}
+            onChange={(e) => onName(e.target.value)}
+            placeholder="Display name"
+          />
+        </label>
+        <label className="settings-row">
+          <span className="settings-row-label">Bio</span>
+          <textarea
+            className="settings-row-input settings-row-textarea"
+            value={about}
+            onChange={(e) => onAbout(e.target.value)}
+            placeholder="A little about you"
+            rows={2}
+          />
+        </label>
+        <div className="settings-row settings-row-actions">
+          {error && <span className="error-banner">{error}</span>}
+          <button className="btn btn-outline btn-xs" disabled={saving} onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary btn-xs" disabled={saving} onClick={onSave}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

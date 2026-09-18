@@ -1,3 +1,4 @@
+import * as api from "./api";
 import type { Custody } from "./onboardingSteps";
 
 /** Where "Send feedback" goes, as the owner decided for the prototype's button (#150). */
@@ -20,4 +21,31 @@ export function keyBackupRow(custody: Custody, stored: boolean | null): KeyBacku
   if (custody === "extension") return { value: "Your Nostr extension holds your private key.", manage: false };
   if (stored === null) return { value: "Checking…", manage: false };
   return { value: stored ? "Verified · studio-key-backup.age" : "Not verified", manage: true };
+}
+
+/**
+ * Asks the Account whether it holds a Key Backup and hands the answer to the row (#150).
+ *
+ * Nothing is asked under a NIP-07 extension, which has no Studio-held key, nor without a
+ * Firebase session to ask with. A request that fails answers nothing rather than claiming a
+ * backup either way, and the returned cancel drops an answer that arrives after the pane is
+ * gone — the row would otherwise be set on a pane nobody is looking at.
+ */
+export function askForKeyBackup(
+  custody: Custody,
+  user: { getIdToken(): Promise<string> } | null,
+  onAnswer: (stored: boolean) => void,
+): () => void {
+  if (custody === "extension" || !user) return () => {};
+  let cancelled = false;
+  user
+    .getIdToken()
+    .then(api.hasKeyBackup)
+    .then((stored) => {
+      if (!cancelled) onAnswer(stored);
+    })
+    .catch(() => {});
+  return () => {
+    cancelled = true;
+  };
 }

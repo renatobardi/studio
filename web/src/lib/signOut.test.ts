@@ -39,6 +39,8 @@ describe("isEscape", () => {
   test("no other key does", () => {
     expect(isEscape({ key: "Enter" })).toBe(false);
     expect(isEscape({ key: "Esc" })).toBe(false);
+  });
+});
 
 describe("isActivationKey", () => {
   test("Enter and Space activate, as they do on a button", () => {
@@ -49,7 +51,5 @@ describe("isActivationKey", () => {
   test("anything else does not — Escape included, so a dialog is never dismissed by it here", () => {
     expect(isActivationKey({ key: "Escape" })).toBe(false);
     expect(isActivationKey({ key: "a" })).toBe(false);
-  });
-});
   });
 });

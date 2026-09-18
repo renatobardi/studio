@@ -1,13 +1,12 @@
 import type { User } from "firebase/auth";
 import { useEffect, useState } from "react";
-import * as api from "../../lib/api";
 import { hasNip07 } from "../../lib/custody";
 import type { Custody } from "../../lib/onboardingSteps";
 import type { RelayClient } from "../../lib/relay";
-import { FEEDBACK_URL, keyBackupRow } from "../../lib/settingsProfile";
+import { FEEDBACK_URL, askForKeyBackup, keyBackupRow } from "../../lib/settingsProfile";
 import { KeyBackupDialog } from "./KeyBackupDialog";
 import { SignOutDialog } from "./SignOutDialog";
-import { shortNpub, useProfiles } from "./useProfiles";
+import { shortNpub, useProfiles, type Profile } from "./useProfiles";
 
 /** Settings › Profile as the prototype has it (#150): PROFILE INFO and IDENTITY read back, the
  * Key Backup managed from here, and SIGN OUT with the warning and its tinted destructive button.
@@ -30,28 +29,39 @@ export function ProfileSettings({
 }>) {
   const { profiles, ensure } = useProfiles(client);
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
-  const profile = profiles.get(pubkey);
+  return (
+    <ProfileSettingsCards
+      profile={profiles.get(pubkey)}
+      pubkey={pubkey}
+      user={user}
+      accountPassword={accountPassword}
+      onSignOut={onSignOut}
+    />
+  );
+}
 
+/** The cards themselves, over the profile the pane above already has: what this Identity is,
+ * what the Account knows about its Key Backup, and the way out of this device. */
+export function ProfileSettingsCards({
+  profile,
+  pubkey,
+  user,
+  accountPassword,
+  onSignOut,
+}: Readonly<{
+  profile: Profile | undefined;
+  pubkey: string;
+  user: User | null;
+  accountPassword: string | null;
+  onSignOut: () => void;
+}>) {
   const [custody] = useState<Custody>(() => (hasNip07() ? "extension" : "local"));
   /** Whether the Account holds a Key Backup — null until it has answered. */
   const [storedBackup, setStoredBackup] = useState<boolean | null>(null);
   const [managing, setManaging] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  useEffect(() => {
-    if (custody === "extension" || !user) return;
-    let cancelled = false;
-    user
-      .getIdToken()
-      .then(api.hasKeyBackup)
-      .then((stored) => {
-        if (!cancelled) setStoredBackup(stored);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [custody, user]);
+  useEffect(() => askForKeyBackup(custody, user, setStoredBackup), [custody, user]);
 
   const backup = keyBackupRow(custody, storedBackup);
 
