@@ -120,6 +120,13 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
     page.getByTestId("dm-message").filter({ hasText: dmContent }).getByTestId("dm-attachment-image"),
   ).toBeVisible({ timeout: 15_000 });
 
-  for (const url of blobsAFetched) expect(servedToB).toContain(url);
+  // Downloads go through a priority queue, newest Message first and four at a
+  // time (#142), so the newest photo being on screen does not mean the older
+  // ones have left yet — they arrive as slots free up. Wait for the whole set:
+  // anything still missing when the queue has drained is a blob B never asked
+  // the server for, which is the failure this assertion is here to catch.
+  await expect
+    .poll(() => blobsAFetched.filter((url) => !servedToB.includes(url)), { timeout: 15_000 })
+    .toEqual([]);
   expect(await mediaCacheNames(page)).toEqual([`studio-media-v1-${pubkeyB}`]);
 });

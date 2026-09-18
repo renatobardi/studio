@@ -86,6 +86,21 @@ describe("createPriorityQueue", () => {
     expect(await queue.run(0, () => Promise.resolve("bytes"))).toBe("bytes");
   });
 
+  test("a batch larger than the limit runs to the last one, rejections included", async () => {
+    // What waiting for a conversation's photos relies on (#39's smoke): the
+    // newest ones on screen do not mean the rest were dropped — every task
+    // still gets its slot, and one that fails does not strand the queue.
+    const queue = createPriorityQueue(2);
+    const started: number[] = [];
+
+    const all = [0, 1, 2, 3, 4, 5, 6].map((n) =>
+      queue.run(n, () => { started.push(n); return n % 3 === 0 ? Promise.reject(new Error("forbidden")) : Promise.resolve(); }),
+    );
+    await Promise.allSettled(all);
+
+    expect([...started].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
   test("a task that never ends holds only its own slot", async () => {
     const queue = createPriorityQueue(2);
     const started: number[] = [];
