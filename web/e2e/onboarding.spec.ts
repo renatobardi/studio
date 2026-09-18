@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { ownerApi, previewInvite, testOnboardingAccount } from "./helpers";
+import { ownerApi, previewInvite, redeemInviteOnOnboarding, testOnboardingAccount } from "./helpers";
 
 // Flow 1: first access. Sign in on an Account with no Identity, redeem a
 // single-use Invite, walk onboarding through a verified Key Backup and land in
@@ -31,9 +31,8 @@ test("first access onboards through a verified Key Backup, and restore skips the
   await page.getByLabel("Password", { exact: true }).fill(testOnboardingAccount.password());
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByRole("heading", { name: "Enter your invite" })).toBeVisible({ timeout: 15_000 });
-  await page.getByPlaceholder("Invite code").fill(invite.code);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Join your community" })).toBeVisible({ timeout: 15_000 });
+  await redeemInviteOnOnboarding(page, invite.code);
 
   await page.getByPlaceholder("Your name").fill("E2E Onboarding Person");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -74,7 +73,7 @@ test("first access onboards through a verified Key Backup, and restore skips the
     await expect(restorePage.getByRole("heading", { name: "Restore your Identity" })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(restorePage.getByPlaceholder("Invite code")).toHaveCount(0);
+    await expect(restorePage.getByLabel(/^Invite (link or )?code$/)).toHaveCount(0);
     await restorePage.getByPlaceholder("Backup passphrase").fill(passphrase);
     await restorePage.getByRole("button", { name: "Restore" }).click();
 

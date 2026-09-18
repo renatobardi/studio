@@ -35,7 +35,7 @@ test("restore Identity from Key Backup on a fresh browser, with no invite, and s
   // invite is asked for, so an expired, revoked or already-spent invite can
   // never stand between someone and their own account (#36).
   await expect(page.getByRole("heading", { name: "Restore your Identity" })).toBeVisible();
-  await expect(page.getByPlaceholder("Invite code")).toHaveCount(0);
+  await expect(page.getByLabel(/^Invite (link or )?code$/)).toHaveCount(0);
 
   await page.getByPlaceholder("Backup passphrase").fill(testBackupPassphrase());
   await page.getByRole("button", { name: "Restore" }).click();

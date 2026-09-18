@@ -15,8 +15,13 @@ import {
 } from "../../lib/backup";
 import {
   forgetInviteCode,
+  INITIAL_INVITE_STEP,
+  inviteCodeFromInput,
+  inviteFieldHint,
   invitePreviewMessage,
+  inviteStepHandlers,
   pendingInviteCode,
+  type InviteStepState,
 } from "../../lib/invites";
 import { slugFromName, workspaceForm } from "../../lib/workspaceForm";
 import {
@@ -88,6 +93,10 @@ export function OnboardingScreen({
   // being the code somebody is joining with (#46).
   const [inviteCode, setInviteCode] = useState(() => pendingInviteCode() ?? "");
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  // The confirmations the invite step asks for before anything is redeemed,
+  // and whether the ways in that need no invite are showing. What each answer
+  // means lives in lib/invites.ts (`onboardingTerms`, `onboardingPolicyError`).
+  const [invite, setInvite] = useState<InviteStepState>(INITIAL_INVITE_STEP);
 
   // Where this Identity's Workspace comes from: somebody's invite, or one it
   // founds. Founding one from the interface is what the first Workspace on a
@@ -225,9 +234,9 @@ export function OnboardingScreen({
     }
   };
 
-  const handleInviteNext = () =>
+  const redeemInvite = (code: string) =>
     runStep(async () => {
-      const preview = await api.previewInvite(inviteCode.trim());
+      const preview = await api.previewInvite(code);
       if (!preview.valid) {
         // Why, not just "not valid": a revoked or used-up code is not a typo,
         // and re-typing it is the one thing that cannot help (#46).
@@ -238,6 +247,16 @@ export function OnboardingScreen({
       setWorkspaceName(preview.workspace_name);
       setStep("profile");
     }, "Couldn't reach the server to check that invite. Try again.");
+
+  // The boxes and the button only report what happened; what each of them
+  // means is decided in lib/invites.ts.
+  const inviteStep = inviteStepHandlers({
+    state: invite,
+    typed: inviteCode,
+    setState: setInvite,
+    setError,
+    redeem: redeemInvite,
+  });
 
   /** Founding a Workspace needs an Identity to own it, so it takes the same
    * path as joining one and only diverges at the last step. */
@@ -456,7 +475,7 @@ export function OnboardingScreen({
   /** The Workspace the invite admits this Identity to, or null when it admits
    * nobody any more — the reason is on screen by then (#46). */
   const redeemPendingInvite = async (signer: Signer): Promise<WorkspaceOut | null> => {
-    const code = inviteCode.trim();
+    const code = inviteCodeFromInput(inviteCode) ?? "";
     const url = `${window.location.origin}/api/invites/${code}/redeem`;
     try {
       const joined = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
@@ -583,32 +602,65 @@ export function OnboardingScreen({
 
           {entry !== null && step === "invite" && (
             <>
-              <h1 className="onboarding-title">Enter your invite</h1>
-              <p className="onboarding-body">
-                Paste the invite code a Workspace admin sent you. It decides which Workspace you join first.
-              </p>
-              <div className="onboarding-form">
+              <h1 className="onboarding-title">Join your community</h1>
+              {/* No "Relay URL" field, and no "community URL if the relay is open": joining
+                  takes an Invite, there is no open Workspace to point at (REFERENCE › Decisões). */}
+              <p className="onboarding-body">Paste the invite link a Workspace admin sent you, or just its code.</p>
+              <div className="onboarding-form onboarding-form-full">
                 <label className="field">
-                  <span className="field-label">Invite code</span>
+                  <span className="field-label">Invite link or code</span>
                   <input
-                    placeholder="Invite code"
+                    placeholder="https://studio.example.com/?invite=abc123 or paste a code"
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value)}
                   />
-                  {workspaceName && <span className="field-hint">Joining {workspaceName}</span>}
+                  <span className="field-hint">{inviteFieldHint(workspaceName)}</span>
                 </label>
+                <div className="onboarding-checks">
+                  <label className="onboarding-check">
+                    <input type="checkbox" checked={invite.age} onChange={inviteStep.onAge} />
+                    <span className="onboarding-checkbox" aria-hidden="true">
+                      {invite.age && <Icon name="check" size={10} />}
+                    </span>
+                    <span>I am at least 18 years old</span>
+                  </label>
+                  <label className="onboarding-check">
+                    <input type="checkbox" checked={invite.terms} onChange={inviteStep.onTerms} />
+                    <span className="onboarding-checkbox" aria-hidden="true">
+                      {invite.terms && <Icon name="check" size={10} />}
+                    </span>
+                    <span>
+                      I agree to the{" "}
+                      <a href="/legal.html#terms" target="_blank" rel="noopener">
+                        Terms of Service
+                      </a>{" "}
+                      and{" "}
+                      <a href="/legal.html#privacy" target="_blank" rel="noopener">
+                        Privacy Policy
+                      </a>
+                    </span>
+                  </label>
+                </div>
+                {invite.policyError && <p className="onboarding-policy-error">{invite.policyError}</p>}
               </div>
               <div className="onboarding-actions">
-                <button className="btn btn-primary btn-block" disabled={busy || !inviteCode} onClick={handleInviteNext}>
-                  Continue
+                <button className="btn btn-primary btn-block" disabled={busy} onClick={inviteStep.onSubmit}>
+                  Accept and redeem invite
                 </button>
-                <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
-                  Create a new Workspace instead
+                <button type="button" className="link" aria-expanded={invite.noInvite} onClick={inviteStep.onNoInvite}>
+                  I don’t have an invite
                 </button>
-                {custody === "local" && (
-                  <button type="button" className="link" onClick={handleGoRestore}>
-                    Restore an existing Identity from Key Backup
-                  </button>
+                {invite.noInvite && (
+                  <>
+                    <button type="button" className="link" onClick={handleCreateWorkspaceNext}>
+                      Create a new Workspace instead
+                    </button>
+                    {custody === "local" && (
+                      <button type="button" className="link" onClick={handleGoRestore}>
+                        Restore an existing Identity from Key Backup
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </>

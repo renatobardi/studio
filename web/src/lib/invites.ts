@@ -13,6 +13,28 @@ export function inviteCodeFromUrl(search: string): string | null {
   return code || null;
 }
 
+/** The code in what somebody pasted: the whole invite link, or just its code.
+ * A link without an invite is null — a code cannot start with a scheme
+ * (`token_urlsafe` never makes a `:`), so it was never meant as one. */
+export function inviteCodeFromInput(raw: string): string | null {
+  const input = raw.trim();
+  if (!input) return null;
+  if (!/^https?:\/\//i.test(input)) return input;
+  try {
+    return inviteCodeFromUrl(new URL(input).search);
+  } catch {
+    return null;
+  }
+}
+
+/** Why the invite may not be redeemed yet, or null once both are confirmed.
+ * Age first, then the terms — the order and words of the prototype. */
+export function invitePolicyError(accepted: { age: boolean; terms: boolean }): string | null {
+  if (!accepted.age) return "Confirm that you are at least 18 years old.";
+  if (!accepted.terms) return "Agree to the Terms of Service and Privacy Policy.";
+  return null;
+}
+
 /** The link an admin copies. Reaching the app this way is the whole point:
  * the code survives sign-in and onboarding without anybody re-typing it. */
 export function inviteLink(origin: string, code: string): string {
@@ -130,4 +152,113 @@ export function forgetInviteCode(): void {
   } catch {
     // Already unreachable; there is nothing left to clear.
   }
+}
+
+/**
+ * What the invite step holds besides the code being typed: the two
+ * confirmations the prototype asks for before anything is redeemed, the
+ * refusal standing under them, and whether the ways in that need no invite
+ * are showing (#152).
+ */
+export interface InviteStepState {
+  age: boolean;
+  terms: boolean;
+  /** Sits under the boxes, where they are — never in the error banner. */
+  policyError: string | null;
+  noInvite: boolean;
+}
+
+export const INITIAL_INVITE_STEP: InviteStepState = {
+  age: false,
+  terms: false,
+  policyError: null,
+  noInvite: false,
+};
+
+/** Ticking or unticking a box answers the refusal, so the refusal goes: it
+ * was about that box, and leaving it up accuses somebody of what they just
+ * did. */
+export function withAgeAccepted(state: InviteStepState, age: boolean): InviteStepState {
+  return { ...state, age, policyError: null };
+}
+
+export function withTermsAccepted(state: InviteStepState, terms: boolean): InviteStepState {
+  return { ...state, terms, policyError: null };
+}
+
+/** "I don't have an invite" opens the ways in that need none, and closes them
+ * again. What was already agreed to stays agreed to. */
+export function withNoInviteToggled(state: InviteStepState): InviteStepState {
+  return { ...state, noInvite: !state.noInvite };
+}
+
+export interface InviteStepAttempt {
+  state: InviteStepState;
+  /** The code to preview, or null when the step refuses to go on. */
+  code: string | null;
+  /** For the error banner, or null when nothing belongs there. */
+  error: string | null;
+}
+
+/**
+ * What pressing "Accept and redeem invite" decides. Consent is asked for
+ * before the server is: previewing first would tell somebody who may not use
+ * the invite that their invite is good.
+ */
+export function submitInviteStep(state: InviteStepState, typed: string): InviteStepAttempt {
+  const policyError = invitePolicyError({ age: state.age, terms: state.terms });
+  if (policyError) return { state: { ...state, policyError }, code: null, error: null };
+  const code = inviteCodeFromInput(typed);
+  return {
+    state: { ...state, policyError: null },
+    code,
+    error: code ? null : "Paste the invite link you were sent, or just its code.",
+  };
+}
+
+/** Under the field: the Workspace the code was found to admit to, or what the
+ * link looks like until one is known. */
+export function inviteFieldHint(workspaceName: string | null): string {
+  return workspaceName ? `Joining ${workspaceName}` : "The link should start with https://";
+}
+
+/** Only what the boxes report, so the handlers below stay free of React. */
+export interface CheckboxEvent {
+  target: { checked: boolean };
+}
+
+export interface InviteStepDeps {
+  state: InviteStepState;
+  /** The invite link or code, as typed. */
+  typed: string;
+  setState: (state: InviteStepState) => void;
+  setError: (message: string) => void;
+  /** Ask the server about a code that got past the step's own checks. */
+  redeem: (code: string) => void;
+}
+
+export interface InviteStepHandlers {
+  onAge: (event: CheckboxEvent) => void;
+  onTerms: (event: CheckboxEvent) => void;
+  onNoInvite: () => void;
+  onSubmit: () => void;
+}
+
+/**
+ * What each control on the invite step does. The screen wires these to the
+ * boxes and the button and renders the state; deciding is all here, where a
+ * test can press them without a browser (#152).
+ */
+export function inviteStepHandlers(deps: InviteStepDeps): InviteStepHandlers {
+  return {
+    onAge: (event) => deps.setState(withAgeAccepted(deps.state, event.target.checked)),
+    onTerms: (event) => deps.setState(withTermsAccepted(deps.state, event.target.checked)),
+    onNoInvite: () => deps.setState(withNoInviteToggled(deps.state)),
+    onSubmit: () => {
+      const attempt = submitInviteStep(deps.state, deps.typed);
+      deps.setState(attempt.state);
+      if (attempt.error) deps.setError(attempt.error);
+      if (attempt.code) deps.redeem(attempt.code);
+    },
+  };
 }

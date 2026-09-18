@@ -635,6 +635,88 @@ body {
   background: var(--background);
 }
 
+/* The invite step's form takes the step's whole 500px column, as in the prototype. */
+.onboarding-form-full {
+  max-width: none;
+}
+
+/* Its hint takes the label's weight, as the prototype's does. */
+.onboarding-form-full .field-hint {
+  font-weight: 500;
+}
+
+/* The invite step's 18+ and terms boxes: a 15px square that fills with primary when checked.
+   The native checkbox sits invisibly on top of it, so it keeps the keyboard, the label and
+   the role. */
+.onboarding-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.onboarding-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: normal;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.onboarding-check input {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.onboarding-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--primary-foreground);
+}
+
+.onboarding-check input:checked + .onboarding-checkbox {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.onboarding-check input:focus-visible + .onboarding-checkbox {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.onboarding-check a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.onboarding-check a:hover,
+.onboarding-check a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.onboarding-policy-error {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--destructive);
+}
+
 .onboarding-actions {
   display: flex;
   width: 100%;
