@@ -17,7 +17,7 @@ import {
 } from "../../lib/custody";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { humanRelayReason } from "../../lib/relayReasons";
-import { oldestRead, seedMissing, touch, unreadChannelIds, type ReadState } from "../../lib/unread";
+import { oldestRead, openChannel, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
@@ -60,6 +60,9 @@ export function AppShell({
    * race the load and wipe them. */
   const [readAt, setReadAt] = useState<ReadState | null>(null);
   const [activityAt, setActivityAt] = useState<ReadState>({});
+  /** The selected Channel's last-read mark as it was when opened — opening reads it at once,
+   * so this is what still tells the timeline where "New" starts (#147). */
+  const [opened, setOpened] = useState<OpenedChannel | null>(null);
   const [navigation, navigate] = useReducer(navigateTo, START_NAVIGATION);
   const { mode } = navigation;
   /** Theme, density and font scale live here so the sidebar's theme toggle and
@@ -133,7 +136,9 @@ export function AppShell({
       const resumed = selectedRef.current ?? initialSelection(list, lastChannelId);
       const now = nowSeconds();
       let marks = seedMissing(storedReadAt, list.map((c) => c.id), now);
-      // Opening a Channel reads it — including the one resumed from last time.
+      // Opening a Channel reads it — including the one resumed from last time. Its mark is
+      // captured first: `touch` is about to overwrite the one the divider needs (#147).
+      setOpened(resumed === null ? null : openChannel(marks, resumed, now));
       if (resumed !== null) marks = touch(marks, resumed, now);
       // All three setState calls together, in the same tick — keeping them batched into one
       // render (as they were before this file needed a second, async lastChannelId source)
@@ -198,6 +203,8 @@ export function AppShell({
     setAccessLost(false);
     setSelectedChannelId(channelId);
     void storeChannelId(channelId);
+    // Again before the touch below, which moves the mark this reads (#147).
+    setOpened(openChannel(readAtRef.current, channelId, nowSeconds()));
     setReadAt((prev) => touch(prev ?? {}, channelId, nowSeconds()));
   };
 
@@ -266,6 +273,7 @@ export function AppShell({
                 pubkey={pubkey}
                 signer={signer}
                 mediaUrl={workspace.media_url}
+                opened={opened}
               />
             )}
             {channels?.length === 0 && (

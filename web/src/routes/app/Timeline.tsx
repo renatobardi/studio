@@ -1,5 +1,5 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import {
   buildMessage,
@@ -34,6 +34,7 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
+import { messagesWithDivider, type OpenedChannel } from "../../lib/unread";
 import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Composer } from "./Composer";
@@ -77,6 +78,7 @@ export function Timeline({
   hasMore,
   onLoadOlder,
   profiles,
+  opened,
   openThreadRootId,
   onOpenThread,
 }: Readonly<{
@@ -92,6 +94,7 @@ export function Timeline({
   hasMore: boolean;
   onLoadOlder: () => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
+  opened: OpenedChannel | null;
   openThreadRootId: string | null;
   onOpenThread: (root: TargetRef & { content: string }) => void;
 }>) {
@@ -201,7 +204,7 @@ export function Timeline({
     await client.publish(signed);
   };
 
-  const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
+  const { sorted, newMessageId } = messagesWithDivider(messages, opened, pubkey);
 
   return (
     <div className="timeline">
@@ -233,55 +236,61 @@ export function Timeline({
             if (message.id === openThreadRootId) rowClass = "active";
             else if (replyCount > 0) rowClass = "has-replies";
             return (
-              <MessageRow
-                key={message.id}
-                author={author}
-                profile={profiles.get(message.pubkey)}
-                createdAt={message.created_at}
-                content={message.content}
-                continuation={continuation}
-                className={rowClass}
-                testId="timeline-message"
-                actions={
-                  <span className="message-actions">
-                    <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
-                    {replyCount === 0 && (
+              <Fragment key={message.id}>
+                {message.id === newMessageId && (
+                  <li className="new-divider" role="separator" data-testid="new-divider">
+                    New
+                  </li>
+                )}
+                <MessageRow
+                  author={author}
+                  profile={profiles.get(message.pubkey)}
+                  createdAt={message.created_at}
+                  content={message.content}
+                  continuation={continuation}
+                  className={rowClass}
+                  testId="timeline-message"
+                  actions={
+                    <span className="message-actions">
+                      <QuickReactions onAdd={(emoji) => void react(target, emoji)} />
+                      {replyCount === 0 && (
+                        <button
+                          className="message-action"
+                          onClick={() => onOpenThread({ ...target, content: message.content })}
+                          data-testid="open-thread"
+                          aria-label="Reply in thread"
+                          title="Reply in thread"
+                        >
+                          <Icon name="message-square" size={14} />
+                        </button>
+                      )}
+                    </span>
+                  }
+                >
+                  {parseImetaTags(message.tags).map((descriptor, position) => (
+                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                  ))}
+                  <ReactionBar
+                    groups={groupReactions(reactionsForMessage, deletionsForMessage)}
+                    ownPubkey={pubkey}
+                    onAdd={(emoji) => void react(target, emoji)}
+                    onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
+                  />
+                  {/* The thread pill sits under a Message that has replies, as in the prototype;
+                      a Message without any offers "Reply in thread" among its hover actions. */}
+                  {replyCount > 0 && (
+                    <div className="thread-open-row">
                       <button
-                        className="message-action"
+                        className="thread-open"
                         onClick={() => onOpenThread({ ...target, content: message.content })}
                         data-testid="open-thread"
-                        aria-label="Reply in thread"
-                        title="Reply in thread"
                       >
-                        <Icon name="message-square" size={14} />
+                        {replyCountLabel(replyCount)}
                       </button>
-                    )}
-                  </span>
-                }
-              >
-                {parseImetaTags(message.tags).map((descriptor, position) => (
-                  <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
-                ))}
-                <ReactionBar
-                  groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                  ownPubkey={pubkey}
-                  onAdd={(emoji) => void react(target, emoji)}
-                  onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
-                />
-                {/* The thread pill sits under a Message that has replies, as in the prototype;
-                    a Message without any offers "Reply in thread" among its hover actions. */}
-                {replyCount > 0 && (
-                  <div className="thread-open-row">
-                    <button
-                      className="thread-open"
-                      onClick={() => onOpenThread({ ...target, content: message.content })}
-                      data-testid="open-thread"
-                    >
-                      {replyCountLabel(replyCount)}
-                    </button>
-                  </div>
-                )}
-              </MessageRow>
+                    </div>
+                  )}
+                </MessageRow>
+              </Fragment>
             );
           })}
         </ul>

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { oldestRead, seedMissing, touch, unreadChannelIds } from "./unread";
+import {
+  firstNewMessageId,
+  messagesWithDivider,
+  oldestRead,
+  openChannel,
+  seedMissing,
+  touch,
+  unreadChannelIds,
+} from "./unread";
 
 describe("seedMissing", () => {
   test("treats a Channel seen for the first time as read up to now", () => {
@@ -57,5 +65,61 @@ describe("oldestRead", () => {
 
   test("falls back when nothing has ever been read", () => {
     expect(oldestRead({}, ["a"], 999)).toBe(999);
+  });
+});
+
+describe("firstNewMessageId", () => {
+  const me = "me";
+  const msg = (id: string, created_at: number, pubkey = "other") => ({ id, created_at, pubkey });
+  const opened = { readAt: 100, openedAt: 200 };
+
+  test("is the oldest Message after the last-read mark the Channel was opened with", () => {
+    const messages = [msg("c", 150), msg("a", 50), msg("b", 120)];
+    expect(firstNewMessageId(messages, opened, me)).toBe("b");
+  });
+
+  test("is null when everything was already read", () => {
+    expect(firstNewMessageId([msg("a", 50), msg("b", 100)], opened, me)).toBeNull();
+  });
+
+  test("ignores Messages that arrive while the Channel is on screen", () => {
+    // They are read as they arrive — a divider over them would announce nothing new.
+    expect(firstNewMessageId([msg("a", 50), msg("b", 201)], opened, me)).toBeNull();
+  });
+
+  test("ignores the caller's own Messages, which never count as unread", () => {
+    expect(firstNewMessageId([msg("a", 120, me), msg("b", 150)], opened, me)).toBe("b");
+  });
+
+  test("is null for a Channel with no Messages at all", () => {
+    expect(firstNewMessageId([], opened, me)).toBeNull();
+  });
+});
+
+describe("openChannel", () => {
+  test("keeps the last-read mark the Channel still had, and when it was opened", () => {
+    expect(openChannel({ a: 100 }, "a", 200)).toEqual({ readAt: 100, openedAt: 200 });
+  });
+
+  test("a Channel with no mark of its own has nothing unread to point at", () => {
+    // Its mark is about to be seeded at `now` too, so the divider has no Message to sit above.
+    expect(openChannel({}, "a", 200)).toEqual({ readAt: 200, openedAt: 200 });
+  });
+});
+
+describe("messagesWithDivider", () => {
+  const me = "me";
+  const msg = (id: string, created_at: number, pubkey = "other") => ({ id, created_at, pubkey });
+
+  test("sorts oldest first and points at the first Message that arrived while away", () => {
+    const result = messagesWithDivider([msg("c", 150), msg("a", 50), msg("b", 120)], { readAt: 100, openedAt: 200 }, me);
+    expect(result.sorted.map((m) => m.id)).toEqual(["a", "b", "c"]);
+    expect(result.newMessageId).toBe("b");
+  });
+
+  test("has no divider before the Channel has been opened", () => {
+    const result = messagesWithDivider([msg("a", 150)], null, me);
+    expect(result.sorted.map((m) => m.id)).toEqual(["a"]);
+    expect(result.newMessageId).toBeNull();
   });
 });
