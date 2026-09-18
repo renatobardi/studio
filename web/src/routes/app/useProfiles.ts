@@ -13,7 +13,9 @@ export function useProfiles(client: RelayClient): {
 } {
   const store = useMemo(() => new ProfileStore(client), [client]);
   useEffect(() => () => store.close(), [store]);
-  const profiles = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  // The third snapshot is what renderToStaticMarkup needs to render this outside a browser —
+  // the app itself never hydrates, so it is the same snapshot.
+  const profiles = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return { profiles, ensure: store.ensure };
 }
 

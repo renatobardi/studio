@@ -1,6 +1,6 @@
 /**
  * Deterministic data for the preview harness (preview.html): the prototype's `eng-platform`
- * conversation and `Ana Petrova` Direct Message, signed with fixed keys at fixed times so every
+ * conversation and its Direct messages with Ana Petrova, Sprig and Marina Silva, signed with fixed keys at fixed times so every
  * event id — and every screen — comes out the same on every run. Nothing here is real.
  */
 import { finalizeEvent, getPublicKey, type VerifiedEvent } from "nostr-tools";
@@ -180,11 +180,26 @@ function dm(from: Person, to: Person, content: string, when: number): VerifiedEv
   return signed(person(99, "wrap"), GIFT_WRAP, [["p", OWN.pubkey]], JSON.stringify(seal), when);
 }
 
+/** The prototype's `DMS`, newest conversation first as the sidebar lists them (#142). */
 export const DM_EVENTS: VerifiedEvent[] = [
-  dm(ANA, OWN, "Saw the density options — the second one, definitely. Want me to draft the settings copy?", at(9, 12)),
-  dm(OWN, ANA, "Yes please. Keep it to one line per option, the rest goes in the tooltip.", at(9, 15)),
-  dm(ANA, OWN, "Done, it's in the Figma comments. One thing: 'Comfy' reads odd next to 'Compact'.", at(10, 2)),
-  dm(OWN, ANA, "It's the prototype's word. Let's keep it until someone outside the team trips on it.", at(10, 4)),
+  dm(ANA, OWN, "The composer refactor is up — inbox rows keep the type label out of the preview now.", at(9, 12)),
+  dm(OWN, ANA, "Saw it. The two-line clamp reads much better at 11px.", at(9, 14)),
+  dm(ANA, OWN, "One open question: do we keep the channel chip on DM rows? It duplicates the avatar.", at(9, 15)),
+  dm(ANA, OWN, "Also pushed the density pass to studio-design if you want to compare side by side.", at(9, 31)),
+  dm(OWN, SPRIG, "Triage tonight's run and tell me what a human has to decide.", at(7, 58)),
+  dm(
+    SPRIG,
+    OWN,
+    "Quarantined the two load tests in nightly only — the release gate still runs them. The lease renewal race needs you: it drops acked events, so I filed #284 instead of patching it blind.",
+    at(8, 4),
+  ),
+  dm(OWN, SPRIG, "Good call. Keep the gate honest.", at(8, 6)),
+  dm(MARINA, OWN, "Can you look at the harbor promotion window before Friday?", at(16, 20) - 86_400),
+  dm(OWN, MARINA, "Yes — after the drain guard lands.", at(16, 45) - 86_400),
 ];
+
+/** Direct messages read up to 09:00: Ana's arrived after, so her conversation is unread where the
+ * reference shows it with a count; Sprig's and Marina's were read. */
+export const DM_READ = { since: at(9, 0), readAt: {} };
 
 export const ALL_EVENTS = [...CHANNEL_EVENTS, ...DM_EVENTS];

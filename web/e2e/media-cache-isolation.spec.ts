@@ -77,7 +77,6 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   await expect(channelMessage.getByTestId("attachment-image")).toBeVisible({ timeout: 15_000 });
 
   // --- And sends B a Direct Message photo.
-  await page.getByTestId("mode-dms").click();
   await page.getByTestId("dm-new-conversation").click();
   await page.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
   await page.getByTestId("dm-attach-input").setInputFiles(TEST_IMAGE);
@@ -116,8 +115,7 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
     page.getByTestId("timeline-message").filter({ hasText: channelContent }).getByTestId("attachment-image"),
   ).toBeVisible({ timeout: 15_000 });
 
-  await page.getByTestId("mode-dms").click();
-  await page.getByTestId("conversation-list-item").filter({ hasText: dmContent }).click();
+  await page.locator(`[data-testid="conversation-list-item"][data-peers="${pubkeyA}"]`).click();
   await expect(
     page.getByTestId("dm-message").filter({ hasText: dmContent }).getByTestId("dm-attachment-image"),
   ).toBeVisible({ timeout: 15_000 });

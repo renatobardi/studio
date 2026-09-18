@@ -51,8 +51,9 @@ screen against `docs/UI/reference` opens.
   `Timeline` and the side panes, and measures its own width for `lib/paneLayout.ts`),
   `Timeline`, `ThreadPane`, `MembersPane` (every row opens that Member's profile), `Composer`
   (the multiline ChatInput every conversation shares), `ReactionBar`, `SettingsView`,
-  `SignOutDialog`. Direct Messages start from `MemberPicker`, over the Workspace's member
-  list — there is no pubkey field (#47).
+  `SignOutDialog`. Direct Messages are listed in the sidebar and open in `ConversationView`,
+  full width (#142); a new one starts from `NewMessageDialog`'s `MemberPicker`, over the
+  Workspace's member list — there is no pubkey field (#47).
 - `src/components/` — `brand/Sakura` (the mark) and `icons/Icon` (Lucide glyphs, path data in
   `icons.ts`).
 

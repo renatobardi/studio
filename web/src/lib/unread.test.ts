@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   firstNewMessageId,
+  initialDmRead,
+  markConversationRead,
   messagesWithDivider,
   oldestRead,
   openChannel,
   seedMissing,
   touch,
   unreadChannelIds,
+  unreadConversationCounts,
 } from "./unread";
 
 describe("seedMissing", () => {
@@ -121,5 +124,74 @@ describe("messagesWithDivider", () => {
     const result = messagesWithDivider([msg("a", 150)], null, me);
     expect(result.sorted.map((m) => m.id)).toEqual(["a"]);
     expect(result.newMessageId).toBeNull();
+  });
+});
+
+/** Direct messages in the sidebar (#142): the sidebar row carries how many Messages someone else
+ * wrote in the conversation after its last-read mark, as the prototype's count. */
+describe("unreadConversationCounts", () => {
+  const ME = "me";
+  const conversation = (key: string, ...messages: [pubkey: string, at: number][]) => ({
+    key,
+    messages: messages.map(([pubkey, created_at]) => ({ pubkey, created_at })),
+  });
+
+  test("counts the Messages from someone else after the conversation's mark", () => {
+    const counts = unreadConversationCounts(
+      [conversation("ana", ["ana", 200], ["ana", 300]), conversation("sprig", ["sprig", 90])],
+      { since: 0, readAt: { ana: 100, sprig: 100 } },
+      ME,
+    );
+    expect([...counts]).toEqual([["ana", 2]]);
+  });
+
+  test("a conversation with nothing unread is left out, rather than counted as zero", () => {
+    expect(unreadConversationCounts([conversation("sprig", ["sprig", 90])], { since: 0, readAt: { sprig: 100 } }, ME).size).toBe(0);
+  });
+
+  test("the caller's own Messages never count", () => {
+    expect(unreadConversationCounts([conversation("ana", [ME, 200])], { since: 0, readAt: { ana: 100 } }, ME).size).toBe(0);
+  });
+
+  test("with no mark yet, only what arrived after this browser started keeping marks counts", () => {
+    // A restore onto a new browser must not open with every conversation's history unread,
+    // while a first Message someone sends later still has to show.
+    const counts = unreadConversationCounts(
+      [conversation("old", ["marina", 100]), conversation("new", ["tomas", 300])],
+      { since: 200, readAt: {} },
+      ME,
+    );
+    expect([...counts]).toEqual([["new", 1]]);
+  });
+});
+
+/** Direct message marks are kept per conversation (#142), and only from the moment this browser
+ * started keeping them — history that predates them is not a pile of unread Messages. */
+describe("initialDmRead", () => {
+  test("starts from what this browser kept", () => {
+    const stored = { since: 100, readAt: { "a,me": 300 } };
+    expect(initialDmRead(stored, 900)).toBe(stored);
+  });
+
+  test("with nothing kept yet, everything up to now counts as read", () => {
+    expect(initialDmRead(undefined, 900)).toEqual({ since: 900, readAt: {} });
+  });
+});
+
+describe("markConversationRead", () => {
+  test("marks the conversation read up to now", () => {
+    expect(markConversationRead({ since: 100, readAt: {} }, "a,me", 900, 500)).toEqual({
+      since: 100,
+      readAt: { "a,me": 900 },
+    });
+  });
+
+  test("a Message from ahead of this clock is still read, so it is not left unread forever", () => {
+    expect(markConversationRead({ since: 100, readAt: {} }, "a,me", 900, 1500).readAt["a,me"]).toBe(1500);
+  });
+
+  test("leaves every other conversation, and the start of the marks, alone", () => {
+    const state = { since: 100, readAt: { "b,me": 200 } };
+    expect(markConversationRead(state, "a,me", 900, 0)).toEqual({ since: 100, readAt: { "b,me": 200, "a,me": 900 } });
   });
 });

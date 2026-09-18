@@ -68,3 +68,35 @@ export function messagesWithDivider<T extends { id: string; pubkey: string; crea
   const newMessageId = opened === null ? null : firstNewMessageId(sorted, opened, ownPubkey);
   return { sorted, newMessageId };
 }
+
+/** Where Direct Message reading stands on this browser (#142): a mark per conversation, and when
+ * the marks started being kept — the mark of any conversation that has none yet. */
+export type DmReadState = Readonly<{ since: number; readAt: ReadState }>;
+
+/** How many Messages someone else wrote in each conversation after its last-read mark — the
+ * count the prototype's sidebar row carries. Conversations with nothing unread are left out. */
+export function unreadConversationCounts(
+  conversations: readonly { key: string; messages: readonly { pubkey: string; created_at: number }[] }[],
+  state: DmReadState,
+  ownPubkey: string,
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const { key, messages } of conversations) {
+    const mark = state.readAt[key] ?? state.since;
+    const unread = messages.filter((m) => m.pubkey !== ownPubkey && m.created_at > mark).length;
+    if (unread > 0) counts.set(key, unread);
+  }
+  return counts;
+}
+
+/** The marks to start from: the ones this browser kept, or — the first time — no marks at all
+ * from now on, so Messages that predate them never arrive as a pile of unread ones. */
+export function initialDmRead(stored: DmReadState | undefined, now: number): DmReadState {
+  return stored ?? { since: now, readAt: {} };
+}
+
+/** The open conversation read up to now, or up to its newest Message when that one is ahead of
+ * this clock — otherwise a Message from a fast clock would stay unread forever. */
+export function markConversationRead(state: DmReadState, key: string, now: number, latestAt: number): DmReadState {
+  return { ...state, readAt: touch(state.readAt, key, Math.max(now, latestAt)) };
+}

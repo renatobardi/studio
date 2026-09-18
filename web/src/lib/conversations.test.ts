@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { groupConversations } from "./conversations";
+import { directMessages, groupConversations } from "./conversations";
 import { buildDmRumor } from "./nip17";
 
 const ME = "1".repeat(64);
@@ -64,5 +64,66 @@ describe("groupConversations", () => {
     const [conversation] = groupConversations([rumor], ME);
 
     expect(conversation.peerPubkeys.sort()).toEqual([ALICE, BOB].sort());
+  });
+});
+
+/** What the shell needs to draw Direct messages (#142): the sidebar rows, the open conversation,
+ * and every pubkey those two want a name for. */
+describe("directMessages", () => {
+  const SPRIG = "5".repeat(64);
+  const members = [
+    { pubkey: ME, role: "owner" },
+    { pubkey: ALICE, role: "member" },
+    { pubkey: SPRIG, role: "agent" },
+  ];
+  const nameOf = (pubkey: string) => ({ [ALICE]: "Ana Petrova", [BOB]: "Bob", [SPRIG]: "Sprig" })[pubkey] ?? pubkey;
+  const view = (over: Partial<Parameters<typeof directMessages>[0]> = {}) =>
+    directMessages({
+      rumors: [rumorAt(ALICE, [ME], "hi", 200)],
+      myPubkey: ME,
+      members,
+      selectedPeerPubkeys: null,
+      readState: { since: 100, readAt: {} },
+      nameOf,
+      ...over,
+    });
+
+  test("a row per conversation, named after its other participants", () => {
+    expect(view().rows.map((row) => [row.label, row.icon, row.unreadCount])).toEqual([["Ana Petrova", "user", 1]]);
+  });
+
+  test("a conversation with an Agent carries the Agent's glyph", () => {
+    const rows = view({ rumors: [rumorAt(SPRIG, [ME], "on it", 200)] }).rows;
+    expect(rows.map((row) => row.icon)).toEqual(["bot"]);
+  });
+
+  test("a group conversation is never an Agent's, whoever is in it", () => {
+    const rows = view({ rumors: [rumorAt(SPRIG, [ME, ALICE], "hello both", 200)] }).rows;
+    expect(rows.map((row) => row.icon)).toEqual(["user"]);
+  });
+
+  test("nothing is counted unread before the marks were read back", () => {
+    expect(view({ readState: null }).rows.map((row) => row.unreadCount)).toEqual([null]);
+  });
+
+  test("the picked Members name the open conversation, even before it has any Message", () => {
+    const picked = view({ selectedPeerPubkeys: [BOB] });
+    expect(picked.selectedKey).toBe([BOB, ME].sort().join(","));
+    expect(picked.selected).toBeNull();
+  });
+
+  test("the open conversation is the one the picked Members are already talking in", () => {
+    expect(view({ selectedPeerPubkeys: [ALICE] }).selected?.messages).toHaveLength(1);
+  });
+
+  test("every Member and every correspondent needs a name, each asked for once", () => {
+    expect(view().namedPubkeys.sort()).toEqual([ME, ALICE, SPRIG].sort());
+  });
+
+  test("before the own pubkey is known there are no conversations, but Members still need names", () => {
+    const unknown = view({ myPubkey: null });
+    expect(unknown.rows).toEqual([]);
+    expect(unknown.selectedKey).toBeNull();
+    expect(unknown.namedPubkeys).toEqual([ME, ALICE, SPRIG]);
   });
 });
