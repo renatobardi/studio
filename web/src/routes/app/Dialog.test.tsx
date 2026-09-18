@@ -19,7 +19,7 @@ const dialog = () => <Dialog {...props()} />;
 const backdrop = (onClose: () => void) =>
   Dialog(props(onClose)) as ReactElement<{
     onClick: (event: { target: unknown; currentTarget: unknown }) => void;
-    onKeyDown: (event: { key: string }) => void;
+    onKeyDown: (event: { key: string; target?: unknown; currentTarget?: unknown }) => void;
   }>;
 
 describe("Dialog markup", () => {
@@ -58,11 +58,27 @@ describe("Dialog dismissal", () => {
   test("Escape closes from the keyboard; another key does not", () => {
     let closed = 0;
     const { onKeyDown } = backdrop(() => closed++).props;
+    // A key pressed on something inside the dialog, which is where the focus really is.
+    const inside = { target: {}, currentTarget: {} };
 
-    onKeyDown({ key: "Enter" });
+    onKeyDown({ key: "Enter", ...inside });
     expect(closed).toBe(0);
 
+    onKeyDown({ key: "Escape", ...inside });
+    expect(closed).toBe(1);
+  });
+
+  test("a dialog that refuses Escape keeps the backdrop's own keyboard path", () => {
+    let closed = 0;
+    const { onKeyDown } = (Dialog({ ...props(() => closed++), escapeCloses: false }) as ReactElement<{
+      onKeyDown: (event: { key: string; target?: unknown; currentTarget?: unknown }) => void;
+    }>).props;
+
     onKeyDown({ key: "Escape" });
+    expect(closed).toBe(0);
+
+    const itself = {};
+    onKeyDown({ key: "Enter", target: itself, currentTarget: itself });
     expect(closed).toBe(1);
   });
 });

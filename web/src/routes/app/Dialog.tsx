@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
 import { Icon } from "../../components/icons/Icon";
+import { isActivationKey, isEscape, isOutsideClick } from "../../lib/signOut";
 
 /** The prototype's modal shell, shared by every dialog in the app: the dimmed backdrop that
  * closes on a click outside, the header with its close button, title and description, the body,
  * and the footer the caller fills. `name` is the prototype's dialog id — it names both the
- * title element the dialog is labelled by and the test id the flows look for. */
+ * title element the dialog is labelled by and the test id the flows look for.
+ *
+ * `escapeCloses` is what the Key Backup dialog turns off: it can be holding a backup file that
+ * has not been verified yet, which Escape must not drop. */
 export function Dialog({
   name,
   title,
   description,
   footer,
   onClose,
+  escapeCloses = true,
   children,
 }: Readonly<{
   name: string;
@@ -18,16 +23,20 @@ export function Dialog({
   description: ReactNode;
   footer: ReactNode;
   onClose: () => void;
+  escapeCloses?: boolean;
   children: ReactNode;
 }>) {
   return (
     <div
       className="dialog-backdrop"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (isOutsideClick(event)) onClose();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
+        // The keyboard equivalent of that click on the backdrop itself, then Escape for the
+        // dialogs that take it.
+        if (isOutsideClick(event) && isActivationKey(event)) onClose();
+        else if (escapeCloses && isEscape(event)) onClose();
       }}
     >
       <div

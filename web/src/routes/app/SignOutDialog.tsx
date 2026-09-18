@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../../components/icons/Icon";
-import { isEscape, isOutsideClick, SIGN_OUT_PHRASE, signOutBlocker } from "../../lib/signOut";
+import { SIGN_OUT_PHRASE, signOutBlocker } from "../../lib/signOut";
+import { Dialog } from "./Dialog";
+import { useEscape } from "./useEscape";
 
 /** The prototype's "sign-out" dialog (#148): wiping this device's Identity and data is only armed
  * once the backup is confirmed and the phrase typed. The private key the prototype shows in step 1
@@ -10,77 +12,55 @@ export function SignOutDialog({ onCancel, onConfirm }: Readonly<{ onCancel: () =
   const [phrase, setPhrase] = useState("");
   const blocker = signOutBlocker({ backupConfirmed, phrase });
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (isEscape(event)) onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  // Escape closes wherever the focus is, which the backdrop's own handler cannot see.
+  useEscape(onCancel);
 
   return (
-    <div
-      className="dialog-backdrop"
-      onClick={(event) => {
-        if (isOutsideClick(event)) onCancel();
-      }}
-      onKeyDown={(event) => {
-        if (isEscape(event)) onCancel();
-      }}
-    >
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="sign-out-title" data-testid="sign-out-dialog">
-        <div className="dialog-header">
-          <button className="dialog-close" onClick={onCancel} aria-label="Close" title="Close">
-            <Icon name="x" size={16} />
-          </button>
-          <h2 id="sign-out-title" className="dialog-title">
-            Sign out and wipe all data?
-          </h2>
-          <p className="dialog-description">
-            This will delete your identity key and cached data from this device, then return Studio to sign-in. This
-            cannot be undone.
-          </p>
-        </div>
-        <div className="dialog-body">
-          <div className="sign-out-step">
-            <p className="sign-out-label">1. Confirm you can restore your identity</p>
-            <button
-              className="sign-out-check"
-              role="checkbox"
-              aria-checked={backupConfirmed}
-              onClick={() => setBackupConfirmed((confirmed) => !confirmed)}
-            >
-              <span className={`sign-out-box${backupConfirmed ? " checked" : ""}`}>
-                {backupConfirmed && <Icon name="check" size={10} />}
-              </span>
-              <span>I have tested a key backup or saved my private key somewhere safe.</span>
-            </button>
-          </div>
-          <div className="sign-out-step sign-out-phrase">
-            <label className="sign-out-label" htmlFor="sign-out-phrase">
-              2. Type “{SIGN_OUT_PHRASE}” to confirm
-            </label>
-            <input
-              id="sign-out-phrase"
-              className="input"
-              value={phrase}
-              onChange={(event) => setPhrase(event.target.value)}
-              placeholder={SIGN_OUT_PHRASE}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {blocker && <p className="sign-out-hint">{blocker}</p>}
-          </div>
-        </div>
-        <div className="dialog-footer">
+    <Dialog
+      name="sign-out"
+      title="Sign out and wipe all data?"
+      description="This will delete your identity key and cached data from this device, then return Studio to sign-in. This cannot be undone."
+      onClose={onCancel}
+      footer={
+        <>
           <button className="btn btn-outline" onClick={onCancel}>
             Cancel
           </button>
           <button className="btn btn-destructive" onClick={onConfirm} disabled={blocker !== null}>
             Delete my data
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="sign-out-step">
+        <p className="sign-out-label">1. Confirm you can restore your identity</p>
+        <button
+          className="sign-out-check"
+          role="checkbox"
+          aria-checked={backupConfirmed}
+          onClick={() => setBackupConfirmed((confirmed) => !confirmed)}
+        >
+          <span className={`sign-out-box${backupConfirmed ? " checked" : ""}`}>
+            {backupConfirmed && <Icon name="check" size={10} />}
+          </span>
+          <span>I have tested a key backup or saved my private key somewhere safe.</span>
+        </button>
       </div>
-    </div>
+      <div className="sign-out-step sign-out-phrase">
+        <label className="sign-out-label" htmlFor="sign-out-phrase">
+          2. Type “{SIGN_OUT_PHRASE}” to confirm
+        </label>
+        <input
+          id="sign-out-phrase"
+          className="input"
+          value={phrase}
+          onChange={(event) => setPhrase(event.target.value)}
+          placeholder={SIGN_OUT_PHRASE}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {blocker && <p className="sign-out-hint">{blocker}</p>}
+      </div>
+    </Dialog>
   );
 }
