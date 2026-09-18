@@ -1,4 +1,5 @@
 import type { ChannelOut } from "./api";
+import type { RelayClient } from "./relay";
 
 const WORKSPACE_MANAGER_ROLES = new Set(["owner", "admin"]);
 
@@ -61,4 +62,16 @@ export function accessLostAfterRefresh(
  * re-publishes it on every membership change, so the latest one is the roster (ADR-0002). */
 export function rosterPubkeys(roster: { tags: string[][] }): string[] {
   return roster.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]);
+}
+
+/** Watches a Channel's roster: the control plane re-publishes the projection on every membership
+ * change, so every event is the whole roster. Returns the relay's unsubscribe. */
+export function subscribeRoster(
+  client: RelayClient,
+  channelId: string,
+  onRoster: (pubkeys: string[]) => void,
+): () => void {
+  return client.subscribe([{ kinds: [39002], "#d": [channelId] }], {
+    onEvent: (event) => onRoster(rosterPubkeys(event)),
+  });
 }

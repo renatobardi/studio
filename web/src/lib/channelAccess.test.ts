@@ -7,6 +7,7 @@ import {
   keepSelection,
   manageableChannels,
   rosterPubkeys,
+  subscribeRoster,
 } from "./channelAccess";
 
 function channel(id: string, role: string | null = null): ChannelOut {
@@ -95,5 +96,36 @@ describe("rosterPubkeys", () => {
 
   test("is empty for a Channel with no Members left", () => {
     expect(rosterPubkeys({ tags: [["d", "c1"]] })).toEqual([]);
+  });
+});
+
+describe("subscribeRoster", () => {
+  function fakeClient() {
+    const calls: { filters: unknown[]; handlers: { onEvent?: (event: never) => void } }[] = [];
+    let closed = false;
+    const client = {
+      subscribe: (filters: unknown[], handlers: { onEvent?: (event: never) => void }) => {
+        calls.push({ filters, handlers });
+        return () => {
+          closed = true;
+        };
+      },
+    };
+    return { client, calls, isClosed: () => closed };
+  }
+
+  test("asks the relay for this Channel's 39002 projection and reports its Members", () => {
+    const { client, calls } = fakeClient();
+    const seen: string[][] = [];
+    subscribeRoster(client as never, "c1", (pubkeys) => seen.push(pubkeys));
+    expect(calls[0].filters).toEqual([{ kinds: [39002], "#d": ["c1"] }]);
+    calls[0].handlers.onEvent?.({ tags: [["p", "aa"], ["e", "xx"], ["p", "bb"]] } as never);
+    expect(seen).toEqual([["aa", "bb"]]);
+  });
+
+  test("hands back the relay's unsubscribe, so the caller closes exactly one subscription", () => {
+    const { client, isClosed } = fakeClient();
+    subscribeRoster(client as never, "c1", () => {})();
+    expect(isClosed()).toBe(true);
   });
 });
