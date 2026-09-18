@@ -17,7 +17,7 @@ import {
 } from "../../lib/custody";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { humanRelayReason } from "../../lib/relayReasons";
-import { oldestRead, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
+import { oldestRead, openChannel, seedMissing, touch, unreadChannelIds, type OpenedChannel, type ReadState } from "../../lib/unread";
 import { applyAppearance, DEFAULT_APPEARANCE, loadAppearance, storeAppearance, type Appearance } from "../../lib/appearance";
 import { navigateTo, sidebarGroups, START_NAVIGATION } from "../../lib/sidebar";
 import { AdminPane } from "./AdminPane";
@@ -136,11 +136,10 @@ export function AppShell({
       const resumed = selectedRef.current ?? initialSelection(list, lastChannelId);
       const now = nowSeconds();
       let marks = seedMissing(storedReadAt, list.map((c) => c.id), now);
-      // Opening a Channel reads it — including the one resumed from last time.
-      if (resumed !== null) {
-        setOpened({ readAt: marks[resumed] ?? now, openedAt: now });
-        marks = touch(marks, resumed, now);
-      }
+      // Opening a Channel reads it — including the one resumed from last time. Its mark is
+      // captured first: `touch` is about to overwrite the one the divider needs (#147).
+      setOpened(resumed === null ? null : openChannel(marks, resumed, now));
+      if (resumed !== null) marks = touch(marks, resumed, now);
       // All three setState calls together, in the same tick — keeping them batched into one
       // render (as they were before this file needed a second, async lastChannelId source)
       // matters: a channels-then-selectedChannelId split across two renders churns the
@@ -204,9 +203,9 @@ export function AppShell({
     setAccessLost(false);
     setSelectedChannelId(channelId);
     void storeChannelId(channelId);
-    const now = nowSeconds();
-    setOpened({ readAt: readAtRef.current[channelId] ?? now, openedAt: now });
-    setReadAt((prev) => touch(prev ?? {}, channelId, now));
+    // Again before the touch below, which moves the mark this reads (#147).
+    setOpened(openChannel(readAtRef.current, channelId, nowSeconds()));
+    setReadAt((prev) => touch(prev ?? {}, channelId, nowSeconds()));
   };
 
   const handleSignOut = async () => {

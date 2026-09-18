@@ -34,7 +34,7 @@ import {
 } from "../../lib/media";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
-import { firstNewMessageId, type OpenedChannel } from "../../lib/unread";
+import { messagesWithDivider, type OpenedChannel } from "../../lib/unread";
 import { Icon } from "../../components/icons/Icon";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Composer } from "./Composer";
@@ -204,8 +204,7 @@ export function Timeline({
     await client.publish(signed);
   };
 
-  const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
-  const newMessageId = opened === null ? null : firstNewMessageId(sorted, opened, pubkey);
+  const { sorted, newMessageId } = messagesWithDivider(messages, opened, pubkey);
 
   return (
     <div className="timeline">
