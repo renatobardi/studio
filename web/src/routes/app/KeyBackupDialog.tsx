@@ -5,6 +5,7 @@ import * as api from "../../lib/api";
 import { decryptBackup, encryptBackup, needsAccountPassword, validateBackupPassphrase } from "../../lib/backup";
 import { loadIdentityNsec } from "../../lib/custody";
 import { secretKeyFromNsec } from "../../lib/identity";
+import { isActivationKey, isOutsideClick } from "../../lib/signOut";
 import { Icon } from "../../components/icons/Icon";
 import { AccountPasswordGate } from "../onboarding/AccountPasswordGate";
 import { BackupPassphraseCard, BackupVerifyCard } from "../onboarding/KeyBackupSteps";
@@ -102,13 +103,24 @@ export function KeyBackupDialog({
   };
 
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    // The backdrop closes on a click that landed on the backdrop itself, so the dialog inside
+    // it needs no stopPropagation; the keyboard equivalent of that click sits beside it. Escape
+    // is deliberately not wired here — this dialog can be holding a backup file that has not
+    // been verified yet, and the two other dialogs' Escape-to-close would drop it.
+    <div
+      className="dialog-backdrop"
+      onClick={(event) => {
+        if (isOutsideClick(event)) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (isOutsideClick(event) && isActivationKey(event)) onClose();
+      }}
+    >
       <div
         className="dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="key-backup-title"
-        onClick={(event) => event.stopPropagation()}
         data-testid="key-backup-dialog"
       >
         <div className="dialog-header">

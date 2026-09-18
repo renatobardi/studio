@@ -19,3 +19,9 @@ export function isOutsideClick(event: { target: unknown; currentTarget: unknown 
 export function isEscape(event: { key: string }): boolean {
   return event.key === "Escape";
 }
+
+/** The keys that activate what a click would, so a click handler can be given the keyboard
+ * equivalent Sonar asks for without inventing a shortcut the dialog does not already have. */
+export function isActivationKey(event: { key: string }): boolean {
+  return event.key === "Enter" || event.key === " ";
+}
