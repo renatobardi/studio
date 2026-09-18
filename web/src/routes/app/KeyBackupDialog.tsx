@@ -1,10 +1,14 @@
 import type { User } from "firebase/auth";
-import { getPublicKey } from "nostr-tools";
 import { useState } from "react";
-import * as api from "../../lib/api";
-import { decryptBackup, encryptBackup, needsAccountPassword, validateBackupPassphrase } from "../../lib/backup";
-import { loadIdentityNsec } from "../../lib/custody";
-import { secretKeyFromNsec } from "../../lib/identity";
+import { needsAccountPassword } from "../../lib/backup";
+import {
+  confirmKeyBackup,
+  downloadKeyBackup,
+  keyBackupHeading,
+  keyBackupStep,
+  requestKeyBackup,
+  runKeyBackupStep,
+} from "../../lib/keyBackup";
 import { isActivationKey, isOutsideClick } from "../../lib/signOut";
 import { Icon } from "../../components/icons/Icon";
 import { AccountPasswordGate } from "../onboarding/AccountPasswordGate";
@@ -44,63 +48,37 @@ export function KeyBackupDialog({
     user.providerData.map((provider) => provider.providerId),
     knownPassword,
   );
+  const step = keyBackupStep(blob, verified);
+  const heading = keyBackupHeading(step);
 
-  const run = async (fn: () => Promise<void>, errorMessage: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch {
-      setError(errorMessage);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const report = { busy: setBusy, error: setError };
 
-  const handleCreate = () => {
-    const invalid = validateBackupPassphrase(passphrase, knownPassword ?? "");
-    if (invalid) {
-      setError(invalid);
-      return;
-    }
-    if (passphrase !== passphraseConfirm) {
-      setError("Passphrases don't match.");
-      return;
-    }
-    return run(async () => {
-      const nsec = await loadIdentityNsec();
-      if (!nsec) {
-        setError("This browser doesn't hold your private key, so there is nothing to back up here.");
-        return;
-      }
-      setBlob(await encryptBackup(nsec, passphrase));
-    }, "Couldn't create the Key Backup. Try again.");
-  };
+  const handleCreate = () =>
+    runKeyBackupStep(
+      () =>
+        requestKeyBackup({
+          passphrase,
+          confirm: passphraseConfirm,
+          accountPassword: knownPassword,
+          onCreated: setBlob,
+        }),
+      report,
+    );
 
-  const handleVerify = () => {
-    if (!blob) return;
-    return run(async () => {
-      const decrypted = await decryptBackup(blob, verifyPassphrase);
-      if (getPublicKey(secretKeyFromNsec(decrypted)) !== pubkey) {
-        setError("That didn't decrypt to your key. Check the passphrase.");
-        return;
-      }
-      setVerified(true);
-      await api.putKeyBackup(await user.getIdToken(), btoa(String.fromCodePoint(...blob)));
-      onStored();
-    }, "Couldn't store your Key Backup. Check the passphrase and try again.");
-  };
-
-  const handleDownload = () => {
-    if (!blob) return;
-    const file = new Blob([blob as BlobPart], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "studio-key-backup.age";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleVerify = () =>
+    blob &&
+    runKeyBackupStep(
+      () =>
+        confirmKeyBackup({
+          blob,
+          passphrase: verifyPassphrase,
+          pubkey,
+          getIdToken: () => user.getIdToken(),
+          onUnlocked: () => setVerified(true),
+          onStored,
+        }),
+      report,
+    );
 
   return (
     // The backdrop closes on a click that landed on the backdrop itself, so the dialog inside
@@ -128,15 +106,9 @@ export function KeyBackupDialog({
             <Icon name="x" size={16} />
           </button>
           <h2 id="key-backup-title" className="dialog-title">
-            {verified ? "Your backup is verified" : blob ? "That’s your backup file" : "Back up your key with a password"}
+            {heading.title}
           </h2>
-          <p className="dialog-description">
-            {verified
-              ? "Your file and passphrase can restore your identity."
-              : blob
-                ? "Now enter your passphrase to prove you can unlock it."
-                : "Pick a passphrase you can remember. It locks the backup file — Studio cannot recover it for you, and it must be different from your account password."}
-          </p>
+          <p className="dialog-description">{heading.description}</p>
         </div>
         <div className="dialog-body">
           {error && <div className="error-banner">{error}</div>}
@@ -163,7 +135,7 @@ export function KeyBackupDialog({
         </div>
         <div className="dialog-footer">
           {blob && (
-            <button type="button" className="link" onClick={handleDownload}>
+            <button type="button" className="link" onClick={() => downloadKeyBackup(blob)}>
               Download backup file (optional)
             </button>
           )}

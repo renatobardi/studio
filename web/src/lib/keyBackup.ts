@@ -1,0 +1,141 @@
+import { getPublicKey } from "nostr-tools";
+import * as api from "./api";
+import { decryptBackup, encryptBackup, validateBackupPassphrase } from "./backup";
+import { loadIdentityNsec } from "./custody";
+import { secretKeyFromNsec } from "./identity";
+
+/**
+ * The Key Backup flow's own decisions, shared by onboarding's steps and by "Manage" in
+ * Settings › Profile (#150) — so a backup made later is made under exactly the rules the
+ * first one was (#31, #36) and the dialog is left with nothing but state and markup.
+ */
+
+/** Which of the two cards the flow is on: pick a passphrase, prove it unlocks, done. */
+export type KeyBackupStep = "passphrase" | "verify" | "verified";
+
+export function keyBackupStep(blob: Uint8Array | null, verified: boolean): KeyBackupStep {
+  if (verified) return "verified";
+  return blob ? "verify" : "passphrase";
+}
+
+/** What the dialog's header says on each step. */
+export function keyBackupHeading(step: KeyBackupStep): { title: string; description: string } {
+  if (step === "verified") {
+    return { title: "Your backup is verified", description: "Your file and passphrase can restore your identity." };
+  }
+  if (step === "verify") {
+    return { title: "That’s your backup file", description: "Now enter your passphrase to prove you can unlock it." };
+  }
+  return {
+    title: "Back up your key with a password",
+    description:
+      "Pick a passphrase you can remember. It locks the backup file — Studio cannot recover it for you, and it must be different from your account password.",
+  };
+}
+
+/** Why this passphrase cannot lock a backup yet, or null when it can: the length and
+ * "different from the Account password" rules, then the confirmation. */
+export function newBackupPassphraseProblem(
+  passphrase: string,
+  confirm: string,
+  accountPassword: string | null,
+): string | null {
+  const invalid = validateBackupPassphrase(passphrase, accountPassword ?? "");
+  if (invalid) return invalid;
+  return passphrase === confirm ? null : "Passphrases don't match.";
+}
+
+export const NO_LOCAL_KEY_MESSAGE = "This browser doesn't hold your private key, so there is nothing to back up here.";
+export const CREATE_FAILED_MESSAGE = "Couldn't create the Key Backup. Try again.";
+export const WRONG_PASSPHRASE_MESSAGE = "That didn't decrypt to your key. Check the passphrase.";
+export const STORE_FAILED_MESSAGE = "Couldn't store your Key Backup. Check the passphrase and try again.";
+
+/** The age file for the key this browser holds, or null when it holds none — under a NIP-07
+ * extension there is nothing here to back up. */
+export async function createKeyBackup(passphrase: string): Promise<Uint8Array | null> {
+  const nsec = await loadIdentityNsec();
+  if (!nsec) return null;
+  return encryptBackup(nsec, passphrase);
+}
+
+/** Whether the file really unlocks with this passphrase into this Identity — what has to be
+ * true before it is worth keeping. Rejects when the passphrase does not open it at all. */
+export async function verifyKeyBackup(blob: Uint8Array, passphrase: string, pubkey: string): Promise<boolean> {
+  const decrypted = await decryptBackup(blob, passphrase);
+  return getPublicKey(secretKeyFromNsec(decrypted)) === pubkey;
+}
+
+/** Hands the verified file to the Account, base64 so the bytes survive the JSON body. */
+export async function storeKeyBackup(firebaseIdToken: string, blob: Uint8Array): Promise<void> {
+  await api.putKeyBackup(firebaseIdToken, btoa(String.fromCodePoint(...blob)));
+}
+
+/** The optional local copy of the same file, named as the rest of the app names it. */
+export function downloadKeyBackup(blob: Uint8Array): void {
+  const file = new Blob([blob as BlobPart], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "studio-key-backup.age";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * The verify step, end to end: the file has to unlock into this Identity before anything is
+ * kept, and only then does the Account get it (#36). Answers with what to show, or null when
+ * it is stored. `onUnlocked` fires the moment the file proved itself, so the card can say so
+ * while the upload is still in flight.
+ */
+export async function confirmKeyBackup(input: {
+  blob: Uint8Array;
+  passphrase: string;
+  pubkey: string;
+  getIdToken: () => Promise<string>;
+  onUnlocked: () => void;
+  onStored: () => void;
+}): Promise<string | null> {
+  try {
+    if (!(await verifyKeyBackup(input.blob, input.passphrase, input.pubkey))) return WRONG_PASSPHRASE_MESSAGE;
+    input.onUnlocked();
+    await storeKeyBackup(await input.getIdToken(), input.blob);
+    input.onStored();
+    return null;
+  } catch {
+    return STORE_FAILED_MESSAGE;
+  }
+}
+
+/**
+ * The create step, end to end: the rules first, then the file, and the reason it did not happen
+ * when it did not. The dialog is left holding nothing but the answer.
+ */
+export async function requestKeyBackup(input: {
+  passphrase: string;
+  confirm: string;
+  accountPassword: string | null;
+  onCreated: (blob: Uint8Array) => void;
+}): Promise<string | null> {
+  const invalid = newBackupPassphraseProblem(input.passphrase, input.confirm, input.accountPassword);
+  if (invalid) return invalid;
+  try {
+    const created = await createKeyBackup(input.passphrase);
+    if (!created) return NO_LOCAL_KEY_MESSAGE;
+    input.onCreated(created);
+    return null;
+  } catch {
+    return CREATE_FAILED_MESSAGE;
+  }
+}
+
+/** Runs one of those steps while the dialog says it is busy, and shows whatever it answered —
+ * neither of them throws, so there is nothing here to rescue. */
+export async function runKeyBackupStep(
+  step: () => Promise<string | null>,
+  report: { busy: (busy: boolean) => void; error: (message: string | null) => void },
+): Promise<void> {
+  report.busy(true);
+  report.error(null);
+  report.error(await step());
+  report.busy(false);
+}
