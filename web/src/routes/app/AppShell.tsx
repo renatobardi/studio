@@ -1,3 +1,4 @@
+import type { User } from "firebase/auth";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
@@ -40,6 +41,7 @@ import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { ChannelView } from "./ChannelView";
 import { ConversationView } from "./ConversationView";
 import { NewMessageDialog } from "./NewMessageDialog";
+import { ProfileScreen } from "./ProfileScreen";
 import { SettingsView } from "./SettingsView";
 import { Sidebar } from "./Sidebar";
 import { useDirectMessages } from "./useDirectMessages";
@@ -51,11 +53,17 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 export function AppShell({
   workspace,
   signer,
+  user = null,
+  accountPassword = null,
   onSignOut,
   client: providedClient,
 }: Readonly<{
   workspace: WorkspaceOut;
   signer: Signer;
+  /** The Firebase session, for the Key Backup this Account holds (#150). Absent in the
+   * preview harness, which never talks to Firebase. */
+  user?: User | null;
+  accountPassword?: string | null;
   onSignOut: () => void;
   /** The preview harness hands in a relay of fixtures; the app opens the Workspace's own. */
   client?: RelayClient;
@@ -308,7 +316,7 @@ export function AppShell({
         connectionState={connectionState}
         theme={appearance.theme}
         onToggleTheme={() => updateAppearance({ ...appearance, theme: appearance.theme === "dark" ? "light" : "dark" })}
-        onOpenProfile={() => navigate({ mode: "settings", settingsSection: "profile" })}
+        onOpenProfile={() => navigate({ mode: "profile" })}
         onOpenSettings={() => navigate({ mode: "settings", settingsSection: "appearance" })}
         onSignOut={() => void handleSignOut()}
       />
@@ -377,15 +385,27 @@ export function AppShell({
             />
           </div>
         )}
+        {mode === "profile" && pubkey && (
+          <ProfileScreen
+            client={client}
+            signer={signer}
+            pubkey={pubkey}
+            relayUrl={workspace.relay_url}
+            connectionState={connectionState}
+            onClose={() => navigate({ mode: "channels" })}
+          />
+        )}
         {mode === "settings" && pubkey && (
           <SettingsView
             key={navigation.settingsVisit}
             initialSection={navigation.settingsSection}
             client={client}
-            signer={signer}
             pubkey={pubkey}
+            user={user}
+            accountPassword={accountPassword}
             appearance={appearance}
             onAppearanceChange={updateAppearance}
+            onSignOut={() => void handleSignOut()}
             onClose={() => navigate({ mode: "channels" })}
           />
         )}

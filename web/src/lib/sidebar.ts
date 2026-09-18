@@ -1,7 +1,7 @@
 import type { ChannelOut } from "./api";
 import type { ConversationRow } from "./conversations";
 
-export type SidebarMode = "channels" | "dms" | "admin" | "settings";
+export type SidebarMode = "channels" | "dms" | "admin" | "settings" | "profile";
 
 export type AdminTab = "invites" | "members" | "channels";
 

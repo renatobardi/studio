@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isEscape, isOutsideClick, signOutBlocker } from "./signOut";
+import { isActivationKey, isEscape, isOutsideClick, signOutBlocker } from "./signOut";
 
 /** Sign out wipes this device's Identity and data (#148): the prototype's dialog only arms its
  * destructive button once the backup is confirmed and the phrase typed exactly. */
@@ -39,5 +39,17 @@ describe("isEscape", () => {
   test("no other key does", () => {
     expect(isEscape({ key: "Enter" })).toBe(false);
     expect(isEscape({ key: "Esc" })).toBe(false);
+  });
+});
+
+describe("isActivationKey", () => {
+  test("Enter and Space activate, as they do on a button", () => {
+    expect(isActivationKey({ key: "Enter" })).toBe(true);
+    expect(isActivationKey({ key: " " })).toBe(true);
+  });
+
+  test("anything else does not — Escape included, so a dialog is never dismissed by it here", () => {
+    expect(isActivationKey({ key: "Escape" })).toBe(false);
+    expect(isActivationKey({ key: "a" })).toBe(false);
   });
 });

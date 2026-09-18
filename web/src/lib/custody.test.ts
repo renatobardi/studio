@@ -17,6 +17,7 @@ import {
   extensionSupportsNip44,
   hasNip07,
   loadChannelReadAt,
+  loadIdentityNsec,
   loadDmReadAt,
   storeChannelReadAt,
   storeDmReadAt,
@@ -107,5 +108,18 @@ describe("the Direct message read marks", () => {
     await storeChannelReadAt({ c1: 700 });
     await storeDmReadAt({ since: 100, readAt: {} });
     expect(await loadChannelReadAt()).toEqual({ c1: 700 });
+  });
+});
+
+describe("loadIdentityNsec", () => {
+  afterEach(() => {
+    // @ts-expect-error test-only cleanup of a global we stub below
+    delete globalThis.window;
+  });
+
+  test("is undefined under a NIP-07 extension, without going near local storage", async () => {
+    // @ts-expect-error minimal window stub for this check
+    globalThis.window = { nostr: {} };
+    expect(await loadIdentityNsec()).toBeUndefined();
   });
 });

@@ -55,6 +55,7 @@ import { Sakura } from "../../components/brand/Sakura";
 import { Icon } from "../../components/icons/Icon";
 import { stepMaxWidth } from "../../lib/onboardingLayout";
 import { AccountPasswordGate } from "./AccountPasswordGate";
+import { BackupPassphraseCard, BackupVerifyCard } from "./KeyBackupSteps";
 
 type Step = OnboardingStep | "restore";
 
@@ -789,31 +790,14 @@ export function OnboardingScreen({
                 Pick a passphrase you can remember. It locks the backup file — Studio cannot recover it for
                 you, and it must be different from your account password.
               </p>
-              <div className="onboarding-card">
-                <label className="field">
-                  <span className="field-label">Passphrase</span>
-                  <input
-                    type="password"
-                    placeholder="Backup passphrase"
-                    value={passphrase}
-                    onChange={(e) => setPassphrase(e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span className="field-label">Confirm passphrase</span>
-                  <input
-                    type="password"
-                    placeholder="Confirm passphrase"
-                    value={passphraseConfirm}
-                    onChange={(e) => setPassphraseConfirm(e.target.value)}
-                  />
-                </label>
-                <span className="onboarding-card-action">
-                  <button className="btn btn-primary btn-xs" disabled={busy} onClick={handleCreateBackup}>
-                    Create backup
-                  </button>
-                </span>
-              </div>
+              <BackupPassphraseCard
+                passphrase={passphrase}
+                confirm={passphraseConfirm}
+                onPassphrase={setPassphrase}
+                onConfirm={setPassphraseConfirm}
+                busy={busy}
+                onCreate={handleCreateBackup}
+              />
             </>
           )}
 
@@ -827,44 +811,13 @@ export function OnboardingScreen({
                   ? "Your file and passphrase can restore your identity."
                   : "Now enter your passphrase to prove you can unlock it."}
               </p>
-              <div className="onboarding-card">
-                <div className="auth-panel">
-                  <Icon name="shield" size={15} />
-                  <span className="auth-panel-text">
-                    <span className="auth-panel-title auth-panel-mono">studio-key-backup.age</span>
-                    <span className="auth-panel-meta">Created just now</span>
-                  </span>
-                </div>
-                {backupState !== "verified" && (
-                  <>
-                    <label className="field">
-                      <span className="field-label">Passphrase</span>
-                      <input
-                        type="password"
-                        placeholder="Backup passphrase"
-                        value={verifyPassphrase}
-                        onChange={(e) => setVerifyPassphrase(e.target.value)}
-                      />
-                    </label>
-                    <span className="onboarding-card-action">
-                      <button className="btn btn-primary btn-xs" disabled={busy} onClick={handleVerifyBackup}>
-                        Verify
-                      </button>
-                    </span>
-                  </>
-                )}
-                {backupState === "verified" && (
-                  <div className="auth-panel auth-panel-plain">
-                    <span className="auth-check">
-                      <Icon name="check" size={15} />
-                    </span>
-                    <span className="auth-panel-text">
-                      <span className="auth-panel-title">✓ Verified</span>
-                      <span className="auth-panel-meta">Your passphrase unlocked the backup.</span>
-                    </span>
-                  </div>
-                )}
-              </div>
+              <BackupVerifyCard
+                verified={backupState === "verified"}
+                passphrase={verifyPassphrase}
+                onPassphrase={setVerifyPassphrase}
+                busy={busy}
+                onVerify={handleVerifyBackup}
+              />
               <div className="onboarding-actions">
                 <button type="button" className="link" onClick={handleDownload}>
                   Download backup file (optional)
