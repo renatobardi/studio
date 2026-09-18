@@ -36,6 +36,12 @@ export function oldestRead(readAt: ReadState, channelIds: string[], fallback: nu
 /** Where a Channel stood the moment it was opened: its last-read mark then, and when. */
 export type OpenedChannel = Readonly<{ readAt: number; openedAt: number }>;
 
+/** Opening a Channel reads it, so `touch` is about to move its mark to `now` — this keeps
+ * what the mark was, the only record of where the reader had stopped. */
+export function openChannel(readAt: ReadState, channelId: string, now: number): OpenedChannel {
+  return { readAt: readAt[channelId] ?? now, openedAt: now };
+}
+
 /** The Message the "New" divider goes above: the oldest one someone else sent after the
  * Channel's last-read mark and before it was opened — what arrived while it was not on
  * screen. Messages arriving while it is open are read as they come, so they never qualify. */
@@ -48,5 +54,17 @@ export function firstNewMessageId(
     (m) => m.pubkey !== ownPubkey && m.created_at > opened.readAt && m.created_at <= opened.openedAt,
   );
   if (unread.length === 0) return null;
-  return unread.reduce((oldest, m) => (m.created_at < oldest.created_at ? m : oldest)).id;
+  return unread.reduce((oldest, m) => (m.created_at < oldest.created_at ? m : oldest), unread[0]).id;
+}
+
+/** The Channel's Messages in reading order, with the one the "New" divider goes above — the
+ * whole of the timeline's decision, so the component only renders it. */
+export function messagesWithDivider<T extends { id: string; pubkey: string; created_at: number }>(
+  messages: readonly T[],
+  opened: OpenedChannel | null,
+  ownPubkey: string,
+): Readonly<{ sorted: T[]; newMessageId: string | null }> {
+  const sorted = [...messages].sort((a, b) => a.created_at - b.created_at);
+  const newMessageId = opened === null ? null : firstNewMessageId(sorted, opened, ownPubkey);
+  return { sorted, newMessageId };
 }
