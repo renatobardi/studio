@@ -152,8 +152,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Compare the -linux baselines with the prototype reference
+        # Issue #156: report-only until the owner marks a screen faithful in
+        # docs/UI/reference/regions.json. Before flow 10, which runs as root in
+        # the container and clears web/test-results.
+        working-directory: web
+        run: bun run compare:reference -- --platform linux
+
+      - name: Publish the reference comparison
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reference-compare
+          path: web/test-results/reference-compare/
 
       - name: Flow 10 against the -linux baselines
+        if: ${{ !cancelled() }}
         run: web/tools/visual-linux.sh
 
       - name: Publish the visual diffs

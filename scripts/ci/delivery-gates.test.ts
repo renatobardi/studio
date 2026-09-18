@@ -118,9 +118,26 @@ describe('ci.yml visual job', () => {
   })
 
   test('uploads the diffs when the comparison fails', () => {
-    const upload = visual.steps.find((step) => (step.uses ?? '').includes('upload-artifact'))
+    const upload = visual.steps.find((step) => step.with?.name === 'visual-diffs')
     expect(upload?.if).toBe('failure()')
     expect(`${upload?.with?.path ?? ''}`).toContain('web/test-results')
+  })
+
+  // Issue #156: the baselines measured against docs/UI/reference. The report is
+  // published on every run, pass or fail — it is the evidence either way.
+  test('publishes the comparison with the prototype reference on every run', () => {
+    const compare = visual.steps.findIndex((step) => (step.run ?? '').includes('compare:reference'))
+    const upload = visual.steps.findIndex((step) => step.with?.name === 'reference-compare')
+    const flow10 = visual.steps.findIndex((step) => (step.run ?? '').includes('web/tools/visual-linux.sh'))
+    expect(compare).toBeGreaterThan(-1)
+    expect(visual.steps[upload]?.if).toBe('always()')
+    expect(`${visual.steps[upload]?.with?.path ?? ''}`).toContain('web/test-results/reference-compare')
+    // Flow 10 runs as root in the Playwright container and clears test-results:
+    // the report is written and uploaded before it, and flow 10 still runs when
+    // a faithful screen fails the comparison.
+    expect(compare).toBeLessThan(upload)
+    expect(upload).toBeLessThan(flow10)
+    expect(visual.steps[flow10]?.if).toBe('${{ !cancelled() }}')
   })
 })
 
