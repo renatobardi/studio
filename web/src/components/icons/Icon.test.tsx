@@ -22,7 +22,7 @@ describe("Icon", () => {
 
   test("ships every glyph an MVP screen uses", () => {
     const needed = [
-      "hash", "lock", "user", "x", "plus", "paperclip", "arrow-up", "mail", "settings", "log-out",
+      "hash", "lock", "user", "x", "plus", "paperclip", "arrow-up", "mail", "settings",
       "sun", "moon", "chevron-right", "chevron-down", "shield", "check", "pencil", "eye", "eye-off",
       "copy", "download", "message-square", "info", "triangle-alert", "image", "bot",
     ];

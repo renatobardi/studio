@@ -9,6 +9,7 @@ import {
   isWorkspaceManager,
   keepSelection,
 } from "../../lib/channelAccess";
+import { nowSeconds } from "../../lib/clock";
 import { directMessages } from "../../lib/conversations";
 import {
   loadChannelId,
@@ -48,8 +49,6 @@ import { useDirectMessages } from "./useDirectMessages";
 import { displayName, ownDisplayName, profileName, shortNpub, useProfiles } from "./useProfiles";
 import { useWorkspaceMembers } from "./useWorkspaceMembers";
 
-const nowSeconds = () => Math.floor(Date.now() / 1000);
-
 export function AppShell({
   workspace,
   signer,
@@ -78,7 +77,7 @@ export function AppShell({
   /** What the relay refused and why. Without it a rejected subscription reads
    * as "Connected" over an empty timeline (#47). */
   const [relayProblem, setRelayProblem] = useState<RelayProblem | null>(null);
-  const [pubkey, setPubkey] = useState<string | null>(null);
+  const [ownPubkey, setOwnPubkey] = useState<string | null>(null);
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -98,7 +97,7 @@ export function AppShell({
   /** A choice made before the stored value came back wins over it. */
   const appearanceTouched = useRef(false);
   /** Direct messages live in the sidebar (#142), so they are read from the moment the app opens. */
-  const rumors = useDirectMessages(client, signer, pubkey);
+  const rumors = useDirectMessages(client, signer, ownPubkey);
   const { members, error: membersError } = useWorkspaceMembers(client, workspace.slug, signer);
   /** The open conversation's other participants — kept apart from the conversation itself, which
    * does not exist yet when a Member was just picked to start one. */
@@ -122,16 +121,16 @@ export function AppShell({
   }, [client]);
 
   useEffect(() => {
-    signer.getPublicKey().then(setPubkey).catch(() => {});
+    signer.getPublicKey().then(setOwnPubkey).catch(() => {});
   }, [signer]);
 
   useEffect(() => {
-    if (pubkey) ensureProfiles([pubkey]);
-  }, [pubkey, ensureProfiles]);
+    if (ownPubkey) ensureProfiles([ownPubkey]);
+  }, [ownPubkey, ensureProfiles]);
 
   const dm = directMessages({
     rumors,
-    myPubkey: pubkey,
+    myPubkey: ownPubkey,
     members,
     selectedPeerPubkeys,
     readState: dmRead,
@@ -244,14 +243,14 @@ export function AppShell({
   const channelIds = channels?.map((c) => c.id) ?? [];
   const channelIdsKey = channelIds.join(",");
   useEffect(() => {
-    if (channelIdsKey === "" || pubkey === null) return;
+    if (channelIdsKey === "" || ownPubkey === null) return;
     // From the oldest last-read mark, not from now: that is what makes a
     // Message sent while the app was closed still count as unread (#42).
     const since = oldestRead(readAtRef.current, channelIds, nowSeconds());
     return client.subscribe([{ kinds: [9], "#h": channelIds, since }], {
       onEvent: (event) => {
         const channelId = event.tags.find((t) => t[0] === "h")?.[1];
-        if (!channelId || event.pubkey === pubkey) return;
+        if (!channelId || event.pubkey === ownPubkey) return;
         setActivityAt((prev) => touch(prev, channelId, event.created_at));
         // The open Channel is being read as it arrives — and only that one: a
         // Channel that is not on screen keeps its older last-read mark (#42).
@@ -261,7 +260,7 @@ export function AppShell({
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- channelIdsKey already tracks channelIds' contents
-  }, [client, channelIdsKey, pubkey]);
+  }, [client, channelIdsKey, ownPubkey]);
 
   const selectChannel = (channelId: string) => {
     setAccessLost(false);
@@ -310,8 +309,8 @@ export function AppShell({
         onNewMessage={() => setPickingMember(true)}
         canCreateChannels={isWorkspaceManager(workspace.role)}
         onCreateChannel={() => navigate({ mode: "admin", adminTab: "channels" })}
-        ownName={ownDisplayName(profiles, pubkey)}
-        ownHandle={pubkey ? shortNpub(pubkey) : "…"}
+        ownName={ownDisplayName(profiles, ownPubkey)}
+        ownHandle={ownPubkey ? shortNpub(ownPubkey) : "…"}
         workspaceName={workspace.name}
         connectionState={connectionState}
         theme={appearance.theme}
@@ -338,17 +337,15 @@ export function AppShell({
                 You no longer have access to that Channel.
               </p>
             )}
-            {selectedChannel && pubkey && (
+            {selectedChannel && ownPubkey && (
               <ChannelView
                 key={selectedChannel.id}
                 client={client}
                 channel={selectedChannel}
-                pubkey={pubkey}
+                ownPubkey={ownPubkey}
                 signer={signer}
-                mediaUrl={workspace.media_url}
                 opened={opened}
-                slug={workspace.slug}
-                workspaceRole={workspace.role}
+                workspace={workspace}
                 workspaceMembers={members}
                 threadView={appearance.threadView}
               />
@@ -362,11 +359,11 @@ export function AppShell({
             )}
           </>
         )}
-        {mode === "dms" && pubkey && selectedPeerPubkeys && (
+        {mode === "dms" && ownPubkey && selectedPeerPubkeys && (
           <ConversationView
             key={selectedKey}
             client={client}
-            myPubkey={pubkey}
+            ownPubkey={ownPubkey}
             peerPubkeys={selectedPeerPubkeys}
             signer={signer}
             mediaUrl={workspace.media_url}
@@ -386,22 +383,22 @@ export function AppShell({
             />
           </div>
         )}
-        {mode === "profile" && pubkey && (
+        {mode === "profile" && ownPubkey && (
           <ProfileScreen
             client={client}
             signer={signer}
-            pubkey={pubkey}
+            pubkey={ownPubkey}
             relayUrl={workspace.relay_url}
             connectionState={connectionState}
             onClose={() => navigate({ mode: "channels" })}
           />
         )}
-        {mode === "settings" && pubkey && (
+        {mode === "settings" && ownPubkey && (
           <SettingsView
             key={navigation.settingsVisit}
             initialSection={navigation.settingsSection}
             client={client}
-            pubkey={pubkey}
+            pubkey={ownPubkey}
             user={user}
             accountPassword={accountPassword}
             appearance={appearance}
@@ -411,9 +408,9 @@ export function AppShell({
           />
         )}
       </main>
-      {pickingMember && pubkey && (
+      {pickingMember && ownPubkey && (
         <NewMessageDialog
-          members={selectableMembers(members, pubkey, (member) => profileName(profiles, member))}
+          members={selectableMembers(members, ownPubkey, (member) => profileName(profiles, member))}
           profiles={profiles}
           error={membersError}
           onPick={(member) => {

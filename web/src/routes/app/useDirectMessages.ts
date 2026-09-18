@@ -3,17 +3,17 @@ import type { Signer } from "../../lib/custody";
 import { unwrapGiftWrap, type Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 
-/** Every Direct Message gift wrap addressed to `myPubkey` (ticket #7), unwrapped as it arrives —
+/** Every Direct Message gift wrap addressed to `ownPubkey` (ticket #7), unwrapped as it arrives —
  * nothing until the own pubkey is known.
  * A gift wrap that fails to unwrap (foreign ciphertext, tampered seal) is silently skipped —
  * the relay already restricts delivery to the `p`-tagged recipient, so this is defense in depth,
  * not the normal case. */
-export function useDirectMessages(client: RelayClient, signer: Signer, myPubkey: string | null) {
+export function useDirectMessages(client: RelayClient, signer: Signer, ownPubkey: string | null) {
   const [rumors, setRumors] = useState<Map<string, Rumor>>(new Map());
 
   useEffect(() => {
-    if (myPubkey === null) return;
-    const unsubscribe = client.subscribe([{ kinds: [1059], "#p": [myPubkey] }], {
+    if (ownPubkey === null) return;
+    const unsubscribe = client.subscribe([{ kinds: [1059], "#p": [ownPubkey] }], {
       onEvent: (wrap) => {
         unwrapGiftWrap(signer, wrap)
           .then((rumor) => {
@@ -24,7 +24,7 @@ export function useDirectMessages(client: RelayClient, signer: Signer, myPubkey:
     });
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- signer identity is stable for the session
-  }, [client, myPubkey]);
+  }, [client, ownPubkey]);
 
   return [...rumors.values()];
 }

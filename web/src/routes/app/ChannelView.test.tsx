@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ChannelOut } from "../../lib/api";
+import type { ChannelOut, WorkspaceOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { ChannelView } from "./ChannelView";
@@ -12,10 +12,12 @@ const render = (channel: ChannelOut) =>
     <ChannelView
       client={client}
       channel={channel}
-      pubkey={"1".padEnd(64, "a")}
+      ownPubkey={"1".padEnd(64, "a")}
       signer={{} as Signer}
-      mediaUrl="https://media.example"
       opened={null}
+      workspace={{ slug: "family", role: "member", media_url: "https://media.example" } as WorkspaceOut}
+      workspaceMembers={[]}
+      threadView="split"
     />,
   );
 

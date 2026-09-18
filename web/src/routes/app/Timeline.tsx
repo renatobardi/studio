@@ -9,6 +9,7 @@ import {
   summarizeThread,
   type TargetRef,
 } from "../../lib/channelEvents";
+import { nowSeconds } from "../../lib/clock";
 import {
   addDraft,
   canSendWithDrafts,
@@ -55,8 +56,6 @@ function imageDimensions(url: string): Promise<string | undefined> {
   });
 }
 
-const nowSeconds = () => Math.floor(Date.now() / 1000);
-
 /** How close to the top counts as asking for older Messages (story 30, #1). */
 const TOP_OF_HISTORY_PX = 48;
 
@@ -71,7 +70,7 @@ export function Timeline({
   client,
   channelId,
   channelName,
-  pubkey,
+  ownPubkey,
   signer,
   mediaUrl,
   messages,
@@ -88,7 +87,8 @@ export function Timeline({
   client: RelayClient;
   channelId: string;
   channelName: string;
-  pubkey: string;
+  /** The Identity this browser signs with. */
+  ownPubkey: string;
   signer: Signer;
   mediaUrl: string;
   messages: VerifiedEvent[];
@@ -207,14 +207,14 @@ export function Timeline({
   const unreact = async (targetId: string, emoji: string) => {
     const own = reactions.find((r) => {
       const targetTag = r.tags.find((t) => t[0] === "e")?.[1];
-      return r.pubkey === pubkey && r.content === emoji && targetTag === targetId;
+      return r.pubkey === ownPubkey && r.content === emoji && targetTag === targetId;
     });
     if (!own) return;
     const signed = await signer.signEvent(buildReactionRemoval(channelId, own.id));
     await client.publish(signed);
   };
 
-  const { sorted, newMessageId } = messagesWithDivider(messages, opened, pubkey);
+  const { sorted, newMessageId } = messagesWithDivider(messages, opened, ownPubkey);
 
   return (
     <div className="timeline">
@@ -283,7 +283,7 @@ export function Timeline({
                   ))}
                   <ReactionBar
                     groups={groupReactions(reactionsForMessage, deletionsForMessage)}
-                    ownPubkey={pubkey}
+                    ownPubkey={ownPubkey}
                     onAdd={(emoji) => void react(target, emoji)}
                     onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
                   />
@@ -297,7 +297,8 @@ export function Timeline({
                         data-testid="open-thread"
                       >
                         <span className="thread-open-avatars">
-                          {thread.participantPubkeys.map((participant) => (
+                          {/* The pill draws three faces, as the prototype does. */}
+                          {thread.participantPubkeys.slice(0, 3).map((participant) => (
                             <Avatar
                               key={participant}
                               profile={profiles.get(participant)}

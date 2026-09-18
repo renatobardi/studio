@@ -12,11 +12,11 @@ import type { Signer } from "./custody";
  */
 export function selectableMembers(
   members: readonly WorkspaceMemberOut[],
-  myPubkey: string,
+  ownPubkey: string,
   nameOf: (pubkey: string) => string | null,
 ): WorkspaceMemberOut[] {
   return members
-    .filter((member) => member.pubkey !== myPubkey)
+    .filter((member) => member.pubkey !== ownPubkey)
     .sort((left, right) => compareByName(nameOf(left.pubkey), nameOf(right.pubkey)));
 }
 

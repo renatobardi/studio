@@ -117,7 +117,7 @@ describe("summarizeThread", () => {
     expect(summarizeThread([], "root1")).toEqual({ count: 0, participantPubkeys: [], lastReplyAt: null });
   });
 
-  test("participants are distinct, latest reply first, at most three; lastReplyAt is the newest reply", () => {
+  test("participants are distinct, latest reply first; lastReplyAt is the newest reply", () => {
     const [ana, sprig, tomas, marina] = [0, 1, 2, 3].map(() => generateSecretKey());
     const replies = [
       at(marina!, "root1", 5),
@@ -129,7 +129,7 @@ describe("summarizeThread", () => {
 
     expect(summarizeThread(replies, "root1")).toEqual({
       count: 5,
-      participantPubkeys: [getPublicKey(ana!), getPublicKey(tomas!), getPublicKey(sprig!)],
+      participantPubkeys: [getPublicKey(ana!), getPublicKey(tomas!), getPublicKey(sprig!), getPublicKey(marina!)],
       lastReplyAt: 48,
     });
   });

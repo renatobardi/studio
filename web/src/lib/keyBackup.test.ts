@@ -4,12 +4,14 @@ import * as idb from "idb-keyval";
 import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import {
   CREATE_FAILED_MESSAGE,
+  KEY_BACKUP_FILENAME,
   NO_LOCAL_KEY_MESSAGE,
   STORE_FAILED_MESSAGE,
   WRONG_PASSPHRASE_MESSAGE,
   confirmKeyBackup,
   createKeyBackup,
   downloadKeyBackup,
+  keyBackupBase64,
   keyBackupHeading,
   keyBackupStep,
   newBackupPassphraseProblem,
@@ -104,6 +106,20 @@ describe("verifyKeyBackup", () => {
   });
 });
 
+/** The file name is one literal: the download, the card that shows it, and the Settings row all
+ * read it from here (#36, #150). */
+describe("KEY_BACKUP_FILENAME", () => {
+  test("is the age file the rest of the app names", () => {
+    expect(KEY_BACKUP_FILENAME).toBe("studio-key-backup.age");
+  });
+});
+
+describe("keyBackupBase64", () => {
+  test("encodes the bytes as PUT /account/key-backup takes them", () => {
+    expect(keyBackupBase64(new Uint8Array([104, 105]))).toBe(btoa("hi"));
+  });
+});
+
 describe("storeKeyBackup", () => {
   const realFetch = globalThis.fetch;
   let sent: string | null;
@@ -148,7 +164,7 @@ describe("downloadKeyBackup", () => {
     downloadKeyBackup(new Uint8Array([104, 105]));
 
     expect(anchor.href).toBe("blob:key-backup");
-    expect(anchor.download).toBe("studio-key-backup.age");
+    expect(anchor.download).toBe(KEY_BACKUP_FILENAME);
     expect(anchor.clicked).toBe(true);
     expect(revoked).toEqual(["blob:key-backup"]);
   });

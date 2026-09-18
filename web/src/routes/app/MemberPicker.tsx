@@ -31,7 +31,7 @@ export function MemberPicker({
             profiles={profiles}
             onClick={() => onPick(member.pubkey)}
             testId="dm-member-option"
-            trailing={member.role}
+            caption={{ text: member.role, at: "trailing" }}
           />
         </li>
       ))}

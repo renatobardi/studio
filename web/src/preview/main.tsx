@@ -5,6 +5,8 @@
  * `fontScale=smaller|default|larger` set the appearance before the shell mounts. Vite only
  * builds index.html, so this page exists on the dev server alone; the visual flow drives it
  * (e2e/visual.spec.ts) and so does anyone comparing a screen against docs/UI/reference.
+ * `new-message` is here without a flow 10 baseline: the prototype's reference was never
+ * captured for it (docs/UI/REFERENCE.md › Decisões 11).
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

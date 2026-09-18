@@ -46,7 +46,7 @@ function imageDimensions(url: string): Promise<string | undefined> {
 
 export function ConversationView({
   client,
-  myPubkey,
+  ownPubkey,
   peerPubkeys,
   signer,
   mediaUrl,
@@ -54,7 +54,7 @@ export function ConversationView({
   profiles,
 }: Readonly<{
   client: RelayClient;
-  myPubkey: string;
+  ownPubkey: string;
   peerPubkeys: string[];
   signer: Signer;
   mediaUrl: string;
@@ -130,7 +130,7 @@ export function ConversationView({
       try {
         // A partially delivered Message is retried as it was signed; only a fresh one is built from the composer.
         const attempt = partial ?? {
-          dm: pendingDm(await wrapDmMessage(signer, myPubkey, peerPubkeys, draft.trim(), readyPayloads(attachments))),
+          dm: pendingDm(await wrapDmMessage(signer, ownPubkey, peerPubkeys, draft.trim(), readyPayloads(attachments))),
           sentDraft: draft,
           sent: attachments,
         };
@@ -149,7 +149,7 @@ export function ConversationView({
           setSendError(publishFailureMessage(dm.failure));
         } else {
           setPartial({ ...attempt, dm });
-          setSendError(partialDeliveryMessage(dm, myPubkey));
+          setSendError(partialDeliveryMessage(dm, ownPubkey));
         }
       } catch (error) {
         setSendError(publishFailureMessage(error));

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import { Sakura } from "../../components/brand/Sakura";
 import type { Theme } from "../../lib/appearance";
@@ -6,6 +6,7 @@ import type { ConnectionState } from "../../lib/relay";
 import { initials, type SidebarGroup, type SidebarItem, type SidebarMode } from "../../lib/sidebar";
 import { ChannelsEmptyState } from "./ChannelsEmptyState";
 import { SignOutDialog } from "./SignOutDialog";
+import { useEscape } from "./useEscape";
 
 /** The persistent 256px sidebar of the prototype: grouped destinations above — Channels, each Direct
  * message conversation with a "+" to start one (#142), the Workspace's own — the account —
@@ -49,14 +50,7 @@ export function Sidebar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
+  useEscape(() => setMenuOpen(false), menuOpen);
 
   const choose = (action: () => void) => () => {
     setMenuOpen(false);
