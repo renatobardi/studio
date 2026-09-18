@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { Filter, VerifiedEvent } from "nostr-tools";
 import type { ChannelOut } from "./api";
+import type { SubscriptionHandlers } from "./relay";
 import {
   accessLostAfterRefresh,
   canManageChannels,
@@ -100,32 +102,55 @@ describe("rosterPubkeys", () => {
 });
 
 describe("subscribeRoster", () => {
-  function fakeClient() {
-    const calls: { filters: unknown[]; handlers: { onEvent?: (event: never) => void } }[] = [];
-    let closed = false;
-    const client = {
-      subscribe: (filters: unknown[], handlers: { onEvent?: (event: never) => void }) => {
-        calls.push({ filters, handlers });
-        return () => {
-          closed = true;
-        };
+  const rosterClient = () => {
+    const subscriptions: { filters: Filter[]; handlers: SubscriptionHandlers; closed: boolean }[] = [];
+    return {
+      subscriptions,
+      client: {
+        subscribe(filters: Filter[], handlers: SubscriptionHandlers) {
+          const sub = { filters, handlers, closed: false };
+          subscriptions.push(sub);
+          const close = () => {
+            sub.closed = true;
+          };
+          return Object.assign(close, { update: () => {} });
+        },
       },
     };
-    return { client, calls, isClosed: () => closed };
-  }
+  };
+  const projection = (kind: number, pubkeys: string[]) =>
+    ({ kind, tags: [["d", "c1"], ...pubkeys.map((p) => ["p", p])] }) as VerifiedEvent;
 
-  test("asks the relay for this Channel's 39002 projection and reports its Members", () => {
-    const { client, calls } = fakeClient();
-    const seen: string[][] = [];
-    subscribeRoster(client as never, "c1", (pubkeys) => seen.push(pubkeys));
-    expect(calls[0].filters).toEqual([{ kinds: [39002], "#d": ["c1"] }]);
-    calls[0].handlers.onEvent?.({ tags: [["p", "aa"], ["e", "xx"], ["p", "bb"]] } as never);
-    expect(seen).toEqual([["aa", "bb"]]);
+  test("asks one subscription for both of the Channel's projections", () => {
+    const { client, subscriptions } = rosterClient();
+
+    subscribeRoster(client, "c1", () => {}, () => {});
+
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]!.filters).toEqual([
+      { kinds: [39002], "#d": ["c1"] },
+      { kinds: [39001], "#d": ["c1"] },
+    ]);
   });
 
-  test("hands back the relay's unsubscribe, so the caller closes exactly one subscription", () => {
-    const { client, isClosed } = fakeClient();
-    subscribeRoster(client as never, "c1", () => {})();
-    expect(isClosed()).toBe(true);
+  test("reads the member list (39002) as the roster and the admin list (39001) as the admins", () => {
+    const { client, subscriptions } = rosterClient();
+    const roster: string[][] = [];
+    const admins: string[][] = [];
+
+    subscribeRoster(client, "c1", (pubkeys) => roster.push(pubkeys), (pubkeys) => admins.push(pubkeys));
+    subscriptions[0]!.handlers.onEvent(projection(39002, ["aa", "bb"]));
+    subscriptions[0]!.handlers.onEvent(projection(39001, ["aa"]));
+
+    expect(roster).toEqual([["aa", "bb"]]);
+    expect(admins).toEqual([["aa"]]);
+  });
+
+  test("hands back the unsubscribe, so leaving the Channel closes it", () => {
+    const { client, subscriptions } = rosterClient();
+
+    subscribeRoster(client, "c1", () => {}, () => {})();
+
+    expect(subscriptions[0]!.closed).toBe(true);
   });
 });

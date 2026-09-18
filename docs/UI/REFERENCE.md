@@ -105,6 +105,15 @@ Settings além de Appearance/Profile, popup Google simulado.
    diálogo "New message" com o `MemberPicker` de #47: um clique no Member abre a conversa, sem o
    campo "To" nem "Start conversation". Omitidos o menu "…" da seção (Invite someone, Mark all as
    read) e o recolher do título, que os Channels também não têm.
+7. **Channel members (#145).** Título "Channel members", fechar, campo "Add people and agents" e
+   grupos PEOPLE/AGENTS (AGENTS só com Members de papel `agent` no roster) como no HTML. **Exceção:
+   presença.** O Studio não tem evento de presença no MVP, então cada linha mostra só o papel, sem
+   "· online"/"· away" nem o ponto no avatar — presença: #161. O papel segue
+   `_require_channel_manager`: Owner (dono do Workspace), Admin (admin do Workspace ou do Channel,
+   kind 39001), Member; `lib/memberDirectory.ts`. O campo só aparece para quem pode gerenciar o
+   Channel e adiciona pela mesma rota do Admin › Channels, escolhendo entre os Workspace Members
+   por nome (#47), nunca por pubkey. Omitidos o ícone de configurações (não há tela de ajustes de
+   Channel no MVP) e "Archived members" (não há Member arquivado no domínio).
 
 ## Aceite visual (issue #73)
 

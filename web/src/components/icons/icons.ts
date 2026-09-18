@@ -60,6 +60,7 @@ export const ICON_PATHS = {
   ],
   "triangle-alert": ["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z", "M12 9v4", "M12 17h.01"],
   user: ["M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", "M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"],
+  "user-plus": ["M2 21a8 8 0 0 1 13.292-6", "M10 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10z", "M19 16v6", "M22 19h-6"],
   x: ["M18 6 6 18", "m6 6 12 12"],
 } satisfies Record<string, string[]>;
 

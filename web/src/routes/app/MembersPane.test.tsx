@@ -1,13 +1,26 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { MembersPane } from "./MembersPane";
 
 const client = { subscribe: () => () => {} } as unknown as RelayClient;
+const signer = {} as Signer;
 
 const render = (memberPubkeys: string[], overlay = false) =>
   renderToStaticMarkup(
-    <MembersPane client={client} memberPubkeys={memberPubkeys} overlay={overlay} onClose={() => {}} />,
+    <MembersPane
+      client={client}
+      signer={signer}
+      slug="family"
+      channelId="channel"
+      memberPubkeys={memberPubkeys}
+      channelAdmins={[]}
+      workspaceMembers={[]}
+      canManage={false}
+      overlay={overlay}
+      onClose={() => {}}
+    />,
   );
 
 /** The pane lists the roster ChannelView read for the header pill (#143) — one row per Member,

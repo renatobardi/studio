@@ -1,5 +1,11 @@
 import type { ChannelOut } from "./api";
-import type { RelayClient } from "./relay";
+import type { Filter } from "nostr-tools";
+import type { SubscriptionHandle, SubscriptionHandlers } from "./relay";
+
+/** All a roster subscription needs of a `RelayClient` — and all a test has to stand in for. */
+export interface RosterClient {
+  subscribe(filters: Filter[], handlers: SubscriptionHandlers): SubscriptionHandle;
+}
 
 const WORKSPACE_MANAGER_ROLES = new Set(["owner", "admin"]);
 
@@ -64,14 +70,20 @@ export function rosterPubkeys(roster: { tags: string[][] }): string[] {
   return roster.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]);
 }
 
-/** Watches a Channel's roster: the control plane re-publishes the projection on every membership
- * change, so every event is the whole roster. Returns the relay's unsubscribe. */
+/** The two projections the Channel's member views read: its roster (39002), which the header
+ * pill counts and the members pane lists, and its admins (39001), which the pane labels Admin
+ * (#145). One subscription for both, so opening the pane costs nothing extra (#143). */
 export function subscribeRoster(
-  client: RelayClient,
+  client: RosterClient,
   channelId: string,
   onRoster: (pubkeys: string[]) => void,
+  onAdmins: (pubkeys: string[]) => void,
 ): () => void {
-  return client.subscribe([{ kinds: [39002], "#d": [channelId] }], {
-    onEvent: (event) => onRoster(rosterPubkeys(event)),
-  });
+  return client.subscribe(
+    [
+      { kinds: [39002], "#d": [channelId] },
+      { kinds: [39001], "#d": [channelId] },
+    ],
+    { onEvent: (event) => (event.kind === 39001 ? onAdmins : onRoster)(rosterPubkeys(event)) },
+  );
 }
