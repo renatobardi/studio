@@ -1657,8 +1657,8 @@ button.sidebar-group-label:hover {
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  height: 26px;
-  padding: 0 10px;
+  height: 30px;
+  padding: 0 12px 0 4px;
   border: none;
   border-radius: 999px;
   background: transparent;
@@ -1668,6 +1668,38 @@ button.sidebar-group-label:hover {
   font-weight: 500;
   color: var(--muted-foreground);
   transition: all 150ms;
+}
+
+.thread-open-avatars {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.thread-open-avatars .avatar {
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.thread-open-avatars .avatar + .avatar {
+  margin-left: -4px;
+}
+
+.thread-open-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-open-dot {
+  margin: 0 4px;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--muted-foreground) 50%, transparent);
+}
+
+.thread-open-last {
+  font-weight: 400;
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
 }
 
 .thread-open:hover {

@@ -82,7 +82,22 @@ export function groupReactions(reactions: VerifiedEvent[], deletions: VerifiedEv
   });
 }
 
-/** Number of Thread Replies (kind 1111) rooted at `rootId`. */
-export function countThreadReplies(replies: VerifiedEvent[], rootId: string): number {
-  return replies.filter((reply) => firstTag(reply, "E") === rootId).length;
+export interface ThreadSummary {
+  count: number;
+  /** Who replied, latest reply first, without repeats — at most three, as the thread pill draws them. */
+  participantPubkeys: string[];
+  lastReplyAt: number | null;
+}
+
+/** The thread pill under a root Message: how many Thread Replies (kind 1111) are rooted at
+ * `rootId`, who wrote them and when the latest one landed. */
+export function summarizeThread(replies: VerifiedEvent[], rootId: string): ThreadSummary {
+  const thread = replies
+    .filter((reply) => firstTag(reply, "E") === rootId)
+    .sort((a, b) => b.created_at - a.created_at);
+  return {
+    count: thread.length,
+    participantPubkeys: [...new Set(thread.map((reply) => reply.pubkey))].slice(0, 3),
+    lastReplyAt: thread[0]?.created_at ?? null,
+  };
 }
