@@ -14,6 +14,7 @@ mock.module("idb-keyval", () => ({
 }));
 
 import {
+  clearIdentity,
   extensionSupportsNip44,
   hasNip07,
   loadChannelReadAt,
@@ -22,6 +23,9 @@ import {
   storeChannelReadAt,
   storeDmReadAt,
 } from "./custody";
+import { mediaDownloads } from "./mediaDownloads";
+import { cacheBlob, mediaCacheName } from "./mediaCache";
+import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 
 describe("hasNip07", () => {
   afterEach(() => {
@@ -121,5 +125,30 @@ describe("loadIdentityNsec", () => {
     // @ts-expect-error minimal window stub for this check
     globalThis.window = { nostr: {} };
     expect(await loadIdentityNsec()).toBeUndefined();
+  });
+});
+
+describe("signing out", () => {
+  afterEach(restoreCaches);
+
+  test("drops the photo downloads still queued before it wipes, so none re-creates the cache", async () => {
+    // Order is the whole point: a queued download cleared only *after* the
+    // wipe would still look its Identity's cache up, and looking it up
+    // creates it. Nothing of a signed-out Identity may be left here (#39).
+    const pubkey = "a".repeat(64);
+    const { stores } = stubCaches();
+    await cacheBlob(pubkey, "https://studio.test/media/" + "f".repeat(64), new Uint8Array([1]).buffer as ArrayBuffer, "image/png");
+    let started = false;
+    const queued = mediaDownloads.run(0, async () => {
+      started = true;
+      await cacheBlob(pubkey, "https://studio.test/media/" + "e".repeat(64), new Uint8Array([2]).buffer as ArrayBuffer, "image/png");
+    });
+    queued.catch(() => {});
+
+    await clearIdentity();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toBe(false);
+    expect(Object.keys(stores)).not.toContain(mediaCacheName(pubkey));
   });
 });

@@ -69,6 +69,19 @@ describe("the media cache", () => {
     await expect(pruneMediaCaches(null)).rejects.toThrow(/cached media/i);
   });
 
+  test("a read after the wipe does not bring the signed-out Identity's cache back", async () => {
+    // `caches.open` creates the cache it does not find. A photo download that
+    // only reaches its cache lookup after sign-out would re-create
+    // `studio-media-v1-<the pubkey that just left>` — empty, but present, and
+    // sign-out promised nothing of that Identity would be left here (#39).
+    const { stores } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    await pruneMediaCaches(null);
+
+    expect(await readCachedBlob(PUBKEY_A, URL_)).toBeUndefined();
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
   test("pruning bumps the epoch, so a write still in flight can tell a prune ran", async () => {
     // media.ts/dmMedia.ts capture the epoch before their fetch and skip caching if it moved on —
     // pruning is what invalidates them, so it must actually move the counter every time it runs.

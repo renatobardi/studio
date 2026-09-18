@@ -58,6 +58,34 @@ describe("createPriorityQueue", () => {
     expect(started).toEqual([3, 2]);
   });
 
+  test("clearing drops what is still waiting, and it never starts", async () => {
+    // Sign-out: the Identity those photos belong to is gone, so a task that
+    // has not started must never run — it would fetch, and look in a cache,
+    // for someone no longer here (#39).
+    const queue = createPriorityQueue(1);
+    const started: number[] = [];
+    const held = deferred();
+
+    queue.run(1, () => { started.push(1); return held.promise; }).catch(() => {});
+    const dropped = queue.run(0, () => { started.push(0); return Promise.resolve(); });
+    dropped.catch(() => {}); // the drop rejects it synchronously below
+    await settle(); // the first one is running by now; the second is still waiting
+
+    queue.clear();
+    await settle();
+
+    expect(started).toEqual([1]);
+    await expect(dropped).rejects.toThrow(/signed out/i);
+  });
+
+  test("clearing lets later work through again", async () => {
+    // The next Identity to sign in on this browser queues its own photos.
+    const queue = createPriorityQueue(1);
+    queue.clear();
+
+    expect(await queue.run(0, () => Promise.resolve("bytes"))).toBe("bytes");
+  });
+
   test("a task that never ends holds only its own slot", async () => {
     const queue = createPriorityQueue(2);
     const started: number[] = [];

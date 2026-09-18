@@ -1,6 +1,7 @@
 interface Waiting {
   priority: number;
   start: () => void;
+  drop: () => void;
 }
 
 /**
@@ -10,6 +11,9 @@ interface Waiting {
  * only a handful of connections: with no order among them, the oldest Messages take them all and
  * the photo that just arrived waits behind a history that only grows (#142). Priority is what
  * decides which ones get a connection — the newest Message's, here.
+ *
+ * `clear` drops everything still waiting: on sign-out the Identity those photos belong to is
+ * gone, and a task that has not started must never start.
  *
  * The drain runs on a microtask so a whole batch is queued before the first task starts: React
  * runs the effects that queue it in one commit, so without that wait the first four to mount
@@ -49,9 +53,14 @@ export function createPriorityQueue(limit: number) {
           start: () => {
             task().then(resolve, reject).finally(release);
           },
+          drop: () => reject(new Error("Signed out before this could be fetched.")),
         });
         schedule();
       });
+    },
+
+    clear(): void {
+      for (const one of waiting.splice(0)) one.drop();
     },
   };
 }

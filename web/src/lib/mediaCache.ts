@@ -38,10 +38,16 @@ export interface CachedBlob {
 }
 
 /** What this Identity already fetched from `url`, if anything. The caller still verifies its
- * sha256: a cache hit is a download that happened earlier, not one that is trusted more. */
+ * sha256: a cache hit is a download that happened earlier, not one that is trusted more.
+ *
+ * Asks whether the cache exists before opening it — `caches.open` creates what it does not
+ * find, so a lookup that lands after sign-out would re-create the very cache the wipe just
+ * removed, under the pubkey of an Identity no longer here (#39). */
 export async function readCachedBlob(pubkey: string, url: string): Promise<CachedBlob | undefined> {
   if (typeof caches === "undefined") return undefined;
-  const cache = await caches.open(mediaCacheName(pubkey));
+  const name = mediaCacheName(pubkey);
+  if (!(await caches.has(name))) return undefined;
+  const cache = await caches.open(name);
   const response = await cache.match(url);
   if (!response) return undefined;
   return { bytes: await response.arrayBuffer(), contentType: response.headers.get("content-type") ?? "" };
