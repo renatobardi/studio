@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { ChannelOut, WorkspaceMemberOut } from "../../lib/api";
-import { manageableChannels, rosterPubkeys } from "../../lib/channelAccess";
+import { manageableChannels, subscribeRoster } from "../../lib/channelAccess";
 import type { Signer } from "../../lib/custody";
 import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
@@ -12,7 +12,6 @@ import { MembersPill } from "./MembersPill";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
 import { useChannelFeed } from "./useChannelFeed";
-import { useChannelRoster } from "./useChannelRoster";
 import { useProfiles } from "./useProfiles";
 
 type SidePane = { type: "thread"; root: TargetRef & { content: string; created_at?: number } } | { type: "members" } | null;
@@ -42,8 +41,9 @@ export function ChannelView({
   const feed = useChannelFeed(client, channelId);
   const { profiles, ensure } = useProfiles(client);
   const [sidePane, setSidePane] = useState<SidePane>(null);
-  /** The Channel's roster (kind 39002) — the header pill counts it and MembersPane lists it (#143). */
-  const memberPubkeys = useChannelRoster(client, channelId);
+  /** The Channel's roster (kind 39002), null until the relay has sent one — the header pill
+   * counts it and MembersPane lists it (#143). */
+  const [memberPubkeys, setMemberPubkeys] = useState<string[] | null>(null);
   /** The Channel's admins (kind 39001), which MembersPane labels Admin (#145). */
   const [channelAdmins, setChannelAdmins] = useState<string[]>([]);
   /** The Channel's own width, from the grid it lays out in — measured, not the viewport's,
@@ -65,7 +65,7 @@ export function ChannelView({
   }, []);
 
   useEffect(
-    () => client.subscribe([{ kinds: [39001], "#d": [channelId] }], { onEvent: (event) => setChannelAdmins(rosterPubkeys(event)) }),
+    () => subscribeRoster(client, channelId, setMemberPubkeys, setChannelAdmins),
     [client, channelId],
   );
 

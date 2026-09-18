@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/icons/Icon";
-import { addChannelMember, authProof, type WorkspaceMemberOut } from "../../lib/api";
+import type { WorkspaceMemberOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
-import { addableMembers, channelMemberGroups, type ChannelMemberEntry } from "../../lib/memberDirectory";
+import { addMemberToChannel, membersPaneList, type MemberSearch } from "../../lib/memberDirectory";
 import type { RelayClient } from "../../lib/relay";
+import { MemberCandidates } from "./MemberCandidates";
+import { MemberGroup } from "./MemberGroup";
 import { MemberProfile } from "./MemberProfile";
-import { MemberRow } from "./MemberRow";
 import { profileName, useProfiles } from "./useProfiles";
 
 /** Channel Members from the kind 39002 projection (ADR-0002), read by ChannelView so the
@@ -39,46 +40,17 @@ export function MembersPane({
   onClose: () => void;
 }>) {
   const [viewing, setViewing] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState<MemberSearch>({ query: "", error: null });
   const { profiles, ensure } = useProfiles(client);
 
   useEffect(() => ensure(memberPubkeys), [memberPubkeys, ensure]);
   useEffect(() => ensure(workspaceMembers.map((m) => m.pubkey)), [workspaceMembers, ensure]);
 
-  const groups = channelMemberGroups(memberPubkeys, workspaceMembers, channelAdmins);
-  const candidates = addableMembers(workspaceMembers, memberPubkeys, query, (pubkey) => profileName(profiles, pubkey));
-
-  const add = async (pubkey: string) => {
-    setError(null);
-    try {
-      const url = `${window.location.origin}/api/workspaces/${slug}/channels/${channelId}/members`;
-      await addChannelMember(slug, channelId, pubkey, "member", await authProof(url, "POST", signer));
-      setQuery("");
-    } catch {
-      setError("Couldn't add that Member.");
-    }
-  };
-
-  const group = (label: string, entries: ChannelMemberEntry[]) => (
-    <section>
-      <p className="members-group-label">{label}</p>
-      <ul className="member-list members-pane-list">
-        {entries.map(({ pubkey, role }) => (
-          <li key={pubkey}>
-            <MemberRow
-              pubkey={pubkey}
-              profiles={profiles}
-              onClick={() => setViewing(pubkey)}
-              testId="member-list-item"
-              subtitle={role}
-              agent={role === "Agent"}
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
+  const listing = membersPaneList(memberPubkeys, workspaceMembers, channelAdmins, search.query, (pubkey) =>
+    profileName(profiles, pubkey),
   );
+  const add = async (pubkey: string) =>
+    setSearch(await addMemberToChannel(search, slug, channelId, pubkey, signer));
 
   return (
     <aside className={`side-pane${overlay ? " side-pane-overlay" : ""}`} aria-label="Channel members" data-testid="members-pane">
@@ -99,8 +71,8 @@ export function MembersPane({
               <label className="members-add-field">
                 <Icon name="user-plus" size={14} />
                 <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  value={search.query}
+                  onChange={(e) => setSearch({ ...search, query: e.target.value })}
                   aria-label="Add people and agents"
                   placeholder="Add people and agents"
                 />
@@ -108,30 +80,15 @@ export function MembersPane({
             </div>
           )}
           <div className="members-pane-scroll">
-            {error && <div className="error-banner">{error}</div>}
-            {query.trim() ? (
-              candidates.length > 0 ? (
-                <ul className="member-list members-pane-list" data-testid="member-add-options">
-                  {candidates.map((member) => (
-                    <li key={member.pubkey}>
-                      <MemberRow
-                        pubkey={member.pubkey}
-                        profiles={profiles}
-                        onClick={() => void add(member.pubkey)}
-                        testId="member-add-option"
-                        subtitle="Add to this Channel"
-                        agent={member.role === "agent"}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="meta members-add-empty">No Workspace Members match.</p>
-              )
+            {search.error && <div className="error-banner">{search.error}</div>}
+            {listing.mode === "candidates" ? (
+              <MemberCandidates candidates={listing.candidates} profiles={profiles} onAdd={(pubkey) => void add(pubkey)} />
             ) : (
               <>
-                {group("People", groups.people)}
-                {groups.agents.length > 0 && group("Agents", groups.agents)}
+                <MemberGroup label="People" entries={listing.people} profiles={profiles} onView={setViewing} />
+                {listing.agents.length > 0 && (
+                  <MemberGroup label="Agents" entries={listing.agents} profiles={profiles} onView={setViewing} />
+                )}
               </>
             )}
           </div>

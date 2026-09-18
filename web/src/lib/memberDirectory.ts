@@ -1,4 +1,5 @@
-import type { WorkspaceMemberOut } from "./api";
+import { addChannelMember, authProof, type WorkspaceMemberOut } from "./api";
+import type { Signer } from "./custody";
 
 /**
  * Who a Direct Message may be started with: the other Workspace Members.
@@ -73,4 +74,48 @@ export function addableMembers(
     .filter((member) => !roster.includes(member.pubkey))
     .filter((member) => nameOf(member.pubkey)?.toLocaleLowerCase().includes(needle))
     .sort((left, right) => compareByName(nameOf(left.pubkey), nameOf(right.pubkey)));
+}
+
+/** What the members pane lists: the Channel's roster in its two groups, or — once something is
+ * typed into "Add people and agents" — the Workspace Members that match it. */
+export type MembersPaneList =
+  | { mode: "roster"; people: ChannelMemberEntry[]; agents: ChannelMemberEntry[] }
+  | { mode: "candidates"; candidates: WorkspaceMemberOut[] };
+
+/** The pane's "Add people and agents" box: what is typed, and what the last add left behind. */
+export interface MemberSearch {
+  query: string;
+  error: string | null;
+}
+
+/** The one list the pane shows for the current box. A search that matches nobody stays a
+ * search: falling back to the roster would read as if the typing had done nothing (#145). */
+export function membersPaneList(
+  roster: readonly string[],
+  workspaceMembers: readonly WorkspaceMemberOut[],
+  channelAdmins: readonly string[],
+  query: string,
+  nameOf: (pubkey: string) => string | null,
+): MembersPaneList {
+  if (!query.trim()) return { mode: "roster", ...channelMemberGroups(roster, workspaceMembers, channelAdmins) };
+  return { mode: "candidates", candidates: addableMembers(workspaceMembers, roster, query, nameOf) };
+}
+
+/** Adding a Workspace Member to this Channel from the members pane — the admin console's own
+ * route, signed for it. The box it leaves: emptied once the Member is in, and on a refusal kept
+ * as typed beside the reason, so the next attempt starts where this one stopped (#145). */
+export async function addMemberToChannel(
+  search: MemberSearch,
+  slug: string,
+  channelId: string,
+  pubkey: string,
+  signer: Signer,
+): Promise<MemberSearch> {
+  try {
+    const url = `${window.location.origin}/api/workspaces/${slug}/channels/${channelId}/members`;
+    await addChannelMember(slug, channelId, pubkey, "member", await authProof(url, "POST", signer));
+    return { query: "", error: null };
+  } catch {
+    return { ...search, error: "Couldn't add that Member." };
+  }
 }
