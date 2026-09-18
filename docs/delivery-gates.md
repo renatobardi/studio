@@ -59,8 +59,7 @@ mutable branch tip.
 
 ## Required checks on `main`
 
-The ruleset requires `test`, `web`, `gates` and `sonar` — and `visual` once
-the owner runs `scripts/ops/require-visual-check.sh` (see "The visual gate") —
+The ruleset requires `test`, `web`, `visual`, `gates` and `sonar`,
 a pull request,
 resolved conversations, no force-push and no branch deletion. `sonar`
 replaced `SonarCloud Code Analysis` when the scan moved into CI (#76): with
@@ -117,11 +116,10 @@ A red `visual` is not fixed by `--update-snapshots`: a baseline is redrawn only
 for a screen the change meant to alter, and checked against
 `docs/UI/reference/` first (`docs/UI/REFERENCE.md`, "Aceite visual").
 
-**Not required yet.** Making it required is a ruleset edit, done by the owner
-after the job has run green on `main`:
-`scripts/ops/require-visual-check.sh` adds `visual` to the `main` ruleset's
-required checks, keeping the others. Requiring it before the job exists on
-`main` would block every pull request on a check nobody posts.
+**Required on `main` since 18/09/2026.** Making it required was a ruleset
+edit the owner ran once the job had been green on `main`: requiring it before
+the job existed there would have blocked every pull request on a check nobody
+posts.
 
 ## The Sonar gate
 
