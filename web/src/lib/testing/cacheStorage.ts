@@ -1,6 +1,6 @@
 /**
  * A Cache Storage stub for tests running outside a browser (bun), covering
- * only what `mediaCache.ts` uses: keys, delete, open → match/put.
+ * only what `mediaCache.ts` uses: keys, has, delete, open → match/put.
  */
 interface StubEntry {
   bytes: ArrayBuffer;
@@ -18,6 +18,9 @@ export function stubCaches(): CacheStorageStub {
   const api = {
     async keys() {
       return Object.keys(stores);
+    },
+    async has(name: string) {
+      return name in stores;
     },
     async delete(name: string) {
       if (failing.has(name)) throw new Error("quota");

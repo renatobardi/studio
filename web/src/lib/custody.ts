@@ -3,6 +3,7 @@ import { finalizeEvent, getPublicKey, nip44, type EventTemplate, type VerifiedEv
 import { secretKeyFromNsec } from "./identity";
 import type { DmReadState, ReadState } from "./unread";
 import { pruneMediaCaches } from "./mediaCache";
+import { mediaDownloads } from "./mediaDownloads";
 
 const STORE_KEY = "studio.identity.nsec";
 const WORKSPACE_SLUG_KEY = "studio.identity.workspaceSlug";
@@ -71,11 +72,16 @@ export async function storeIdentity(nsec: string): Promise<void> {
  * sign-out — the cached media included. Does not touch a NIP-07 extension's
  * own storage.
  *
+ * The queued photo downloads go first, and synchronously: one that started
+ * after the wipe would look its Identity's cache up, and the lookup would
+ * bring the cache back. Cancelling has to happen before the wipe, not race it.
+ *
  * Everything is attempted before anything is reported: a cache that refuses to
  * go must not leave the key behind. Throws when some of it survived, so the
  * caller can say so — sign-out must not claim a cleanup it did not get (#39).
  */
 export async function clearIdentity(): Promise<void> {
+  mediaDownloads.clear();
   const failures = new Set<string>();
   for (const key of [STORE_KEY, WORKSPACE_SLUG_KEY, CHANNEL_ID_KEY, CHANNEL_READ_KEY, DM_READ_KEY]) {
     try {
