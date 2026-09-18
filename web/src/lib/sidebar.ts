@@ -1,4 +1,5 @@
 import type { ChannelOut } from "./api";
+import type { ConversationRow } from "./conversations";
 
 export type SidebarMode = "channels" | "dms" | "admin" | "settings";
 
@@ -73,20 +74,14 @@ export function sidebarGroups({
   canManage,
   conversations,
   selectedConversationKey,
-  unreadConversationCounts,
-  nameOf,
-  isAgent,
 }: {
   channels: ChannelOut[];
   selectedChannelId: string | null;
   unreadChannelIds: Set<string>;
   mode: SidebarMode;
   canManage: boolean;
-  conversations: { key: string; peerPubkeys: string[] }[];
+  conversations: ConversationRow[];
   selectedConversationKey: string | null;
-  unreadConversationCounts: ReadonlyMap<string, number>;
-  nameOf: (pubkey: string) => string;
-  isAgent: (pubkey: string) => boolean;
 }): SidebarGroup[] {
   const channelItems: SidebarItem[] = channels.map((channel) => ({
     id: `channel:${channel.id}`,
@@ -99,13 +94,13 @@ export function sidebarGroups({
     mode: "channels",
     channelId: channel.id,
   }));
-  const conversationItems: SidebarItem[] = conversations.map(({ key, peerPubkeys }) => ({
+  const conversationItems: SidebarItem[] = conversations.map(({ key, peerPubkeys, label, icon, unreadCount }) => ({
     id: `dm:${key}`,
-    label: peerPubkeys.map(nameOf).join(", "),
-    icon: peerPubkeys.length === 1 && isAgent(peerPubkeys[0]!) ? "bot" : "user",
+    label,
+    icon,
     active: mode === "dms" && key === selectedConversationKey,
-    unread: (unreadConversationCounts.get(key) ?? 0) > 0,
-    unreadCount: unreadConversationCounts.get(key) ?? null,
+    unread: (unreadCount ?? 0) > 0,
+    unreadCount,
     testId: "conversation-list-item",
     mode: "dms",
     peerPubkeys,

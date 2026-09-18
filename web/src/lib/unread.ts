@@ -88,3 +88,15 @@ export function unreadConversationCounts(
   }
   return counts;
 }
+
+/** The marks to start from: the ones this browser kept, or — the first time — no marks at all
+ * from now on, so Messages that predate them never arrive as a pile of unread ones. */
+export function initialDmRead(stored: DmReadState | undefined, now: number): DmReadState {
+  return stored ?? { since: now, readAt: {} };
+}
+
+/** The open conversation read up to now, or up to its newest Message when that one is ahead of
+ * this clock — otherwise a Message from a fast clock would stay unread forever. */
+export function markConversationRead(state: DmReadState, key: string, now: number, latestAt: number): DmReadState {
+  return { ...state, readAt: touch(state.readAt, key, Math.max(now, latestAt)) };
+}

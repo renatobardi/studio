@@ -8,7 +8,7 @@ import {
   isWorkspaceManager,
   keepSelection,
 } from "../../lib/channelAccess";
-import { groupConversations } from "../../lib/conversations";
+import { directMessages } from "../../lib/conversations";
 import {
   loadChannelId,
   loadChannelReadAt,
@@ -19,16 +19,16 @@ import {
   type Signer,
 } from "../../lib/custody";
 import { selectableMembers } from "../../lib/memberDirectory";
-import { conversationKey } from "../../lib/nip17";
 import { RelayClient, type ConnectionState, type RelayProblem } from "../../lib/relay";
 import { relayBanner } from "../../lib/relayReasons";
 import {
+  initialDmRead,
+  markConversationRead,
   oldestRead,
   openChannel,
   seedMissing,
   touch,
   unreadChannelIds,
-  unreadConversationCounts,
   type DmReadState,
   type OpenedChannel,
   type ReadState,
@@ -121,29 +121,34 @@ export function AppShell({
     if (pubkey) ensureProfiles([pubkey]);
   }, [pubkey, ensureProfiles]);
 
-  const conversations = pubkey ? groupConversations(rumors, pubkey) : [];
-  const namedPubkeysKey = [...new Set([...members.map((m) => m.pubkey), ...conversations.flatMap((c) => c.peerPubkeys)])].join(",");
+  const dm = directMessages({
+    rumors,
+    myPubkey: pubkey,
+    members,
+    selectedPeerPubkeys,
+    readState: dmRead,
+    nameOf: (peer) => displayName(profiles, peer),
+  });
+  const namedPubkeysKey = dm.namedPubkeys.join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- namedPubkeysKey already tracks the pubkeys' contents
   useEffect(() => ensureProfiles(namedPubkeysKey.split(",").filter(Boolean)), [namedPubkeysKey, ensureProfiles]);
 
   useEffect(() => {
-    loadDmReadAt().then((stored) => setDmRead((prev) => prev ?? stored ?? { since: nowSeconds(), readAt: {} }));
+    loadDmReadAt().then((stored) => setDmRead((prev) => prev ?? initialDmRead(stored, nowSeconds())));
   }, []);
 
   useEffect(() => {
     if (dmRead !== null) void storeDmReadAt(dmRead);
   }, [dmRead]);
 
-  const selectedConversationKey = selectedPeerPubkeys && pubkey ? conversationKey([...selectedPeerPubkeys, pubkey]) : null;
-  const selectedConversation = conversations.find((c) => c.key === selectedConversationKey) ?? null;
+  const { selectedKey } = dm;
   const dmLoaded = dmRead !== null;
-  const selectedLatestAt = selectedConversation?.latest.created_at ?? 0;
+  const selectedLatestAt = dm.selected?.latest.created_at ?? 0;
   // The open conversation is read as it arrives — and only while it is on screen.
   useEffect(() => {
-    if (mode !== "dms" || selectedConversationKey === null || !dmLoaded) return;
-    const at = Math.max(nowSeconds(), selectedLatestAt);
-    setDmRead((prev) => prev && { ...prev, readAt: touch(prev.readAt, selectedConversationKey, at) });
-  }, [mode, selectedConversationKey, selectedLatestAt, dmLoaded]);
+    if (mode !== "dms" || selectedKey === null || !dmLoaded) return;
+    setDmRead((prev) => prev && markConversationRead(prev, selectedKey, nowSeconds(), selectedLatestAt));
+  }, [mode, selectedKey, selectedLatestAt, dmLoaded]);
 
   useEffect(() => {
     loadAppearance().then((loaded) => {
@@ -285,11 +290,8 @@ export function AppShell({
           unreadChannelIds: unread,
           mode,
           canManage,
-          conversations,
-          selectedConversationKey,
-          unreadConversationCounts: dmRead && pubkey ? unreadConversationCounts(conversations, dmRead, pubkey) : new Map(),
-          nameOf: (peer) => displayName(profiles, peer),
-          isAgent: (peer) => members.some((m) => m.pubkey === peer && m.role === "agent"),
+          conversations: dm.rows,
+          selectedConversationKey: selectedKey,
         })}
         onSelect={(item) => {
           if (item.channelId) selectChannel(item.channelId);
@@ -350,13 +352,13 @@ export function AppShell({
         )}
         {mode === "dms" && pubkey && selectedPeerPubkeys && (
           <ConversationView
-            key={selectedConversationKey}
+            key={selectedKey}
             client={client}
             myPubkey={pubkey}
             peerPubkeys={selectedPeerPubkeys}
             signer={signer}
             mediaUrl={workspace.media_url}
-            messages={selectedConversation?.messages ?? []}
+            messages={dm.selected?.messages ?? []}
             profiles={profiles}
           />
         )}

@@ -1,4 +1,6 @@
+import type { WorkspaceMemberOut } from "./api";
 import { conversationKey, type Rumor } from "./nip17";
+import { unreadConversationCounts, type DmReadState } from "./unread";
 
 export interface Conversation {
   key: string;
@@ -30,4 +32,65 @@ export function groupConversations(rumors: Rumor[], myPubkey: string): Conversat
     return { key, peerPubkeys, messages: sorted, latest: sorted.at(-1)! };
   });
   return conversations.sort((a, b) => b.latest.created_at - a.latest.created_at);
+}
+
+/** One Direct message row of the sidebar (#142): who it is with, and what is still unread. */
+export interface ConversationRow {
+  key: string;
+  peerPubkeys: string[];
+  label: string;
+  /** The prototype's two glyphs: a person, or an Agent. */
+  icon: "user" | "bot";
+  unreadCount: number | null;
+}
+
+export interface DirectMessages {
+  rows: ConversationRow[];
+  /** The open conversation's key — known from the picked participants alone, so it is there
+   * from the moment a Member is picked, before any Message exists. */
+  selectedKey: string | null;
+  /** The open conversation, or null while it has no Messages yet. */
+  selected: Conversation | null;
+  /** Every pubkey the rows and the Member picker want a kind 0 name for, each once. */
+  namedPubkeys: string[];
+}
+
+/** Everything the shell draws Direct messages from (#142), out of what the relay delivered: the
+ * sidebar rows newest first, which conversation is open, and whose names are needed. */
+export function directMessages({
+  rumors,
+  myPubkey,
+  members,
+  selectedPeerPubkeys,
+  readState,
+  nameOf,
+}: {
+  rumors: Rumor[];
+  myPubkey: string | null;
+  members: readonly WorkspaceMemberOut[];
+  selectedPeerPubkeys: string[] | null;
+  /** Null until the stored marks are read back — until then nothing is counted unread. */
+  readState: DmReadState | null;
+  nameOf: (pubkey: string) => string;
+}): DirectMessages {
+  const memberPubkeys = members.map((member) => member.pubkey);
+  if (myPubkey === null) return { rows: [], selectedKey: null, selected: null, namedPubkeys: memberPubkeys };
+
+  const conversations = groupConversations(rumors, myPubkey);
+  const counts = readState ? unreadConversationCounts(conversations, readState, myPubkey) : new Map<string, number>();
+  const agents = new Set(members.filter((member) => member.role === "agent").map((member) => member.pubkey));
+  const selectedKey = selectedPeerPubkeys ? conversationKey([...selectedPeerPubkeys, myPubkey]) : null;
+
+  return {
+    rows: conversations.map(({ key, peerPubkeys }) => ({
+      key,
+      peerPubkeys,
+      label: peerPubkeys.map(nameOf).join(", "),
+      icon: peerPubkeys.length === 1 && agents.has(peerPubkeys[0]!) ? "bot" : "user",
+      unreadCount: counts.get(key) ?? null,
+    })),
+    selectedKey,
+    selected: conversations.find((conversation) => conversation.key === selectedKey) ?? null,
+    namedPubkeys: [...new Set([...memberPubkeys, ...conversations.flatMap((c) => c.peerPubkeys)])],
+  };
 }

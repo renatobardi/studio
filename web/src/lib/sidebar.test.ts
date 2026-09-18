@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ConversationRow } from "./conversations";
 import { initials, navigateTo, sidebarGroups, START_NAVIGATION } from "./sidebar";
 
 const channels = [
@@ -6,14 +7,7 @@ const channels = [
   { id: "c2", name: "release-train", private: true },
 ];
 
-const NAMES: Record<string, string> = { ana: "Ana Petrova", sprig: "Sprig", marina: "Marina Silva" };
-const noDms = {
-  conversations: [],
-  selectedConversationKey: null,
-  unreadConversationCounts: new Map<string, number>(),
-  nameOf: (pubkey: string) => NAMES[pubkey] ?? pubkey,
-  isAgent: (pubkey: string) => pubkey === "sprig",
-};
+const noDms = { conversations: [], selectedConversationKey: null };
 
 /** The persistent sidebar's contents (#68): Channels, Direct messages and — only for someone
  * who may manage the Workspace — the admin console, plus Settings. What the person may not do
@@ -65,10 +59,10 @@ describe("sidebarGroups", () => {
 /** Direct messages as a sidebar section (#142): each conversation is a row, as in the prototype,
  * and opening one shows only that conversation. */
 describe("sidebarGroups › Direct messages", () => {
-  const conversations = [
-    { key: "ana,me", peerPubkeys: ["ana"] },
-    { key: "me,sprig", peerPubkeys: ["sprig"] },
-    { key: "marina,me,sprig", peerPubkeys: ["marina", "sprig"] },
+  const conversations: ConversationRow[] = [
+    { key: "ana,me", peerPubkeys: ["ana"], label: "Ana Petrova", icon: "user", unreadCount: null },
+    { key: "me,sprig", peerPubkeys: ["sprig"], label: "Sprig", icon: "bot", unreadCount: null },
+    { key: "marina,me,sprig", peerPubkeys: ["marina", "sprig"], label: "Marina Silva, Sprig", icon: "user", unreadCount: null },
   ];
   const dmGroup = (overrides: Partial<Parameters<typeof sidebarGroups>[0]> = {}) =>
     sidebarGroups({
@@ -94,7 +88,10 @@ describe("sidebarGroups › Direct messages", () => {
   });
 
   test("marks the open conversation and how many Messages each unread one has", () => {
-    const group = dmGroup({ selectedConversationKey: "me,sprig", unreadConversationCounts: new Map([["ana,me", 3]]) });
+    const group = dmGroup({
+      selectedConversationKey: "me,sprig",
+      conversations: [{ ...conversations[0], unreadCount: 3 }, conversations[1], conversations[2]],
+    });
     expect(group?.items.map((i) => [i.label, i.active, i.unread, i.unreadCount])).toEqual([
       ["Ana Petrova", false, true, 3],
       ["Sprig", true, false, null],
