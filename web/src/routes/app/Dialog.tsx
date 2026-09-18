@@ -21,13 +21,20 @@ export function Dialog({
   children: ReactNode;
 }>) {
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div
+      className="dialog-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
       <div
         className="dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${name}-title`}
-        onClick={(event) => event.stopPropagation()}
         data-testid={`${name}-dialog`}
       >
         <div className="dialog-header">
