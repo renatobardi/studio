@@ -66,9 +66,3 @@ export function canSendWithDrafts<R>(content: string, drafts: AttachmentDraft<R>
 export function readyPayloads<R>(drafts: AttachmentDraft<R>[]): R[] {
   return drafts.flatMap((draft) => (draft.status === "ready" ? [draft.ready] : []));
 }
-
-/** The photo limit a composer shows before anything is picked (#107), so it is not first learned
- * from an error: 10 MB in a Channel, 5 MB in a Direct Message. */
-export function attachmentLimitLabel(maxBytes: number): string {
-  return `Photos up to ${maxBytes / (1024 * 1024)} MB`;
-}

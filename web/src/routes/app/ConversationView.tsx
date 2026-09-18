@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import {
   addDraft,
-  attachmentLimitLabel,
   canSendWithDrafts,
   failDraft,
   invalidDraft,
@@ -13,12 +12,12 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { Icon } from "../../components/icons/Icon";
+import { DM_ENCRYPTION_NOTICE, dmComposerPlaceholder } from "../../lib/conversationCopy";
 import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
 import { deliverPending, deliveryOutcome, partialDeliveryMessage, pendingDm, type PendingDm } from "../../lib/dmDelivery";
 import {
-  MAX_DM_PHOTO_BYTES,
   encryptFileForDm,
   parseDmImetaTags,
   uploadEncryptedBlob,
@@ -34,7 +33,7 @@ import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
-import { displayName, type useProfiles } from "./useProfiles";
+import { displayName, shortNpub, type useProfiles } from "./useProfiles";
 
 function imageDimensions(url: string): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -171,7 +170,7 @@ export function ConversationView({
           <span className="conversation-title-text">
             <h1 className="conversation-name">{peerName}</h1>
             {peerPubkeys.length === 1 && (
-              <span className="conversation-handle">{peerPubkeys[0]!.slice(0, 12)}…</span>
+              <span className="conversation-handle">{shortNpub(peerPubkeys[0]!)}</span>
             )}
           </span>
         </span>
@@ -179,7 +178,7 @@ export function ConversationView({
       <div className="timeline-scroll dm-scroll" data-list="true">
         <p className="dm-notice">
           <Icon name="lock" size={12} />
-          <span>End-to-end encrypted. The Workspace relay only ever sees sealed envelopes.</span>
+          <span>{DM_ENCRYPTION_NOTICE}</span>
         </p>
         <ul className="message-list">
           {messages.map((message, index) => {
@@ -210,7 +209,7 @@ export function ConversationView({
         value={draft}
         onChange={setDraft}
         onSend={() => void send()}
-        placeholder="Message…"
+        placeholder={dmComposerPlaceholder(peerName)}
         canSend={(canSend || partial !== null) && !sending}
         disabled={partial !== null}
         sendLabel={partial === null ? "Send" : "Retry"}
@@ -218,16 +217,11 @@ export function ConversationView({
         testId="dm-composer"
         attachTestId="dm-attach-button"
         trailing={
-          <>
-            <span className="meta" data-testid="dm-attach-limit">
-              {attachmentLimitLabel(MAX_DM_PHOTO_BYTES)}
-            </span>
-            {partial !== null && (
-              <button type="button" className="btn btn-outline btn-xs" disabled={sending} onClick={discardPartial}>
-                Discard
-              </button>
-            )}
-          </>
+          partial !== null && (
+            <button type="button" className="btn btn-outline btn-xs" disabled={sending} onClick={discardPartial}>
+              Discard
+            </button>
+          )
         }
       >
         <input

@@ -4,7 +4,6 @@ import {
   canSendWithDrafts,
   failDraft,
   invalidDraft,
-  attachmentLimitLabel,
   progressDraft,
   readyDraft,
   readyPayloads,
@@ -12,8 +11,6 @@ import {
   retryDraft,
   type AttachmentDraft,
 } from "./attachmentDrafts";
-import { MAX_DM_PHOTO_BYTES } from "./dmMedia";
-import { MAX_UPLOAD_BYTES } from "./media";
 
 const photo = (name: string, size = 3) => new File([new Uint8Array(size)], name, { type: "image/png" });
 
@@ -110,10 +107,5 @@ describe("a composer's attachment drafts", () => {
 
     expect(drafts[0]).toMatchObject({ status: "error", retryable: true });
     expect(retryDraft(drafts, "a")[0].status).toBe("uploading");
-  });
-
-  test("the composer names its photo limit before anything is picked (#107)", () => {
-    expect(attachmentLimitLabel(MAX_UPLOAD_BYTES)).toBe("Photos up to 10 MB");
-    expect(attachmentLimitLabel(MAX_DM_PHOTO_BYTES)).toBe("Photos up to 5 MB");
   });
 });
