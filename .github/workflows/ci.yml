@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# CI runs a pull request's code, so the token reads the repository and nothing
+# more (#202). No job elevates it: artifacts travel on the runner's own token,
+# and the Sonar scan authenticates with SONAR_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-26.04

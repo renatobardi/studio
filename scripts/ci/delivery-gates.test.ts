@@ -101,6 +101,14 @@ describe('cd.yml', () => {
     expect(seed).toBeLessThan(at('bun run test:e2e'))
   })
 
+  test('lets the token read the repository, and only the gate read CI runs (#202)', () => {
+    // A workflow-level grant reaches deploy-dev too, which holds studio-test's
+    // SSH key; the gate asks the Actions API for CI's conclusion.
+    expect(cd.permissions).toEqual({ contents: 'read' })
+    expect(gate.permissions).toEqual({ contents: 'read', actions: 'read' })
+    expect(deploy.permissions).toBeUndefined()
+  })
+
   test('verifies the commit actually running on the host, and records it', () => {
     expect(deployCommands).toContain('rev-parse HEAD')
     expect(deployCommands).toContain('GITHUB_STEP_SUMMARY')
@@ -142,6 +150,14 @@ describe('ci.yml', () => {
     // tsconfig.app.json leaves *.test.ts(x) out of the build, so a test passing a
     // prop the component does not have ran green for weeks (#191).
     expect(commandsOf(ci.jobs.web)).toContain('bun run typecheck:tests')
+  })
+
+  test('lets the token read the repository and nothing else (#202)', () => {
+    // CI runs a pull request's code (visual: bun install, then docker run), so
+    // its token must not inherit the repository default. No job needs more:
+    // artifacts travel on the runner's own token, and Sonar on SONAR_TOKEN.
+    expect(ci.permissions).toEqual({ contents: 'read' })
+    for (const job of Object.values(ci.jobs)) expect(job.permissions).toBeUndefined()
   })
 })
 
