@@ -87,8 +87,11 @@ export function apiPath(...segments: string[]): string {
   return segments.map((segment) => `/${encodeURIComponent(segment)}`).join("");
 }
 
-/** The absolute URL a NIP-98 proof for `path` (from `apiPath`) signs: the server compares it with
- * the URL it was reached at, exactly (api/src/studio_api/auth.py). */
+/** The absolute URL a NIP-98 proof for `path` (from `apiPath`) signs — the one the call requests.
+ * The server compares it with the URL it rebuilds from the *decoded* path (api/src/studio_api/
+ * auth.py), so it matches for every real slug, code, pubkey and Channel id, whose characters
+ * encoding leaves alone; a value encoding changes gets a proof the server refuses, never a URL a
+ * pasted code chose. */
 export function proofUrl(path: string, origin: string = window.location.origin): string {
   return `${origin}/api${path}`;
 }

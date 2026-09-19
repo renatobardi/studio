@@ -39,9 +39,8 @@ describe("request paths", () => {
   });
 });
 
-/** The URL a NIP-98 proof signs has to be the one requested: the server compares the proof's `u`
- * tag with `str(request.url)` exactly (api/src/studio_api/auth.py), and a code pasted by the
- * person must not choose what gets signed (#198). Both come from one derivation. */
+/** The URL a NIP-98 proof signs has to be the one requested, and a code pasted by the person must
+ * not choose what gets signed (#198): both come from one derivation. */
 describe("apiPath and proofUrl", () => {
   const ORIGIN = "https://studio.example";
   const hostile = "a/b?c#d";
