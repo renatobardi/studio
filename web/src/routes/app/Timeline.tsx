@@ -57,7 +57,7 @@ function imageDimensions(url: string): Promise<string | undefined> {
 }
 
 /** How close to the top counts as asking for older Messages (story 30, #1). */
-const TOP_OF_HISTORY_PX = 48;
+export const TOP_OF_HISTORY_PX = 48;
 
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
