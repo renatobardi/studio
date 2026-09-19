@@ -68,9 +68,11 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
           await page.waitForSelector("html[data-preview-ready]");
           await page.evaluate(() => document.fonts.ready);
           expect(await page.evaluate(() => document.fonts.check('12px "Inter Variable"'))).toBe(true);
-          // Nothing dynamic is masked: the fixtures are fixed, the clock is UTC, and a
-          // component that renders differently is exactly what this flow is for.
-          await expect(page).toHaveScreenshot(`${viewportName}/${name}.png`);
+          // Only secrets are masked (#190): the private key the onboarding generates at runtime
+          // must never land in a baseline, blurred or not. Nothing else is: the fixtures are
+          // fixed, the clock is UTC, and a component that renders differently is exactly what
+          // this flow is for.
+          await expect(page).toHaveScreenshot(`${viewportName}/${name}.png`, { mask: [page.locator(".nsec-reveal")] });
         });
       }
     }
