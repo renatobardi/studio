@@ -31,6 +31,7 @@ const read = async (path: string) =>
   Bun.YAML.parse(await Bun.file(`${repoRoot}${path}`).text()) as Workflow
 
 const cd = await read('.github/workflows/cd.yml')
+const promote = await read('.github/workflows/promote.yml')
 const ci = await read('.github/workflows/ci.yml')
 
 // `on:` is YAML 1.1's boolean `true`; Bun.YAML follows 1.2 and keeps the
@@ -96,6 +97,30 @@ describe('cd.yml', () => {
   test('verifies the commit actually running on the host, and records it', () => {
     expect(deployCommands).toContain('rev-parse HEAD')
     expect(deployCommands).toContain('GITHUB_STEP_SUMMARY')
+  })
+})
+
+// Issue #203: the shell is served with Cache-Control: no-cache and the hashed
+// assets as immutable — checked by one script against the Compose stack in
+// CI, studio-test after CD's deploy, and studio-prd after a promotion.
+const CACHE_CHECK = 'scripts/ci/cache-headers.sh'
+
+describe('cache headers (#203)', () => {
+  test('CI checks them on the stack it starts, through Caddy', () => {
+    expect(commandsOf(ci.jobs.test)).toContain(CACHE_CHECK)
+  })
+
+  test('CD checks them on studio-test once it answers', () => {
+    const step = deploy.steps.find((s) => s.run?.includes(CACHE_CHECK))
+    expect(step?.env?.STUDIO_URL).toBe('${{ secrets.STUDIO_TEST_WEB_URL }}')
+    const names = deploy.steps.map((s) => s.name)
+    expect(names.indexOf(step?.name)).toBeGreaterThan(names.indexOf('Wait for health'))
+  })
+
+  test('Promote checks them on studio-prd, with the script of the commit it promoted', () => {
+    const commands = commandsOf(promote.jobs['deploy-prd'])
+    expect(commands).toContain(`/$DEPLOY_SHA/${CACHE_CHECK}`)
+    expect(commands).toContain('STUDIO_URL="$STUDIO_PRD_URL"')
   })
 })
 
@@ -194,7 +219,6 @@ describe('ci.yml sonar job', () => {
 // studio-test did not already run and smoke-test: the only input is a SHA, and
 // the gate asks GitHub for proof that CD deployed exactly that SHA to
 // studio-test and its smoke passed.
-const promote = await read('.github/workflows/promote.yml')
 
 describe('promote.yml', () => {
   const promoteTriggers = (promote.on ?? promote[true as unknown as string]) as Record<

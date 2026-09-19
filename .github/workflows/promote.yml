@@ -152,4 +152,10 @@ jobs:
           # Installable as a PWA: the web manifest and the service worker are served.
           curl -fsS --max-time 5 -o /dev/null "$STUDIO_PRD_URL/manifest.webmanifest"
           curl -fsS --max-time 5 -o /dev/null "$STUDIO_PRD_URL/sw.js"
-          echo "Verified \`$STUDIO_PRD_URL\`: ready, manifest and service worker over HTTPS." >> "$GITHUB_STEP_SUMMARY"
+          # The shell is revalidated and the hashed assets kept (issue #203) — checked by
+          # the same script CI and CD run, taken from the commit just promoted: this job
+          # has no checkout, and the repository is public.
+          curl -fsS --max-time 10 -o cache-headers.sh \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$DEPLOY_SHA/scripts/ci/cache-headers.sh"
+          STUDIO_URL="$STUDIO_PRD_URL" bash cache-headers.sh
+          echo "Verified \`$STUDIO_PRD_URL\`: ready, manifest and service worker over HTTPS, shell revalidated." >> "$GITHUB_STEP_SUMMARY"
