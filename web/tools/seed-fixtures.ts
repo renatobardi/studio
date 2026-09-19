@@ -13,9 +13,12 @@
 import { finalizeEvent, getPublicKey, nip44, Relay, type Event, type EventTemplate, type Filter, type VerifiedEvent } from "nostr-tools";
 import { decryptBackup, encryptBackup } from "../src/lib/backup";
 import type { Signer } from "../src/lib/custody";
-import { DM_PAGE_SIZE } from "../src/lib/dmPagination";
+
 import { nsecFromSecretKey } from "../src/lib/identity";
 import { GIFT_WRAP, giftWrapForRecipient, unwrapGiftWrap } from "../src/lib/nip17";
+
+/** The relay clamps every filter here (api/src/studio_api/nostr/limits.py). */
+const MAX_INBOX = 500;
 import {
   CHANNEL_SCRIPT,
   FIXTURE_CHANNEL,
@@ -257,8 +260,11 @@ async function main(): Promise<void> {
 
   // Wrapped to `me` only — its inbox is what flow 11 opens; its own lines are the sender's copy.
   const me = signerOf(keys.me);
-  const newestPage = async () => {
-    const inbox = await query(relays.me, [{ kinds: [GIFT_WRAP], "#p": [cast.me], limit: DM_PAGE_SIZE }]);
+  // The whole inbox, not its newest page: a page's worth used to be the whole of it, and anything
+  // beyond that would have read as missing and been published again on every deploy (#231).
+  // MAX_LIMIT is the relay's own ceiling (api/src/studio_api/nostr/limits.py).
+  const seededRumors = async () => {
+    const inbox = await query(relays.me, [{ kinds: [GIFT_WRAP], "#p": [cast.me], limit: MAX_INBOX }]);
     const seen = new Set<string>();
     for (const wrap of inbox) {
       const rumor = await unwrapGiftWrap(me, wrap).catch(() => null);
@@ -266,7 +272,7 @@ async function main(): Promise<void> {
     }
     return seen;
   };
-  for (const rumor of missingRumors(dmRumors(cast), await newestPage())) {
+  for (const rumor of missingRumors(dmRumors(cast), await seededRumors())) {
     const sender = rumor.pubkey === cast.ada ? "ada" : "me";
     await relays.ada.publish(await giftWrapForRecipient(signerOf(keys[sender]), rumor, cast.me));
     published.giftWraps++;
@@ -280,10 +286,10 @@ async function main(): Promise<void> {
     CHANNEL_SCRIPT.messages.filter((line) => findMessage(after, cast[line.from], line.text)).length +
     CHANNEL_SCRIPT.thread.replies.filter((line) => findReply(after, root.id, cast[line.from], line.text)).length +
     CHANNEL_SCRIPT.reactions.filter((r) => findReaction(after, messages[r.on].id, cast[r.from], r.emoji)).length;
-  const unread = missingRumors(dmRumors(cast), await newestPage()).length;
+  const unread = missingRumors(dmRumors(cast), await seededRumors()).length;
   for (const relay of Object.values(relays)) relay.close();
   if (found !== expected) throw new Error(`the fixtures Channel holds ${found} of ${expected} seeded events`);
-  if (unread > 0) throw new Error(`${unread} Direct Message lines are missing from the fixtures Identity's newest page`);
+  if (unread > 0) throw new Error(`${unread} Direct Message lines are missing from the fixtures Identity's inbox`);
 
   // No slug: it is a secret, and the manual run has no log masking.
   console.log(JSON.stringify({ channel: FIXTURE_CHANNEL, published }));

@@ -2212,6 +2212,12 @@ button.sidebar-group-label:hover {
   gap: 2px;
 }
 
+/* A conversation that opens below where the history is complete, while it fetches (#231). */
+.dm-looking-older {
+  margin: 0 16px 12px;
+  text-align: center;
+}
+
 .dm-notice {
   display: flex;
   align-items: center;

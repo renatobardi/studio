@@ -54,8 +54,8 @@ export const DM_SCRIPT: { from: "ada" | "me"; text: string }[] = [
 
 /** 14/09/2026 14:00 UTC. A rumor is never checked against the clock, so the Direct Message can
  * keep fixed times — and with them fixed ids, which the app keeps one copy of however often the
- * same rumor is wrapped again. The fixtures Account's inbox holds nothing else, so the app pages
- * all of it in and shows the whole history, however old. */
+ * same rumor is wrapped again. However far down the inbox it ends up, opening the conversation
+ * pages until it shows (#231). */
 const DM_STARTS_AT = 1_789_394_400;
 const DM_GAP_SECONDS = 4 * 60;
 

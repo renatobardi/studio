@@ -70,23 +70,49 @@ export function needsOpeningBackfill(from: number, now: number): boolean {
   return from > now - OPEN_WINDOW_SECONDS;
 }
 
+/** How many pages one opening of a conversation may pull in before it stops asking on its own.
+ * A page is global — it may bring nothing for this conversation — so a quiet conversation whose
+ * last Message is far down the inbox would otherwise page the whole thing (#231). */
+export const DM_OPENING_PAGES = 8;
+
 /** How much of a conversation the reader asked to see, and — while a page is awaited — how many
- * complete Messages it had when they asked. */
-export type ShownState = Readonly<{ shown: number; waitingPast: number | null }>;
+ * complete Messages it had when they asked. `pages` is this opening's budget, counted against
+ * `pagesFrom`: a page has arrived when the history's complete-from moves. */
+export type ShownState = Readonly<{ shown: number; waitingPast: number | null; pages: number; pagesFrom: number }>;
+
+/** A conversation just opened: it waits on a history with nothing in it yet, so anything sent
+ * before `completeFrom` is fetched without the reader having to ask. */
+export function openedConversation(completeFrom: number): ShownState {
+  return { shown: DM_SHOWN_STEP, waitingPast: 0, pages: 0, pagesFrom: completeFrom };
+}
+
+/** Spends one of this opening's pages, once, for the page that moved `completeFrom`. Returns the
+ * same state when nothing moved, so a view that renders twice does not pay twice. */
+export function countOpeningPage(state: ShownState, completeFrom: number): ShownState {
+  if (completeFrom === state.pagesFrom) return state;
+  return { ...state, pages: state.pages + 1, pagesFrom: completeFrom };
+}
 
 /** "Load older": one more step on screen. With nothing held back, older Messages have to come
- * from the relay, so it also waits for the conversation to gain one. */
+ * from the relay, so it also waits for the conversation to gain one — and the reader asking is
+ * worth a fresh budget of pages, whatever this opening has already spent. */
 export function askOlder(
   state: ShownState,
   { hidden, complete, hasMore }: { hidden: number; complete: number; hasMore: boolean },
 ): ShownState {
-  return { shown: state.shown + DM_SHOWN_STEP, waitingPast: hidden === 0 && hasMore ? complete : state.waitingPast };
+  return {
+    ...state,
+    shown: state.shown + DM_SHOWN_STEP,
+    waitingPast: hidden === 0 && hasMore ? complete : state.waitingPast,
+    pages: 0,
+  };
 }
 
 /** A page is global — the relay cannot tell which conversation a wrap belongs to — so it may bring
- * nothing for this one: keep paging until it does, or the history runs out. */
+ * nothing for this one: keep paging until it does, the history runs out, or this opening has
+ * spent its budget. */
 export function keepFetchingOlder(state: ShownState, { complete, hasMore }: { complete: number; hasMore: boolean }): boolean {
-  return state.waitingPast !== null && complete <= state.waitingPast && hasMore;
+  return state.waitingPast !== null && complete <= state.waitingPast && hasMore && state.pages < DM_OPENING_PAGES;
 }
 
 /** What an open conversation shows: the newest `shown` of its complete Messages (oldest first),

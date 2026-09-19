@@ -5,8 +5,10 @@ import {
   DM_SHOWN_STEP,
   OPEN_WINDOW_SECONDS,
   WRAP_BACKDATE_SECONDS,
+  DM_OPENING_PAGES,
   askOlder,
   asksForOlder,
+  countOpeningPage,
   completeFrom,
   dmHistoryView,
   isLastDmPage,
@@ -14,6 +16,8 @@ import {
   liveDmFilters,
   needsOpeningBackfill,
   olderDmFilters,
+  openedConversation,
+  type ShownState,
 } from "./dmPagination";
 
 const ME = "me";
@@ -88,7 +92,7 @@ describe("needsOpeningBackfill", () => {
 });
 
 describe("dmHistoryView", () => {
-  const unasked = { shown: DM_SHOWN_STEP, waitingPast: null };
+  const unasked: ShownState = { shown: DM_SHOWN_STEP, waitingPast: null, pages: 0, pagesFrom: -Infinity };
 
   test("leaves out Messages older than where the history is complete, and offers to load them", () => {
     const messages = [rumor("old", 10), rumor("mid", 20), rumor("new", 30)];
@@ -100,7 +104,7 @@ describe("dmHistoryView", () => {
 
   test("mounts only the newest ones asked for, counting the complete ones kept back", () => {
     const messages = Array.from({ length: 5 }, (_, i) => rumor(`m${i}`, i));
-    const view = dmHistoryView(messages, -Infinity, { shown: 2, waitingPast: null }, false);
+    const view = dmHistoryView(messages, -Infinity, { ...unasked, shown: 2 }, false);
     expect(view.messages).toEqual([rumor("m3", 3), rumor("m4", 4)]);
     expect(view.hidden).toBe(3);
     expect(view.complete).toBe(5);
@@ -112,7 +116,7 @@ describe("dmHistoryView", () => {
   });
 
   test("keeps fetching while the reader waits on a page that brought nothing here", () => {
-    const view = dmHistoryView([rumor("only", 1)], -Infinity, { shown: 100, waitingPast: 1 }, true);
+    const view = dmHistoryView([rumor("only", 1)], -Infinity, { ...unasked, shown: 100, waitingPast: 1 }, true);
     expect(view.fetchOlder).toBe(true);
   });
 });
@@ -131,27 +135,68 @@ describe("asksForOlder", () => {
   });
 });
 
+describe("opening a conversation", () => {
+  test("a conversation with nothing to show fetches on its own, without a click", () => {
+    // Anything sent more than a day ago sits below where the history is complete, so the panel
+    // opens blank next to a sidebar row that says there is something in it (#231).
+    const state = openedConversation(1000);
+    expect(keepFetchingOlder(state, { complete: 0, hasMore: true })).toBe(true);
+  });
+
+  test("it stops as soon as there is something to show", () => {
+    const state = openedConversation(1000);
+    expect(keepFetchingOlder(state, { complete: 1, hasMore: true })).toBe(false);
+  });
+
+  test("it stops when the history runs out", () => {
+    const state = openedConversation(1000);
+    expect(keepFetchingOlder(state, { complete: 0, hasMore: false })).toBe(false);
+  });
+
+  test("one quiet conversation does not page the whole inbox", () => {
+    let state = openedConversation(1000);
+    // A page arrives when `completeFrom` moves; the budget is spent per opening.
+    for (let page = 1; page <= DM_OPENING_PAGES; page += 1) state = countOpeningPage(state, 1000 - page);
+    expect(keepFetchingOlder(state, { complete: 0, hasMore: true })).toBe(false);
+  });
+
+  test("a page counts once, however many times the view is rendered", () => {
+    const state = countOpeningPage(openedConversation(1000), 900);
+    expect(countOpeningPage(state, 900)).toBe(state);
+  });
+
+  test("asking by hand buys a fresh budget", () => {
+    let state = openedConversation(1000);
+    for (let page = 1; page <= DM_OPENING_PAGES; page += 1) state = countOpeningPage(state, 1000 - page);
+    const asked = askOlder(state, { hidden: 0, complete: 0, hasMore: true });
+    expect(keepFetchingOlder(asked, { complete: 0, hasMore: true })).toBe(true);
+  });
+});
+
 describe("asking for older Direct Messages", () => {
+  /** A conversation with Messages on screen already: nothing is being waited on. */
+  const held: ShownState = { shown: 50, waitingPast: null, pages: 0, pagesFrom: -Infinity };
+
   test("shows another step of what is already held, without waiting on the relay", () => {
-    const state = askOlder({ shown: 50, waitingPast: null }, { hidden: 10, complete: 60, hasMore: true });
-    expect(askOlder(state, { hidden: 0, complete: 60, hasMore: false })).toEqual({ shown: 150, waitingPast: null });
-    expect(state).toEqual({ shown: 100, waitingPast: null });
+    const state = askOlder(held, { hidden: 10, complete: 60, hasMore: true });
+    expect(askOlder(state, { hidden: 0, complete: 60, hasMore: false })).toEqual({ ...held, shown: 150 });
+    expect(state).toEqual({ ...held, shown: 100 });
     expect(keepFetchingOlder(state, { complete: 60, hasMore: true })).toBe(false);
   });
 
   test("with nothing held back, fetches until the conversation gains a Message", () => {
-    const state = askOlder({ shown: 50, waitingPast: null }, { hidden: 0, complete: 7, hasMore: true });
-    expect(state).toEqual({ shown: 100, waitingPast: 7 });
+    const state = askOlder(held, { hidden: 0, complete: 7, hasMore: true });
+    expect(state).toEqual({ ...held, shown: 100, waitingPast: 7 });
     expect(keepFetchingOlder(state, { complete: 7, hasMore: true })).toBe(true);
     expect(keepFetchingOlder(state, { complete: 8, hasMore: true })).toBe(false);
   });
 
   test("stops fetching when the history runs out", () => {
-    const state = askOlder({ shown: 50, waitingPast: null }, { hidden: 0, complete: 7, hasMore: true });
+    const state = askOlder(held, { hidden: 0, complete: 7, hasMore: true });
     expect(keepFetchingOlder(state, { complete: 7, hasMore: false })).toBe(false);
   });
 
   test("never fetches unasked", () => {
-    expect(keepFetchingOlder({ shown: 50, waitingPast: null }, { complete: 0, hasMore: true })).toBe(false);
+    expect(keepFetchingOlder(held, { complete: 0, hasMore: true })).toBe(false);
   });
 });

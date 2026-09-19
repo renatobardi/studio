@@ -12,3 +12,7 @@ export function dmComposerPlaceholder(peerName: string): string {
 }
 
 export const DM_ENCRYPTION_NOTICE = "Direct messages are end-to-end encrypted on this relay.";
+
+/** Shown while a conversation whose Messages are all older than the history held is fetching
+ * them: an empty panel would read as an empty conversation (#231). */
+export const DM_LOOKING_FOR_OLDER = "Looking for older messages\u2026";
