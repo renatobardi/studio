@@ -25,8 +25,8 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { downloadPriority } from "../../lib/mediaDownloads";
 import { DM_SHOWN_STEP, askOlder, asksForOlder, dmHistoryView, type ShownState } from "../../lib/dmPagination";
+import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";

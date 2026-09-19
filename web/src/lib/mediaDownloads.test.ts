@@ -84,6 +84,13 @@ describe("loadAttachment", () => {
 
 /** The queue is one line for both surfaces, so what goes into it has to be one scale (#234). */
 describe("downloadPriority", () => {
+  const NOW = 1_700_000_600;
+
+  test("a Message dated in the future does not outrank the photo just sent", () => {
+    // The relay takes a created_at up to fifteen minutes ahead, and the author picks it.
+    expect(downloadPriority(NOW + 900, NOW)).toBe(downloadPriority(NOW, NOW));
+  });
+
   test("a photo just sent in a conversation goes before a Channel's history", async () => {
     // Four slots, all taken: what waits behind them is ordered by priority alone. The Channel
     // Message is the two-hundredth of its list and the conversation's is the first of its own,
@@ -94,11 +101,11 @@ describe("downloadPriority", () => {
     );
     await settle();
     const started: string[] = [];
-    const channelHistory = mediaDownloads.run(downloadPriority(1_700_000_000), async () => {
+    const channelHistory = mediaDownloads.run(downloadPriority(NOW - 600, NOW), async () => {
       started.push("channel");
       return "blob:channel";
     });
-    const justSent = mediaDownloads.run(downloadPriority(1_700_000_600), async () => {
+    const justSent = mediaDownloads.run(downloadPriority(NOW, NOW), async () => {
       started.push("dm");
       return "blob:dm";
     });
