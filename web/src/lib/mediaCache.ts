@@ -57,7 +57,9 @@ export async function readCachedBlob(pubkey: string, url: string): Promise<Cache
 }
 
 /** `caches.open`, unless a prune ran since `epochAtStart`: then the cache the open may have just
- * re-created is deleted again, and nothing is returned (#187). */
+ * re-created is deleted again, and nothing is returned (#187). A prune that lands after the check,
+ * while the caller still holds the returned cache, is harmless: `caches.delete` unlinks the name,
+ * and a `put` into the orphaned cache never brings it back. */
 async function openUnlessPruned(name: string, epochAtStart: number): Promise<Cache | undefined> {
   const cache = await caches.open(name);
   if (epoch === epochAtStart) return cache;
