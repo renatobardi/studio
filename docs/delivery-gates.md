@@ -62,7 +62,33 @@ it. Issue #51.
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
-mutable branch tip, or if CI, CD or Promote stop checking the cache headers.
+mutable branch tip, if CI, CD or Promote stop checking the cache headers, or
+if the smoke leaves `deploy-dev` or is allowed to fail.
+
+## When CD is red
+
+A red CD on `main` stops the queue: until it is green again, nothing merges
+but the fix for it, or the revert of what broke it (#193). CI already passed
+on every commit behind a red CD, so nothing else would stop the next merge —
+and each one piles onto a `studio-test` that is not known to work, and makes
+the fix harder to prove. On 18/09/2026 CD failed four runs in a row while
+#177 merged over the red smoke, and the fix, #182, was proven only after
+#183 landed on top of it.
+
+Production does not depend on this rule being followed: `promote.yml`
+refuses any SHA without a successful `deploy-dev` job on it (see
+"Production"), and the smoke is a step of that job, so a red smoke is a red
+`deploy-dev`. What the rule protects is `studio-test`, and the chance of
+promoting anything at all: a SHA merged over a red CD is proven only when a
+later deploy goes green, and that deploy carries every commit before it.
+
+It is a protocol, not a required check — the owner's decision on #193. A
+required check is evaluated on the pull request's head, not on `main`, so it
+would take a CI job that asks for `main`'s last CD, and its verdict goes stale
+the moment CD turns red after the job ran. An unstable smoke would then block
+every merge, the fix's own included, unless the check learns an escape for
+fixes and reverts — and repository admins, who merge here, bypass it anyway.
+Revisit if a merge over a red CD happens again.
 
 ## The workflow token
 
