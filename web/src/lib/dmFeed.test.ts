@@ -172,6 +172,19 @@ describe("DmFeed", () => {
     stopAgain();
   });
 
+  test("a page replaying live wraps backdated below the cursor does not end the history", async () => {
+    // NIP-59 backdates a live wrap by up to two days, so it lands below the cursor and is
+    // replayed by the next page. Discounted from the page but never asked for, it made a full
+    // page look short — and the history unreachable until a reload (#230).
+    const { relay, feed } = start(history(300, NOW, DAY));
+    await flush();
+    for (const id of ["L1", "L2", "L3"]) relay.publish(wrap(id, NOW - 150 * DAY - Number(id[1]), NOW));
+    await flush();
+    feed.loadOlder();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+  });
+
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();
