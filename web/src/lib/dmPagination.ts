@@ -28,7 +28,12 @@ export function liveDmFilters(ownPubkey: string): Filter[] {
  * is backdated by up to two days, and paging from it would skip every wrap in between. `until` is
  * inclusive, so the limit carries every wrap already held at or below the cursor on top of a
  * page — the same wraps `isLastDmPage` discounts from what comes back, which is what keeps a
- * full page from reading short (#230). `olderMessagesFilters` does the same for a Channel.
+ * full page from reading short (#230). `olderMessagesFilters` does the same for a Channel, where
+ * nothing is backdated and the cursor second is all there can be.
+ *
+ * The relay clamps every limit at MAX_LIMIT=500 (api/src/studio_api/nostr/limits.py), so this
+ * holds while fewer than 400 held wraps sit at or below the cursor — a live wrap is backdated by
+ * at most two days, and a cursor that recent is still being paged past by the opening backfill.
  */
 export function olderDmFilters(
   ownPubkey: string,

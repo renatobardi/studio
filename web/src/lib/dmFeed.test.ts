@@ -172,17 +172,32 @@ describe("DmFeed", () => {
     stopAgain();
   });
 
-  test("a page replaying live wraps backdated below the cursor does not end the history", async () => {
-    // NIP-59 backdates a live wrap by up to two days, so it lands below the cursor and is
-    // replayed by the next page. Discounted from the page but never asked for, it made a full
-    // page look short — and the history unreachable until a reload (#230).
+  test("a page replaying wraps already held below the cursor does not end the history", async () => {
+    // NIP-59 backdates a live wrap, so it lands below the cursor and the next page replays it.
+    // Discounted from what came back but never asked for, three of them made a full page look
+    // short — and the rest of the history unreachable until a reload (#230). The backdate here
+    // is far past WRAP_BACKDATE_SECONDS on purpose: it puts a held wrap below the cursor without
+    // a dense history whose opening backfill would page on its own.
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();
-    for (const id of ["L1", "L2", "L3"]) relay.publish(wrap(id, NOW - 150 * DAY - Number(id[1]), NOW));
+    ["L1", "L2", "L3"].forEach((id, i) => relay.publish(wrap(id, NOW - 150 * DAY - i, NOW)));
     await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 3);
     feed.loadOlder();
     await flush();
     expect(feed.getSnapshot().hasMore).toBe(true);
+    // The page really came: a no-op would leave hasMore true too.
+    expect(feed.getSnapshot().rumors).toHaveLength(2 * DM_PAGE_SIZE + 3);
+  });
+
+  test("wraps held below the cursor do not stop a genuine last page from ending the history", async () => {
+    const { relay, feed } = start(history(DM_PAGE_SIZE + 20, NOW, DAY));
+    await flush();
+    ["L1", "L2"].forEach((id, i) => relay.publish(wrap(id, NOW - 150 * DAY - i, NOW)));
+    await flush();
+    feed.loadOlder();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(false);
   });
 
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
