@@ -205,6 +205,26 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Seed flow 11's fixtures (idempotent — issue #157)
+        # The fixtures Account's Identity and Key Backup, the "fixtures" Channel and a Direct
+        # Message — published only where missing, so this also restores them after studio-test is
+        # re-seeded. Firebase's web API key is public (it ships in the bundle); it is read from the
+        # host's web/.env rather than kept as one more secret.
+        working-directory: web
+        env:
+          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+          STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+          STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
+          STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
+          STUDIO_TEST_FIXTURES_EMAIL: ${{ secrets.STUDIO_TEST_FIXTURES_EMAIL }}
+          STUDIO_TEST_FIXTURES_PASSWORD: ${{ secrets.STUDIO_TEST_FIXTURES_PASSWORD }}
+          STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE }}
+        run: |
+          STUDIO_FIREBASE_API_KEY=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
+            "lxc exec studio-test -- sed -n 's/^VITE_FIREBASE_API_KEY=//p' /opt/app/web/.env" | tr -d '\r"')
+          export STUDIO_FIREBASE_API_KEY
+          bun tools/seed-fixtures.ts
+
       - name: Install Playwright browsers
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
@@ -240,18 +260,25 @@ jobs:
           STUDIO_TEST_ONBOARDING_PASSWORD: ${{ secrets.STUDIO_TEST_ONBOARDING_PASSWORD }}
           # Flow 11 (#73): capture the deployed shell at both viewports and themes; the
           # PNGs ride the artifact below and are compared by hand against docs/UI/reference.
+          # It signs in as the fixtures Account the step above seeded (#157).
           STUDIO_VISUAL_CAPTURE: "1"
+          STUDIO_TEST_FIXTURES_EMAIL: ${{ secrets.STUDIO_TEST_FIXTURES_EMAIL }}
+          STUDIO_TEST_FIXTURES_PASSWORD: ${{ secrets.STUDIO_TEST_FIXTURES_PASSWORD }}
+          STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE }}
         run: bun run test:e2e
 
       - name: Upload screenshots (failures, and flow 11's visual captures)
         # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
         # the typed characters a trace.zip would record. See git history for why trace.zip
-        # itself must never be uploaded from this public repo's CI.
+        # itself must never be uploaded from this public repo's CI. The one other file is
+        # flow 11's manifest.json: which SHA, URL and Workspace the captures are of (#157).
         # always(): flow 11 writes its captures on a green run too.
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: playwright-screenshots
-          path: web/test-results/**/*.png
+          path: |
+            web/test-results/**/*.png
+            web/test-results/visual-live/manifest.json
           retention-days: 3
           if-no-files-found: ignore

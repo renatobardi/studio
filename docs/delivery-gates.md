@@ -51,10 +51,22 @@ it. Issue #51.
    doing NIP-44 (#75). Its first-access half self-skips like flow 1, for the
    same reason.
    Flow 11 (`visual-live.spec.ts`, #73) runs in the same smoke with
-   `STUDIO_VISUAL_CAPTURE=1`: it captures the deployed shell at 1440×900 and
+   `STUDIO_VISUAL_CAPTURE=1`: it captures the deployed app at 1440×900 and
    390×844, light and dark, into `web/test-results/visual-live/` — uploaded
-   by the screenshots artifact — for comparison by hand against
-   `docs/UI/reference`. Flow 10 (`visual.spec.ts`) compares preview.html
+   by the screenshots artifact, with a `manifest.json` naming the SHA, the
+   URL and the Workspace — for comparison by hand against
+   `docs/UI/reference`. It signs in as the fixtures Account and captures a
+   Channel timeline, an open thread, the Members pane, a Direct Message and
+   Settings › Profile (#157). Just before the smoke, CD runs
+   `web/tools/seed-fixtures.ts`, which publishes whatever of that is missing:
+   the Account's Identity and Key Backup, the `fixtures` Channel of the e2e
+   Workspace with invented Messages, replies and reactions, and a Direct
+   Message between two fixture Identities, whose keys derive from the owner
+   key. Nothing there is real data, and a studio-test re-seeded from scratch
+   gets it all back on the next deploy. No other flow may write to that
+   Account: its inbox has to stay within one page of gift wraps, or the app
+   opens the Direct Message on its last day only (#231). Flow 10
+   (`visual.spec.ts`) compares preview.html
    against committed baselines and runs only where a dev server exists —
    locally, and in CI's `visual` job (see "The visual gate") — never in CD:
    the production build has no preview page, and a baseline is accepted by a
@@ -234,15 +246,18 @@ justification. Nothing is left merely ignored.
 
 ## e2e test Accounts
 
-The smoke signs in as four Firebase password Accounts in the `studio-oute`
+The smoke signs in as five Firebase password Accounts in the `studio-oute`
 project: `STUDIO_TEST_EMAIL`, `STUDIO_TEST_EMAIL_2`,
-`STUDIO_TEST_EXTENSION_EMAIL` and `STUDIO_TEST_ONBOARDING_EMAIL`, each with
-its `*_PASSWORD`. Every value lives in two places that must agree:
+`STUDIO_TEST_EXTENSION_EMAIL`, `STUDIO_TEST_FIXTURES_EMAIL` (flow 11's, with
+its own `STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE`) and
+`STUDIO_TEST_ONBOARDING_EMAIL`, each with its `*_PASSWORD`. Every value
+lives in two places that must agree:
 
 - **GitHub secrets**, which Playwright signs in with. The extension pair is a
-  repository secret; the other three pairs are `studio-test` Environment
-  secrets. An Environment secret shadows a repository secret of the same name,
-  so a value written to the other scope changes nothing.
+  repository secret; every other pair, and the fixtures passphrase, are
+  `studio-test` Environment secrets. An Environment secret shadows a
+  repository secret of the same name, so a value written to the other scope
+  changes nothing.
 - **`/opt/app/.env` inside the `studio-test` container**, passed through by
   `docker-compose.yml` to the `api` service. Before the smoke, `cd.yml` runs
   `python -m studio_api.ensure_e2e_accounts` there, which creates or resets

@@ -33,6 +33,12 @@ describe('docker-compose.yml api service', () => {
     expect(api.environment?.FIREBASE_CREDENTIALS_PATH).toBe(TARGET)
   })
 
+  test("hands the fixtures Account's pair to ensure_e2e_accounts (#157)", () => {
+    const api = apiService({ STUDIO_TEST_FIXTURES_EMAIL: 'f@example.com', STUDIO_TEST_FIXTURES_PASSWORD: 'pw' })
+    expect(api.environment?.STUDIO_TEST_FIXTURES_EMAIL).toBe('f@example.com')
+    expect(api.environment?.STUDIO_TEST_FIXTURES_PASSWORD).toBe('pw')
+  })
+
   test('without a credential file, Firebase stays unconfigured instead of reading an empty mount', () => {
     const api = apiService({})
     expect(api.environment?.FIREBASE_CREDENTIALS_PATH ?? '').toBe('')
