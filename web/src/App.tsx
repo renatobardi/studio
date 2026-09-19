@@ -15,7 +15,7 @@ import {
 import { localIdentityMatches } from "./lib/accountIdentity";
 import { isEmailVerified } from "./lib/emailVerification";
 import { inviteCodeFromUrl, rememberInviteCode } from "./lib/invites";
-import { accountPasswordKeptFor, resolveInitialView, type AppView } from "./lib/routing";
+import { resolveInitialView, useAppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
 import { AppShell } from "./routes/app/AppShell";
@@ -107,9 +107,8 @@ async function resumeWorkspace(signer: Signer, user: User | null): Promise<Works
 }
 
 export function App() {
-  const [view, setView] = useState<AppView>("loading");
+  const { view, setView, accountPassword, setAccountPassword } = useAppView();
   const [user, setUser] = useState<User | null>(null);
-  const [accountPassword, setAccountPassword] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
   const [signer, setSigner] = useState<Signer | null>(null);
   const [account, setAccount] = useState<api.AccountOut | null>(null);
@@ -118,19 +117,12 @@ export function App() {
   // sign-out/sign-in) landing after a fresher one already set the view (#103).
   const bootGen = useRef(0);
 
-  // Every change of view goes through here, so the typed Account password never outlives the
-  // views that need it (#189).
-  const goTo = (next: AppView) => {
-    setView(next);
-    setAccountPassword((held) => accountPasswordKeptFor(next, held));
-  };
-
   const applyResolved = (myGen: number, resolved: Awaited<ReturnType<typeof resolveBoot>>) => {
     if (myGen !== bootGen.current) return;
     setAccount(resolved.account);
     setWorkspace(resolved.workspace);
     setSigner(resolved.signer);
-    goTo(
+    setView(
       resolveInitialView({
         account: resolved.routingAccount,
         hasIdentity: resolved.signer !== null,
@@ -161,12 +153,12 @@ export function App() {
       // An unverified user can only ever land back on "auth" — skip the
       // "loading" gate so a fresh signup's verify step (still on AuthScreen,
       // holding the typed password) isn't unmounted while this resolves.
-      if (isEmailVerified(firebaseUser)) goTo("loading");
+      if (isEmailVerified(firebaseUser)) setView("loading");
       const myGen = ++bootGen.current;
       try {
         applyResolved(myGen, await resolveBoot(firebaseUser));
       } catch {
-        if (myGen === bootGen.current) goTo("auth");
+        if (myGen === bootGen.current) setView("auth");
       }
     });
   }, []);
@@ -181,7 +173,7 @@ export function App() {
         onAuthenticated={(authedUser, password) => {
           setUser(authedUser);
           setAccountPassword(password);
-          goTo("loading");
+          setView("loading");
           // Verifying an email reloads the pending user in place and doesn't
           // fire a new onAuthStateChanged event, so this path resolves the
           // boot itself instead of waiting for that listener (#103).
@@ -189,7 +181,7 @@ export function App() {
           resolveBoot(authedUser)
             .then((resolved) => applyResolved(myGen, resolved))
             .catch(() => {
-              if (myGen === bootGen.current) goTo("auth");
+              if (myGen === bootGen.current) setView("auth");
             });
         }}
       />
@@ -205,7 +197,7 @@ export function App() {
         onComplete={async (ws) => {
           setWorkspace(ws);
           setSigner(await getSigner());
-          goTo("app");
+          setView("app");
         }}
         onAccountChanged={setAccount}
       />
@@ -231,7 +223,7 @@ export function App() {
             await signOut(auth);
             setAccount(null);
             setWorkspace(null);
-            goTo("auth");
+            setView("auth");
           }}
         />
       );

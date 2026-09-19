@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 export type AppView = "loading" | "auth" | "onboarding" | "app";
 
 export interface AuthAccount {
@@ -40,4 +42,17 @@ export function resolveInitialView({ account, hasIdentity, hasWorkspace }: Routi
  */
 export function accountPasswordKeptFor(view: AppView, password: string | null): string | null {
   return view === "loading" || view === "onboarding" ? password : null;
+}
+
+/** The App's view, and the typed Account password alongside it: every `setView` re-judges the
+ * password with `accountPasswordKeptFor`, so Sign out, or reaching the signed-in app, lets go of
+ * it (#189). */
+export function useAppView() {
+  const [view, setViewState] = useState<AppView>("loading");
+  const [accountPassword, setAccountPassword] = useState<string | null>(null);
+  const setView = (next: AppView) => {
+    setViewState(next);
+    setAccountPassword((held) => accountPasswordKeptFor(next, held));
+  };
+  return { view, setView, accountPassword, setAccountPassword };
 }

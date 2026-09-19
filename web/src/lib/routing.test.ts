@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { accountPasswordKeptFor, resolveInitialView } from "./routing";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as React from "react";
+import { accountPasswordKeptFor, resolveInitialView, useAppView } from "./routing";
 
 describe("resolveInitialView", () => {
   test("no Account -> auth", () => {
@@ -63,5 +64,39 @@ describe("accountPasswordKeptFor", () => {
 
   test("the boot in between keeps it, so onboarding still gets it", () => {
     expect(accountPasswordKeptFor("loading", "hunter22")).toBe("hunter22");
+  });
+});
+
+/** The App's view and password together: moving to a view re-applies the rule above. */
+describe("useAppView", () => {
+  afterEach(() => {
+    spyOn(React, "useState").mockRestore();
+  });
+
+  /** Moves a hook that already holds "hunter22" to `view`, and returns what it still holds. */
+  function heldAfterMovingTo(view: "loading" | "auth" | "onboarding" | "app"): string | null {
+    let held: string | null = "hunter22";
+    const setHeld = (next: string | null | ((current: string | null) => string | null)) => {
+      held = typeof next === "function" ? next(held) : next;
+    };
+    spyOn(React, "useState")
+      .mockReturnValueOnce(["onboarding", () => {}] as never)
+      .mockReturnValueOnce([held, setHeld] as never);
+
+    // oxlint-disable-next-line react-hooks/rules-of-hooks -- called outside React on purpose, with useState stubbed
+    useAppView().setView(view);
+    return held;
+  }
+
+  test("signing out drops what was typed", () => {
+    expect(heldAfterMovingTo("auth")).toBeNull();
+  });
+
+  test("reaching the signed-in app drops it", () => {
+    expect(heldAfterMovingTo("app")).toBeNull();
+  });
+
+  test("onboarding keeps it", () => {
+    expect(heldAfterMovingTo("onboarding")).toBe("hunter22");
   });
 });
