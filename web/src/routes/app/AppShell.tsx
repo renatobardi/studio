@@ -95,7 +95,7 @@ export function AppShell({
   /** A choice made before the stored value came back wins over it. */
   const appearanceTouched = useRef(false);
   /** Direct messages live in the sidebar (#142), so they are read from the moment the app opens. */
-  const rumors = useDirectMessages(client, signer, ownPubkey);
+  const dmFeed = useDirectMessages(client, signer, ownPubkey);
   const { members, error: membersError } = useWorkspaceMembers(client, workspace.slug, signer);
   /** The open conversation's other participants — kept apart from the conversation itself, which
    * does not exist yet when a Member was just picked to start one. */
@@ -127,11 +127,12 @@ export function AppShell({
   }, [ownPubkey, ensureProfiles]);
 
   const dm = directMessages({
-    rumors,
+    rumors: dmFeed.rumors,
     myPubkey: ownPubkey,
     members,
     selectedPeerPubkeys,
     readState: dmRead,
+    completeFrom: dmFeed.completeFrom,
     nameOf: (peer) => displayName(profiles, peer),
   });
   const namedPubkeysKey = dm.namedPubkeys.join(",");
@@ -366,6 +367,9 @@ export function AppShell({
             signer={signer}
             mediaUrl={workspace.media_url}
             messages={dm.selected?.messages ?? []}
+            completeFrom={dmFeed.completeFrom}
+            hasMore={dmFeed.hasMore}
+            onLoadOlder={dmFeed.loadOlder}
             profiles={profiles}
           />
         )}

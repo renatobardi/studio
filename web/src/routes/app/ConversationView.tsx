@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addDraft,
   canSendWithDrafts,
@@ -25,6 +25,7 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
+import { DM_SHOWN_STEP, askOlder, keepFetchingOlder, shownMessages, type ShownState } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
@@ -33,6 +34,7 @@ import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
+import { TOP_OF_HISTORY_PX } from "./Timeline";
 import { displayName, shortNpub, type useProfiles } from "./useProfiles";
 
 function imageDimensions(url: string): Promise<string | undefined> {
@@ -51,6 +53,9 @@ export function ConversationView({
   signer,
   mediaUrl,
   messages,
+  completeFrom,
+  hasMore,
+  onLoadOlder,
   profiles,
 }: Readonly<{
   client: RelayClient;
@@ -59,6 +64,10 @@ export function ConversationView({
   signer: Signer;
   mediaUrl: string;
   messages: Rumor[];
+  /** Where the Direct Message history held is complete (#185) — nothing older is shown. */
+  completeFrom: number;
+  hasMore: boolean;
+  onLoadOlder: () => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
 }>) {
   const [draft, setDraft] = useState("");
@@ -71,6 +80,33 @@ export function ConversationView({
   const [attachments, setAttachments] = useState<AttachmentDraft<ReadyDmPhoto>[]>([]);
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const heightBeforeOlder = useRef<number | null>(null);
+  // Only what is mounted fetches its photos (#185): the newest step, more as the reader asks.
+  const [shownState, setShownState] = useState<ShownState>({ shown: DM_SHOWN_STEP, waitingPast: null });
+  const shown = shownMessages(messages, completeFrom, shownState.shown);
+  const complete = shown.messages.length + shown.hidden;
+  const fetchOlder = keepFetchingOlder(shownState, { complete, hasMore });
+
+  useEffect(() => {
+    if (fetchOlder) onLoadOlder();
+  });
+
+  // Older Messages prepend; giving back the height they added keeps the reader where they were.
+  useLayoutEffect(() => {
+    const timeline = scrollRef.current;
+    const before = heightBeforeOlder.current;
+    if (timeline === null || before === null || timeline.scrollHeight === before) return;
+    timeline.scrollTop += timeline.scrollHeight - before;
+    heightBeforeOlder.current = null;
+  }, [shown.messages.length]);
+
+  const canLoadOlder = shown.hidden > 0 || hasMore;
+  const loadOlder = () => {
+    if (fetchOlder) return;
+    heightBeforeOlder.current = scrollRef.current?.scrollHeight ?? null;
+    setShownState((prev) => askOlder(prev, { hidden: shown.hidden, complete, hasMore }));
+  };
 
   const upload = async (id: string, file: File, previewUrl: string) => {
     try {
@@ -175,14 +211,26 @@ export function ConversationView({
           </span>
         </span>
       </header>
-      <div className="timeline-scroll dm-scroll" data-list="true">
+      <div
+        className="timeline-scroll dm-scroll"
+        data-list="true"
+        ref={scrollRef}
+        onScroll={(e) => {
+          if (canLoadOlder && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+        }}
+      >
         <p className="dm-notice">
           <Icon name="lock" size={12} />
           <span>{DM_ENCRYPTION_NOTICE}</span>
         </p>
+        {canLoadOlder && (
+          <button type="button" className="btn btn-outline btn-xs load-older" disabled={fetchOlder} onClick={loadOlder}>
+            Load older messages
+          </button>
+        )}
         <ul className="message-list">
-          {messages.map((message, index) => {
-            const continuation = isContinuation(messages[index - 1], message);
+          {shown.messages.map((message, index) => {
+            const continuation = isContinuation(shown.messages[index - 1], message);
             const author = displayName(profiles, message.pubkey);
             return (
               <MessageRow
