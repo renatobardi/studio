@@ -139,7 +139,7 @@ const replyTo = (author: Person, root: VerifiedEvent, content: string, when: num
 const membersProjection = signed(
   OWN,
   39002,
-  [["d", channel], ...MEMBERS.map((m) => ["p", m.pubkey, m.role])],
+  [["d", channel], ...MEMBERS.map((m) => ["p", m.pubkey])],
   "",
   at(7, 30),
 );

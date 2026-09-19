@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { authProof, listWorkspaceMembers, type WorkspaceMemberOut } from "../../lib/api";
+import { apiPath, authProof, listWorkspaceMembers, proofUrl, type WorkspaceMemberOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 
@@ -19,7 +19,7 @@ export function useWorkspaceMembers(
 
   const reload = useCallback(async () => {
     try {
-      const url = `${window.location.origin}/api/workspaces/${slug}/members`;
+      const url = proofUrl(apiPath("workspaces", slug, "members"));
       const list = await listWorkspaceMembers(slug, await authProof(url, "GET", signer));
       setMembers(list);
       setError(null);

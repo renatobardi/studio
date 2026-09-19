@@ -5,12 +5,16 @@ import type { RelayClient } from "../../lib/relay";
 
 export type { Profile };
 
-/** React's view of the kind 0 profiles this pane needs — the lookup itself lives in
- * `ProfileStore`, which holds exactly one subscription and releases it on unmount. */
-export function useProfiles(client: RelayClient): {
+/** The kind 0 profiles known so far, and how to ask for more. */
+export interface ProfileLookup {
   profiles: Map<string, Profile>;
   ensure: (pubkeys: string[]) => void;
-} {
+}
+
+/** React's view of the kind 0 profiles the app needs — the lookup itself lives in `ProfileStore`,
+ * which holds exactly one subscription and releases it on unmount. Only the shell calls it: every
+ * pane below reads the shell's `ProfileLookup`, so there is one kind 0 REQ, not one per pane (#195). */
+export function useProfiles(client: RelayClient): ProfileLookup {
   const store = useMemo(() => new ProfileStore(client), [client]);
   useEffect(() => () => store.close(), [store]);
   // The third snapshot is what renderToStaticMarkup needs to render this outside a browser —
@@ -35,8 +39,10 @@ export function displayName(profiles: Map<string, Profile>, pubkey: string): str
   return profiles.get(pubkey)?.name || shortNpub(pubkey);
 }
 
-/** The signed-in Identity's own name: a neutral "…" until its kind 0 arrives, so the
- * footer never flashes a key where every other session already shows the name. */
+/** The signed-in Identity's own name: a neutral "…" until the relay answers, so the footer
+ * never flashes a key where every other session already shows the name — then the same short
+ * npub as the rest of the UI when there turned out to be no kind 0 (#196). */
 export function ownDisplayName(profiles: Map<string, Profile>, pubkey: string | null): string {
-  return (pubkey && profileName(profiles, pubkey)) || "…";
+  if (pubkey === null || !profiles.has(pubkey)) return "…";
+  return displayName(profiles, pubkey);
 }

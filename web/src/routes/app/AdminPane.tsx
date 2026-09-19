@@ -6,7 +6,7 @@ import { describeInvite, inviteLimits, inviteLink } from "../../lib/invites";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import type { AdminTab } from "../../lib/sidebar";
-import { displayName, useProfiles } from "./useProfiles";
+import { displayName, type ProfileLookup } from "./useProfiles";
 import { MemberProfile } from "./MemberProfile";
 
 /** The admin console. A Workspace owner/admin gets all of it: Invites,
@@ -20,7 +20,15 @@ export function AdminPane({
   slug,
   workspaceRole,
   initialTab,
-}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string; initialTab?: AdminTab }>) {
+  profileLookup,
+}: Readonly<{
+  client: RelayClient;
+  signer: Signer;
+  slug: string;
+  workspaceRole: string;
+  initialTab?: AdminTab;
+  profileLookup: ProfileLookup;
+}>) {
   const isManager = isWorkspaceManager(workspaceRole);
   const [tab, setTab] = useState<AdminTab>(initialTab ?? (isManager ? "invites" : "channels"));
 
@@ -45,17 +53,22 @@ export function AdminPane({
         </button>
       </nav>
       {tab === "invites" && isManager && <InvitesTab signer={signer} slug={slug} />}
-      {tab === "members" && isManager && <MembersTab client={client} signer={signer} slug={slug} />}
+      {tab === "members" && isManager && <MembersTab client={client} signer={signer} slug={slug} profileLookup={profileLookup} />}
       {tab === "channels" && (
-        <ChannelsTab client={client} signer={signer} slug={slug} workspaceRole={workspaceRole} />
+        <ChannelsTab
+          client={client}
+          signer={signer}
+          slug={slug}
+          workspaceRole={workspaceRole}
+          profileLookup={profileLookup}
+        />
       )}
     </div>
   );
 }
 
 async function proofFor(slug: string, path: string, method: string, signer: Signer): Promise<string> {
-  const url = `${window.location.origin}/api/workspaces/${slug}${path}`;
-  return authProof(url, method, signer);
+  return authProof(api.workspaceProofUrl(slug, path), method, signer);
 }
 
 function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>) {
@@ -175,11 +188,16 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
   );
 }
 
-function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; signer: Signer; slug: string }>) {
+function MembersTab({
+  client,
+  signer,
+  slug,
+  profileLookup,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; profileLookup: ProfileLookup }>) {
   const [members, setMembers] = useState<WorkspaceMemberOut[] | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
 
   const reload = useCallback(async () => {
     const proof = await proofFor(slug, "/members", "GET", signer);
@@ -226,7 +244,7 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
     }
   };
 
-  if (viewing) return <MemberProfile client={client} pubkey={viewing} onClose={() => setViewing(null)} />;
+  if (viewing) return <MemberProfile profileLookup={profileLookup} pubkey={viewing} onClose={() => setViewing(null)} />;
 
   return (
     <div className="stack" data-testid="members-tab">
@@ -257,7 +275,8 @@ function ChannelsTab({
   signer,
   slug,
   workspaceRole,
-}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string }>) {
+  profileLookup,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; workspaceRole: string; profileLookup: ProfileLookup }>) {
   const [channels, setChannels] = useState<ChannelOut[] | null>(null);
   const [name, setName] = useState("");
   const [about, setAbout] = useState("");
@@ -338,7 +357,7 @@ function ChannelsTab({
           </li>
         ))}
       </ul>
-      {managing && <ChannelMembersEditor client={client} signer={signer} slug={slug} channelId={managing} />}
+      {managing && <ChannelMembersEditor client={client} signer={signer} slug={slug} channelId={managing} profileLookup={profileLookup} />}
     </div>
   );
 }
@@ -348,11 +367,12 @@ function ChannelMembersEditor({
   signer,
   slug,
   channelId,
-}: Readonly<{ client: RelayClient; signer: Signer; slug: string; channelId: string }>) {
+  profileLookup,
+}: Readonly<{ client: RelayClient; signer: Signer; slug: string; channelId: string; profileLookup: ProfileLookup }>) {
   const [members, setMembers] = useState<{ pubkey: string; role: string }[] | null>(null);
   const [newPubkey, setNewPubkey] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
 
   const reload = useCallback(async () => {
     const proof = await proofFor(slug, `/channels/${channelId}/members`, "GET", signer);

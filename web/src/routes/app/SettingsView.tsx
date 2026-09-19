@@ -3,11 +3,11 @@ import { useState } from "react";
 import { Icon } from "../../components/icons/Icon";
 import type { Appearance } from "../../lib/appearance";
 import type { SettingsSection } from "../../lib/sidebar";
-import type { RelayClient } from "../../lib/relay";
 import { FEEDBACK_URL } from "../../lib/settingsProfile";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { IosInstallHint } from "./IosInstallHint";
 import { ProfileSettings } from "./ProfileSettings";
+import type { ProfileLookup } from "./useProfiles";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: "pencil" | "user"; description: string }[] = [
   { id: "appearance", label: "Appearance", icon: "pencil", description: "How Studio looks on this device." },
@@ -18,7 +18,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: "pencil" | "user"; d
  * chosen section's header and content on the right. Only the MVP sections exist. */
 export function SettingsView({
   initialSection = "appearance",
-  client,
+  profileLookup,
   pubkey,
   user,
   appearance,
@@ -28,7 +28,7 @@ export function SettingsView({
 }: Readonly<{
   /** Where it opens: Profile, from the account menu (#148). */
   initialSection?: SettingsSection;
-  client: RelayClient;
+  profileLookup: ProfileLookup;
   pubkey: string;
   /** The Firebase session behind the Key Backup row, when there is one (#150). */
   user: User | null;
@@ -78,7 +78,7 @@ export function SettingsView({
           )}
           {section === "profile" && (
             <ProfileSettings
-              client={client}
+              profileLookup={profileLookup}
               pubkey={pubkey}
               user={user}
               onSignOut={onSignOut}
