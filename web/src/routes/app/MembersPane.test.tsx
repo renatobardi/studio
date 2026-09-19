@@ -7,7 +7,7 @@ import { MembersPane } from "./MembersPane";
 const client = { subscribe: () => () => {} } as unknown as RelayClient;
 const signer = {} as Signer;
 
-const render = (memberPubkeys: string[], overlay = false) =>
+const render = (memberPubkeys: string[], overlay = false, workspaceMembersError: string | null = null) =>
   renderToStaticMarkup(
     <MembersPane
       client={client}
@@ -17,6 +17,7 @@ const render = (memberPubkeys: string[], overlay = false) =>
       memberPubkeys={memberPubkeys}
       channelAdmins={[]}
       workspaceMembers={[]}
+      workspaceMembersError={workspaceMembersError}
       canManage={false}
       overlay={overlay}
       onClose={() => {}}
@@ -38,5 +39,12 @@ describe("MembersPane", () => {
   test("floats over the timeline only as an overlay", () => {
     expect(render([], true)).toContain("side-pane side-pane-overlay");
     expect(render([], false)).toContain('class="side-pane"');
+  });
+
+  test("says so when the Workspace Members could not be read, instead of labelling everyone Member (#197)", () => {
+    const error = "Couldn't load the Workspace's members. Check your connection.";
+    const html = render(["aa".padEnd(64, "a")], false, error);
+    expect(html).toContain(`<div class="error-banner">${error.replaceAll("'", "&#x27;")}</div>`);
+    expect(render(["aa".padEnd(64, "a")])).not.toContain("error-banner");
   });
 });

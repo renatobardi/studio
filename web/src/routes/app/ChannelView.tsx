@@ -25,6 +25,7 @@ export function ChannelView({
   opened,
   workspace,
   workspaceMembers,
+  workspaceMembersError,
   threadView,
 }: Readonly<{
   client: RelayClient;
@@ -37,6 +38,7 @@ export function ChannelView({
    * whether they may be managed, and its media_url is where attachments go. */
   workspace: WorkspaceOut;
   workspaceMembers: WorkspaceMemberOut[];
+  workspaceMembersError: string | null;
   /** Settings › Appearance › Thread view (#151). */
   threadView: ThreadView;
 }>) {
@@ -149,6 +151,7 @@ export function ChannelView({
             memberPubkeys={memberPubkeys ?? []}
             channelAdmins={channelAdmins}
             workspaceMembers={workspaceMembers}
+            workspaceMembersError={workspaceMembersError}
             canManage={manageableChannels(workspace.role, [channel]).length > 0}
             overlay={layout.membersOverlay}
             onClose={() => setSidePane(null)}

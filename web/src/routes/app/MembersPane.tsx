@@ -24,6 +24,7 @@ export function MembersPane({
   memberPubkeys,
   channelAdmins,
   workspaceMembers,
+  workspaceMembersError,
   canManage,
   overlay = false,
   onClose,
@@ -35,6 +36,9 @@ export function MembersPane({
   memberPubkeys: string[];
   channelAdmins: string[];
   workspaceMembers: WorkspaceMemberOut[];
+  /** Why the Workspace list could not be read: without it every role falls back to Member and
+   * Agents are not told apart, so the pane has to say so (#197). */
+  workspaceMembersError: string | null;
   canManage: boolean;
   overlay?: boolean;
   onClose: () => void;
@@ -80,6 +84,7 @@ export function MembersPane({
             </div>
           )}
           <div className="members-pane-scroll">
+            {workspaceMembersError && <div className="error-banner">{workspaceMembersError}</div>}
             {search.error && <div className="error-banner">{search.error}</div>}
             {listing.mode === "candidates" ? (
               <MemberCandidates candidates={listing.candidates} profiles={profiles} onAdd={(pubkey) => void add(pubkey)} />
