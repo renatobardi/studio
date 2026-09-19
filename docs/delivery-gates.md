@@ -65,7 +65,8 @@ it. Issue #51.
    key. Nothing there is real data, and a studio-test re-seeded from scratch
    gets it all back on the next deploy. No other flow may write to that
    Account: its inbox has to stay within one page of gift wraps, or the app
-   opens the Direct Message on its last day only (#231). Flow 10 (`visual.spec.ts`) compares preview.html
+   opens the Direct Message on its last day only (#231). Flow 10
+   (`visual.spec.ts`) compares preview.html
    against committed baselines and runs only where a dev server exists —
    locally, and in CI's `visual` job (see "The visual gate") — never in CD:
    the production build has no preview page, and a baseline is accepted by a
@@ -212,7 +213,8 @@ The smoke signs in as five Firebase password Accounts in the `studio-oute`
 project: `STUDIO_TEST_EMAIL`, `STUDIO_TEST_EMAIL_2`,
 `STUDIO_TEST_EXTENSION_EMAIL`, `STUDIO_TEST_FIXTURES_EMAIL` (flow 11's, with
 its own `STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE`) and
-`STUDIO_TEST_ONBOARDING_EMAIL`, each with its `*_PASSWORD`. Every value lives in two places that must agree:
+`STUDIO_TEST_ONBOARDING_EMAIL`, each with its `*_PASSWORD`. Every value
+lives in two places that must agree:
 
 - **GitHub secrets**, which Playwright signs in with. The extension pair is a
   repository secret; every other pair, and the fixtures passphrase, are

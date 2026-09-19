@@ -49,6 +49,14 @@ const nip98Proof = (secretKey: Uint8Array, url: string, method: string) =>
 const nip98 = (secretKey: Uint8Array, url: string, method: string) =>
   `Nostr ${Buffer.from(JSON.stringify(nip98Proof(secretKey, url, method))).toString("base64")}`;
 
+class HttpError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 const apiUrl = (path: string) => `${webUrl}/api${path}`;
 
 async function call<T>(path: string, method: string, authorization: string | ((url: string) => string), body?: unknown): Promise<T> {
@@ -61,7 +69,8 @@ async function call<T>(path: string, method: string, authorization: string | ((u
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${method} ${path} failed: ${response.status} ${await response.text()}`);
+  // Status and path only: CD's log is public, and an error body is the API's to word.
+  if (!response.ok) throw new HttpError(`${method} ${path} failed: ${response.status}`, response.status);
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
@@ -75,7 +84,8 @@ async function ensureFixturesAccount(secretKey: Uint8Array): Promise<void> {
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env("STUDIO_FIREBASE_API_KEY")}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      // As the app signs in: a web API key may be restricted to the app's own referrer.
+      headers: { "content-type": "application/json", Referer: `${webUrl}/` },
       body: JSON.stringify({
         email: env("STUDIO_TEST_FIXTURES_EMAIL"),
         password: env("STUDIO_TEST_FIXTURES_PASSWORD"),
@@ -97,7 +107,10 @@ async function ensureFixturesAccount(secretKey: Uint8Array): Promise<void> {
 
   const nsec = nsecFromSecretKey(secretKey);
   const passphrase = env("STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE");
-  const stored = await call<{ blob_base64: string }>("/account/key-backup", "GET", bearer).catch(() => null);
+  const stored = await call<{ blob_base64: string }>("/account/key-backup", "GET", bearer).catch((error: unknown) => {
+    if (error instanceof HttpError && error.status === 404) return null;
+    throw error;
+  });
   const opens = stored && (await decryptBackup(Buffer.from(stored.blob_base64, "base64"), passphrase).catch(() => null));
   if (opens === nsec) return;
   const blob = await encryptBackup(nsec, passphrase);
@@ -118,6 +131,8 @@ function signerOf(secretKey: Uint8Array): Signer {
 async function connectAs(relayUrl: string, secretKey: Uint8Array): Promise<Relay> {
   const sign = async (template: EventTemplate) => finalizeEvent(template, secretKey);
   const relay = new Relay(relayUrl);
+  // Answers the challenge as soon as it arrives; auth() below only waits for that same answer
+  // (nostr-tools keeps one), and throws until the challenge is in.
   relay.onauth = sign;
   await relay.connect();
   for (let attempt = 0; ; attempt++) {
@@ -131,14 +146,23 @@ async function connectAs(relayUrl: string, secretKey: Uint8Array): Promise<Relay
   }
 }
 
+/** Everything the relay holds for `filters`, up to its EOSE. A short answer would read as "missing"
+ * and publish a second copy, so a subscription the relay closes, or one it never finishes, fails
+ * the run instead. */
 function query(relay: Relay, filters: Filter[]): Promise<VerifiedEvent[]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const events: VerifiedEvent[] = [];
+    let done = false;
     const subscription = relay.subscribe(filters, {
+      eoseTimeout: 60_000,
       onevent: (event) => events.push(event as VerifiedEvent),
       oneose: () => {
+        done = true;
         subscription.close();
         resolve(events);
+      },
+      onclose: (reason) => {
+        if (!done) reject(new Error(`the relay closed a query before its end: ${reason}`));
       },
     });
   });
@@ -216,9 +240,11 @@ async function main(): Promise<void> {
   const rootTags = (upper: boolean) => [
     [upper ? "E" : "e", root.id], [upper ? "K" : "k", "9"], [upper ? "P" : "p", root.pubkey],
   ];
-  for (const line of CHANNEL_SCRIPT.thread.replies) {
+  // A second apart, so the thread reads in the script's order rather than a tie-break's.
+  for (const [index, line] of CHANNEL_SCRIPT.thread.replies.entries()) {
     if (findReply(existing, root.id, cast[line.from], line.text)) continue;
-    await publish(line.from, { kind: 1111, tags: [h, ...rootTags(true), ...rootTags(false)], content: line.text, created_at: now() });
+    const createdAt = now() - CHANNEL_SCRIPT.thread.replies.length + index;
+    await publish(line.from, { kind: 1111, tags: [h, ...rootTags(true), ...rootTags(false)], content: line.text, created_at: createdAt });
     published.replies++;
   }
   for (const reaction of CHANNEL_SCRIPT.reactions) {
@@ -259,7 +285,8 @@ async function main(): Promise<void> {
   if (found !== expected) throw new Error(`the fixtures Channel holds ${found} of ${expected} seeded events`);
   if (unread > 0) throw new Error(`${unread} Direct Message lines are missing from the fixtures Identity's newest page`);
 
-  console.log(JSON.stringify({ workspace: slug, channel: FIXTURE_CHANNEL, channelId: channel.id, published }));
+  // No slug: it is a secret, and the manual run has no log masking.
+  console.log(JSON.stringify({ channel: FIXTURE_CHANNEL, published }));
 }
 
 await main();

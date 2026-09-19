@@ -160,7 +160,7 @@ jobs:
           # changed input is a bind-mounted file (the Caddyfile).
           on_host "set -eu; cd /opt/app; git fetch --quiet origin main; git checkout --force --detach $DEPLOY_SHA; docker compose up -d --build; docker compose restart caddy"
 
-          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r"')
+          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r')
           if [[ "$running" != "$DEPLOY_SHA" ]]; then
             echo "::error::studio-test is running $running, expected $DEPLOY_SHA"
             exit 1
@@ -265,12 +265,15 @@ jobs:
       - name: Upload screenshots (failures, and flow 11's visual captures)
         # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
         # the typed characters a trace.zip would record. See git history for why trace.zip
-        # itself must never be uploaded from this public repo's CI.
+        # itself must never be uploaded from this public repo's CI. The one other file is
+        # flow 11's manifest.json: which SHA, URL and Workspace the captures are of (#157).
         # always(): flow 11 writes its captures on a green run too.
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: playwright-screenshots
-          path: web/test-results/**/*.png
+          path: |
+            web/test-results/**/*.png
+            web/test-results/visual-live/manifest.json
           retention-days: 3
           if-no-files-found: ignore
