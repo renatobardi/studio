@@ -26,11 +26,14 @@ describe("DM paging filters", () => {
     expect(liveDmFilters(ME)).toEqual([{ kinds: [1059], "#p": [ME], limit: DM_PAGE_SIZE }]);
   });
 
-  test("an older page reaches below the oldest gift wrap paged in, past the wraps replayed at that second", () => {
+  test("an older page reaches below the oldest gift wrap paged in, past every wrap already held there", () => {
+    // `until` is inclusive and a live wrap is backdated (NIP-59), so the page replays the two
+    // held at the cursor second and the one below it: all three are what `isLastDmPage`
+    // discounts, so all three have to ride on top of the limit.
     const paged = [wrap("a", 500), wrap("b", 300)];
     const held = [...paged, wrap("c", 300), wrap("live", 100)];
     expect(olderDmFilters(ME, paged, held)).toEqual([
-      { kinds: [1059], "#p": [ME], until: 300, limit: DM_PAGE_SIZE + 2 },
+      { kinds: [1059], "#p": [ME], until: 300, limit: DM_PAGE_SIZE + 3 },
     ]);
   });
 

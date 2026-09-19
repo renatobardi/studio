@@ -26,8 +26,14 @@ export function liveDmFilters(ownPubkey: string): Filter[] {
  * The next page of older gift wraps, paged by the wrap's created_at — the rumor's is only
  * readable after unwrapping. The cursor is the oldest wrap a page brought: one that arrived live
  * is backdated by up to two days, and paging from it would skip every wrap in between. `until` is
- * inclusive, so the limit carries every wrap held at the cursor second on top of a page, as
- * `olderMessagesFilters` does for a Channel.
+ * inclusive, so the limit carries every wrap already held at or below the cursor on top of a
+ * page — the same wraps `isLastDmPage` discounts from what comes back, which is what keeps a
+ * full page from reading short (#230). `olderMessagesFilters` does the same for a Channel, where
+ * nothing is backdated and the cursor second is all there can be.
+ *
+ * The relay clamps every limit at MAX_LIMIT=500 (api/src/studio_api/nostr/limits.py), so this
+ * holds while fewer than 400 held wraps sit at or below the cursor — a live wrap is backdated by
+ * at most two days, and a cursor that recent is still being paged past by the opening backfill.
  */
 export function olderDmFilters(
   ownPubkey: string,
@@ -36,13 +42,14 @@ export function olderDmFilters(
 ): Filter[] {
   const oldest = oldestCreatedAt([...paged]);
   if (oldest === null) return [];
-  const knownAtCursor = held.filter((wrap) => wrap.created_at === oldest).length;
-  return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], until: oldest, limit: DM_PAGE_SIZE + knownAtCursor }];
+  const knownBelowCursor = held.filter((wrap) => wrap.created_at <= oldest).length;
+  return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], until: oldest, limit: DM_PAGE_SIZE + knownBelowCursor }];
 }
 
 /**
- * Whether an older page proves nothing older is left. It asked for a page's worth past the wraps
- * replayed at the cursor second, so fewer unseen ones than that means the relay ran out.
+ * Whether an older page proves nothing older is left. It asked for a page's worth past every
+ * wrap already held at or below the cursor, so fewer unseen ones than that means the relay ran
+ * out.
  */
 export function isLastDmPage(knownIds: ReadonlySet<string>, page: readonly VerifiedEvent[]): boolean {
   return page.filter((wrap) => !knownIds.has(wrap.id)).length < DM_PAGE_SIZE;
