@@ -63,6 +63,7 @@ export function directMessages({
   members,
   selectedPeerPubkeys,
   readState,
+  completeFrom,
   nameOf,
 }: {
   rumors: Rumor[];
@@ -71,13 +72,20 @@ export function directMessages({
   selectedPeerPubkeys: string[] | null;
   /** Null until the stored marks are read back — until then nothing is counted unread. */
   readState: DmReadState | null;
+  /** Where the history held is complete (#185): below it a Message may have unread siblings not
+   * paged in yet, so it is listed but never counted. */
+  completeFrom: number;
   nameOf: (pubkey: string) => string;
 }): DirectMessages {
   const memberPubkeys = members.map((member) => member.pubkey);
   if (myPubkey === null) return { rows: [], selectedKey: null, selected: null, namedPubkeys: memberPubkeys };
 
   const conversations = groupConversations(rumors, myPubkey);
-  const counts = readState ? unreadConversationCounts(conversations, readState, myPubkey) : new Map<string, number>();
+  const complete = conversations.map(({ key, messages }) => ({
+    key,
+    messages: messages.filter((message) => message.created_at >= completeFrom),
+  }));
+  const counts = readState ? unreadConversationCounts(complete, readState, myPubkey) : new Map<string, number>();
   const agents = new Set(members.filter((member) => member.role === "agent").map((member) => member.pubkey));
   const selectedKey = selectedPeerPubkeys ? conversationKey([...selectedPeerPubkeys, myPubkey]) : null;
 

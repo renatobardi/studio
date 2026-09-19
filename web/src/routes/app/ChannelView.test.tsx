@@ -19,6 +19,7 @@ const render = (channel: ChannelOut) =>
       workspaceMembers={[]}
       workspaceMembersError={null}
       threadView="split"
+      profileLookup={{ profiles: new Map(), ensure: () => {} }}
     />,
   );
 

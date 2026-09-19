@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
 import { buildDmImetaTag } from "../../lib/dmMedia";
+import { DM_SHOWN_STEP } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { ConversationView } from "./ConversationView";
@@ -12,7 +13,11 @@ const ME = "1".padEnd(64, "a");
 const ANA = "2".padEnd(64, "b");
 const BRUNO = "3".padEnd(64, "c");
 
-const render = (peerPubkeys: string[], profiles: Map<string, Profile>) =>
+const render = (
+  peerPubkeys: string[],
+  profiles: Map<string, Profile>,
+  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean } = {},
+) =>
   renderToStaticMarkup(
     <ConversationView
       client={{} as RelayClient}
@@ -20,10 +25,22 @@ const render = (peerPubkeys: string[], profiles: Map<string, Profile>) =>
       peerPubkeys={peerPubkeys}
       signer={{} as Signer}
       mediaUrl="https://media.example"
-      messages={[] as Rumor[]}
+      messages={history.messages ?? []}
+      completeFrom={history.completeFrom ?? -Infinity}
+      hasMore={history.hasMore ?? false}
+      onLoadOlder={() => {}}
       profiles={profiles}
     />,
   );
+
+const text = (id: string, createdAt: number): Rumor => ({
+  id,
+  pubkey: ANA,
+  created_at: createdAt,
+  kind: 14,
+  tags: [],
+  content: `text ${id}.`,
+});
 
 const named = (pubkey: string, name: string) => new Map([[pubkey, { name } as Profile]]);
 
@@ -80,6 +97,9 @@ describe("ConversationView", () => {
         signer={{} as Signer}
         mediaUrl="https://media.example"
         messages={[photo("o".repeat(64), 1), photo("n".repeat(64), 2)]}
+        completeFrom={-Infinity}
+        hasMore={false}
+        onLoadOlder={() => {}}
         profiles={named(ANA, "Ana Petrova")}
       />,
     );
@@ -87,5 +107,31 @@ describe("ConversationView", () => {
 
     const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
     expect(priorityOf("n".repeat(64))).toBeGreaterThan(priorityOf("o".repeat(64)));
+  });
+
+  test("mounts only the newest step of the conversation, so older photos are not fetched (#185)", () => {
+    const messages = Array.from({ length: DM_SHOWN_STEP + 10 }, (_, i) => text(`m${i}`, i));
+    const html = render([ANA], named(ANA, "Ana Petrova"), { messages });
+    expect(html.match(/data-testid="dm-message"/g)).toHaveLength(DM_SHOWN_STEP);
+    expect(html).not.toContain("text m9.");
+    expect(html).toContain("text m10.");
+    expect(html).toContain("Load older messages");
+  });
+
+  test("leaves out Messages whose history is not complete yet, and offers to load it", () => {
+    const html = render([ANA], named(ANA, "Ana Petrova"), {
+      messages: [text("old", 10), text("new", 30)],
+      completeFrom: 20,
+      hasMore: true,
+    });
+    expect(html).not.toContain("text old.");
+    expect(html).toContain("text new.");
+    expect(html).toContain("Load older messages");
+  });
+
+  test("offers nothing older once all of it is on screen", () => {
+    expect(render([ANA], named(ANA, "Ana Petrova"), { messages: [text("only", 1)] })).not.toContain(
+      "Load older messages",
+    );
   });
 });

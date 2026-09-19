@@ -5,7 +5,7 @@ import type { Signer } from "../../lib/custody";
 import { NEW_PROFILE_FORM, profileFormReducer, profileFormSeed, saveProfile } from "../../lib/profileForm";
 import type { ConnectionState, RelayClient } from "../../lib/relay";
 import { Avatar } from "./Avatar";
-import { displayName, shortNpub, useProfiles, type Profile } from "./useProfiles";
+import { displayName, shortNpub, type Profile, type ProfileLookup } from "./useProfiles";
 
 /** The avatars onboarding offers — the only ones the MVP publishes (#150). */
 const EMOJIS = ["🌸", "🦊", "🐙", "🌊", "🔥", "🌙", "🍄", "🐝"];
@@ -23,6 +23,7 @@ export function ProfileScreen({
   pubkey,
   relayUrl,
   connectionState,
+  profileLookup,
   onClose,
 }: Readonly<{
   client: RelayClient;
@@ -30,9 +31,10 @@ export function ProfileScreen({
   pubkey: string;
   relayUrl: string;
   connectionState: ConnectionState;
+  profileLookup: ProfileLookup;
   onClose: () => void;
 }>) {
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
   return (
     <ProfileScreenBody
