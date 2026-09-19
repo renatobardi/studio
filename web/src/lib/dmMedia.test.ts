@@ -168,6 +168,21 @@ describe("fetchDmAttachmentObjectUrl", () => {
     restoreCaches();
   });
 
+  test("hands the queue's signal to the download, so a deadline or sign-out can abort it", async () => {
+    // #188: without it an aborted item freed its slot but kept the connection open.
+    stubCaches();
+    let seen: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input: string, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response(ciphertext.buffer as ArrayBuffer, { status: 200 });
+    }) as typeof fetch;
+    const signal = new AbortController().signal;
+
+    await fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", signerFor(generateIdentity().secretKey), signal);
+
+    expect(seen).toBe(signal);
+  });
+
   test("caches the ciphertext, never the decrypted photo", async () => {
     // ADR-0003: the plaintext of a Direct Message photo exists only in the page.
     // What gets kept for the next view is what the server handed over.

@@ -127,7 +127,7 @@ export function uploadBlob(
  * sha256, and returns an object URL — the caller must revokeObjectURL when done with it.
  * Served from this Identity's own media cache when it is already there (#6/#39), and
  * verified there too: a cache hit is an earlier download, not a more trusted one. */
-export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Signer): Promise<string> {
+export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Signer, signal?: AbortSignal): Promise<string> {
   const pubkey = await signer.getPublicKey();
   const cached = await readCachedBlob(pubkey, url);
   if (cached && sha256Hex(cached.bytes) === sha256) {
@@ -136,7 +136,7 @@ export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Si
 
   const epochAtFetchStart = mediaCacheEpoch();
   const authEvent = await buildBlossomAuthEvent("get", {}, signer);
-  const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
+  const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) }, signal });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
   const bytes = await response.arrayBuffer();
   const actual = sha256Hex(bytes);
