@@ -34,6 +34,9 @@ export class DmFeed {
   private readonly paged: VerifiedEvent[] = [];
   private readonly rumors = new Map<string, Rumor>();
   private hasMore = false;
+  /** Set once a page proved nothing older is left: starting again reads a full first page, and
+   * that says nothing about history a cursor has already walked past the end of. */
+  private exhausted = false;
   /** A page is in flight from its REQ until its wraps are unwrapped: until then the Messages it
    * brought are not in the snapshot, and asking again would fetch past them. */
   private loadingOlder = false;
@@ -75,7 +78,7 @@ export class DmFeed {
         // A reconnect re-issues the REQ: its EOSE is not a second first page.
         if (eosed) return;
         eosed = true;
-        this.hasMore = firstPageIds.size >= DM_PAGE_SIZE;
+        this.hasMore = !this.exhausted && firstPageIds.size >= DM_PAGE_SIZE;
         this.emit();
         if (run === this.run) this.backfill();
       },
@@ -114,7 +117,10 @@ export class DmFeed {
         this.closeOlder = null;
         void Promise.all(unwrapping).then(() => {
           if (run !== this.run) return;
-          if (isLastDmPage(knownIds, [...page.values()])) this.hasMore = false;
+          if (isLastDmPage(knownIds, [...page.values()])) {
+            this.hasMore = false;
+            this.exhausted = true;
+          }
           this.loadingOlder = false;
           this.emit();
           this.backfill();
