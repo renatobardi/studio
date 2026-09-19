@@ -53,9 +53,9 @@ export function AdminPane({
   );
 }
 
-async function proofFor(slug: string, path: string, method: string, signer: Signer): Promise<string> {
-  const url = `${window.location.origin}/api/workspaces/${slug}${path}`;
-  return authProof(url, method, signer);
+/** A proof for the Workspace's endpoint at `segments` — the same path `api` requests (#198). */
+async function proofFor(slug: string, segments: string[], method: string, signer: Signer): Promise<string> {
+  return authProof(api.proofUrl(api.apiPath("workspaces", slug, ...segments)), method, signer);
 }
 
 function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>) {
@@ -67,7 +67,7 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const proof = await proofFor(slug, "/invites", "GET", signer);
+    const proof = await proofFor(slug, ["invites"], "GET", signer);
     setInvites(await api.listInvites(slug, proof));
     setCopied(null);
   }, [slug, signer]);
@@ -96,7 +96,7 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
       return;
     }
     try {
-      const proof = await proofFor(slug, "/invites", "POST", signer);
+      const proof = await proofFor(slug, ["invites"], "POST", signer);
       await api.createInvite(slug, proof, { role, ...limits.body });
       setExpiresInDays("");
       setMaxUses("");
@@ -109,7 +109,7 @@ function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>
   const revoke = async (code: string) => {
     setError(null);
     try {
-      const proof = await proofFor(slug, `/invites/${code}`, "DELETE", signer);
+      const proof = await proofFor(slug, ["invites", code], "DELETE", signer);
       await api.revokeInvite(slug, code, proof);
       await reload();
     } catch {
@@ -182,7 +182,7 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
   const { profiles, ensure } = useProfiles(client);
 
   const reload = useCallback(async () => {
-    const proof = await proofFor(slug, "/members", "GET", signer);
+    const proof = await proofFor(slug, ["members"], "GET", signer);
     const list = await api.listWorkspaceMembers(slug, proof);
     setMembers(list);
     ensure(list.map((m) => m.pubkey));
@@ -207,7 +207,7 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
   const changeRole = async (pubkey: string, role: string) => {
     setError(null);
     try {
-      const proof = await proofFor(slug, `/members/${pubkey}`, "PATCH", signer);
+      const proof = await proofFor(slug, ["members", pubkey], "PATCH", signer);
       await api.setWorkspaceMemberRole(slug, pubkey, role, proof);
       await reload();
     } catch {
@@ -218,7 +218,7 @@ function MembersTab({ client, signer, slug }: Readonly<{ client: RelayClient; si
   const remove = async (pubkey: string) => {
     setError(null);
     try {
-      const proof = await proofFor(slug, `/members/${pubkey}`, "DELETE", signer);
+      const proof = await proofFor(slug, ["members", pubkey], "DELETE", signer);
       await api.removeWorkspaceMember(slug, pubkey, proof);
       await reload();
     } catch {
@@ -266,7 +266,7 @@ function ChannelsTab({
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const proof = await proofFor(slug, "/channels", "GET", signer);
+    const proof = await proofFor(slug, ["channels"], "GET", signer);
     setChannels(manageableChannels(workspaceRole, await api.listChannels(slug, proof)));
   }, [slug, signer, workspaceRole]);
 
@@ -295,7 +295,7 @@ function ChannelsTab({
     setError(null);
     if (!name.trim()) return;
     try {
-      const proof = await proofFor(slug, "/channels", "POST", signer);
+      const proof = await proofFor(slug, ["channels"], "POST", signer);
       await api.createChannel(slug, proof, { name, about, private: isPrivate });
       setName("");
       setAbout("");
@@ -355,7 +355,7 @@ function ChannelMembersEditor({
   const { profiles, ensure } = useProfiles(client);
 
   const reload = useCallback(async () => {
-    const proof = await proofFor(slug, `/channels/${channelId}/members`, "GET", signer);
+    const proof = await proofFor(slug, ["channels", channelId, "members"], "GET", signer);
     const list = await api.listChannelMembers(slug, channelId, proof);
     setMembers(list);
     ensure(list.map((m) => m.pubkey));
@@ -381,7 +381,7 @@ function ChannelMembersEditor({
     setError(null);
     if (!newPubkey.trim()) return;
     try {
-      const proof = await proofFor(slug, `/channels/${channelId}/members`, "POST", signer);
+      const proof = await proofFor(slug, ["channels", channelId, "members"], "POST", signer);
       await api.addChannelMember(slug, channelId, newPubkey.trim(), "member", proof);
       setNewPubkey("");
       await reload();
@@ -393,7 +393,7 @@ function ChannelMembersEditor({
   const remove = async (pubkey: string) => {
     setError(null);
     try {
-      const proof = await proofFor(slug, `/channels/${channelId}/members/${pubkey}`, "DELETE", signer);
+      const proof = await proofFor(slug, ["channels", channelId, "members", pubkey], "DELETE", signer);
       await api.removeChannelMember(slug, channelId, pubkey, proof);
       await reload();
     } catch {
