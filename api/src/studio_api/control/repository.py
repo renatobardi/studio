@@ -583,8 +583,10 @@ class ControlPlaneRepository:
                 f"{pubkey} must be a Workspace Member before joining a Channel"
             )
         workspace_sk = await self._workspace_signing_key(channel.workspace_slug)
+        current = await self.list_channel_members(channel_id)
+        was_admin = any(m.pubkey == pubkey and m.role == "admin" for m in current)
         members = [
-            *(m for m in await self.list_channel_members(channel_id) if m.pubkey != pubkey),
+            *(m for m in current if m.pubkey != pubkey),
             ChannelMember(channel_id=channel_id, pubkey=pubkey, role=role),
         ]
 
@@ -602,7 +604,9 @@ class ControlPlaneRepository:
             ),
             workspace_slug=channel.workspace_slug,
         )
-        if role == "admin":
+        # Promoting adds them to the admins projection; demoting (re-adding an
+        # admin as "member") has to take them out of it again (#186).
+        if role == "admin" or was_admin:
             admins = [m.pubkey for m in members if m.role == "admin"]
             _event_statement(
                 statements, params, "admins",
