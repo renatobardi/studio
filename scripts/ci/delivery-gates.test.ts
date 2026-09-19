@@ -16,6 +16,7 @@ type Step = {
   if?: string
   env?: Record<string, string>
   with?: Record<string, string>
+  'continue-on-error'?: boolean
 }
 type Job = {
   if?: string
@@ -99,6 +100,15 @@ describe('cd.yml', () => {
     const seed = at('bun tools/seed-fixtures.ts')
     expect(seed).toBeGreaterThan(at('studio_api.ensure_e2e_accounts'))
     expect(seed).toBeLessThan(at('bun run test:e2e'))
+  })
+
+  test('the smoke can fail deploy-dev, the job Promote takes as proof (#193)', () => {
+    // promote.yml accepts a SHA on a successful deploy-dev alone. A smoke moved to
+    // another job, or allowed to fail, would let a red studio-test reach production.
+    const smoke = deploy.steps.find((step) => step.run === 'bun run test:e2e')
+    expect(smoke).toBeDefined()
+    expect(smoke?.['continue-on-error']).toBeUndefined()
+    expect(deploy['continue-on-error']).toBeUndefined()
   })
 
   test('lets the token read the repository, and only the gate read CI runs (#202)', () => {
