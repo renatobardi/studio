@@ -132,7 +132,7 @@ async function downloadCiphertext(url: string, sha256: string, pubkey: string, s
   if (sha256Hex(bytes) !== sha256) {
     throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
   }
-  if (mediaCacheEpoch() === epochAtFetchStart) await cacheBlob(pubkey, url, bytes, "application/octet-stream");
+  await cacheBlob(pubkey, url, bytes, "application/octet-stream", epochAtFetchStart);
   return bytes;
 }
 

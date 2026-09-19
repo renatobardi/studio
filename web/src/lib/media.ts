@@ -142,6 +142,6 @@ export async function fetchBlobObjectUrl(url: string, sha256: string, signer: Si
   const actual = sha256Hex(bytes);
   if (actual !== sha256) throw new MediaError("hash-mismatch", "The downloaded image doesn't match — try reloading.");
   const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-  if (mediaCacheEpoch() === epochAtFetchStart) await cacheBlob(pubkey, url, bytes, contentType);
+  await cacheBlob(pubkey, url, bytes, contentType, epochAtFetchStart);
   return URL.createObjectURL(new Blob([bytes], { type: contentType }));
 }

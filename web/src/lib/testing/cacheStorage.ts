@@ -10,11 +10,15 @@ interface StubEntry {
 export interface CacheStorageStub {
   stores: Record<string, Record<string, StubEntry>>;
   failDeleteOf: (name: string) => void;
+  /** Holds every `open` until the returned release is called — the window a
+   * prune can run in while an open is still on its way. */
+  holdOpens: () => () => void;
 }
 
 export function stubCaches(): CacheStorageStub {
   const stores: Record<string, Record<string, StubEntry>> = {};
   const failing = new Set<string>();
+  let held: Promise<void> = Promise.resolve();
   const api = {
     async keys() {
       return Object.keys(stores);
@@ -29,6 +33,7 @@ export function stubCaches(): CacheStorageStub {
       return existed;
     },
     async open(name: string) {
+      await held;
       stores[name] ??= {};
       const store = stores[name];
       return {
@@ -46,7 +51,15 @@ export function stubCaches(): CacheStorageStub {
   };
   // @ts-expect-error minimal CacheStorage stub
   globalThis.caches = api;
-  return { stores, failDeleteOf: (name: string) => failing.add(name) };
+  return {
+    stores,
+    failDeleteOf: (name: string) => failing.add(name),
+    holdOpens: () => {
+      let release!: () => void;
+      held = new Promise((resolve) => (release = resolve));
+      return release;
+    },
+  };
 }
 
 export function restoreCaches(): void {

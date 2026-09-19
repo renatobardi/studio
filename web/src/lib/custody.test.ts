@@ -24,7 +24,7 @@ import {
   storeDmReadAt,
 } from "./custody";
 import { mediaDownloads } from "./mediaDownloads";
-import { cacheBlob, mediaCacheName } from "./mediaCache";
+import { cacheBlob, mediaCacheEpoch, mediaCacheName } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 
 describe("hasNip07", () => {
@@ -137,11 +137,11 @@ describe("signing out", () => {
     // creates it. Nothing of a signed-out Identity may be left here (#39).
     const pubkey = "a".repeat(64);
     const { stores } = stubCaches();
-    await cacheBlob(pubkey, "https://studio.test/media/" + "f".repeat(64), new Uint8Array([1]).buffer as ArrayBuffer, "image/png");
+    await cacheBlob(pubkey, "https://studio.test/media/" + "f".repeat(64), new Uint8Array([1]).buffer as ArrayBuffer, "image/png", mediaCacheEpoch());
     let started = false;
     const queued = mediaDownloads.run(0, async () => {
       started = true;
-      await cacheBlob(pubkey, "https://studio.test/media/" + "e".repeat(64), new Uint8Array([2]).buffer as ArrayBuffer, "image/png");
+      await cacheBlob(pubkey, "https://studio.test/media/" + "e".repeat(64), new Uint8Array([2]).buffer as ArrayBuffer, "image/png", mediaCacheEpoch());
     });
     queued.catch(() => {});
 
