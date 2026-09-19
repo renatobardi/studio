@@ -90,6 +90,17 @@ every merge, the fix's own included, unless the check learns an escape for
 fixes and reverts — and repository admins, who merge here, bypass it anyway.
 Revisit if a merge over a red CD happens again.
 
+## The workflow token
+
+Each workflow says what its `GITHUB_TOKEN` may do, instead of inheriting the
+repository default (#202). `ci.yml` grants `contents: read` and no job raises
+it: it runs a pull request's own code, artifacts travel on the runner's own
+token, and the Sonar scan authenticates with `SONAR_TOKEN`. `cd.yml` grants
+`contents: read`, and only its `gate` adds `actions: read` to ask for CI's
+conclusion — `deploy-dev`, which holds `studio-test`'s SSH key, gets nothing
+more. `promote.yml` grants nothing at the top; its `gate` reads the Actions
+API and `deploy-prd` gets nothing. The `gates` job asserts all three.
+
 ## Required checks on `main`
 
 The ruleset requires `test`, `web`, `visual`, `gates` and `sonar`,

@@ -39,6 +39,11 @@ jobs:
        (github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-26.04
+    # CI's conclusion comes from the Actions API. Granted here, not at the top,
+    # so deploy-dev — which holds studio-test's SSH key — does not get it (#202).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
       stale: ${{ steps.pick.outputs.stale }}
