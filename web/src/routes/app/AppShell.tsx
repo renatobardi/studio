@@ -91,7 +91,9 @@ export function AppShell({
   /** Theme, density and font scale live here so the sidebar's theme toggle and
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
-  const { profiles, ensure: ensureProfiles } = useProfiles(client);
+  /** The one kind 0 lookup: every pane below reads it rather than opening its own (#195). */
+  const profileLookup = useProfiles(client);
+  const { profiles, ensure: ensureProfiles } = profileLookup;
   /** A choice made before the stored value came back wins over it. */
   const appearanceTouched = useRef(false);
   /** Direct messages live in the sidebar (#142), so they are read from the moment the app opens. */
@@ -351,6 +353,7 @@ export function AppShell({
                 workspace={workspace}
                 workspaceMembers={members}
                 threadView={appearance.threadView}
+                profileLookup={profileLookup}
               />
             )}
             {channels?.length === 0 && (
@@ -386,6 +389,7 @@ export function AppShell({
               slug={workspace.slug}
               workspaceRole={workspace.role}
               initialTab={navigation.adminTab}
+              profileLookup={profileLookup}
             />
           </div>
         )}
@@ -396,6 +400,7 @@ export function AppShell({
             pubkey={ownPubkey}
             relayUrl={workspace.relay_url}
             connectionState={connectionState}
+            profileLookup={profileLookup}
             onClose={() => navigate({ mode: "channels" })}
           />
         )}
@@ -403,7 +408,7 @@ export function AppShell({
           <SettingsView
             key={navigation.settingsVisit}
             initialSection={navigation.settingsSection}
-            client={client}
+            profileLookup={profileLookup}
             pubkey={ownPubkey}
             user={user}
             appearance={appearance}
