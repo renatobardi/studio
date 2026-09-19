@@ -1,6 +1,7 @@
 import type { VerifiedEvent } from "nostr-tools";
 import type { FeedClient } from "./channelFeed";
-import { oldestCreatedAt } from "./channelPagination";
+import { PAGE_DEADLINE_MS, oldestCreatedAt } from "./channelPagination";
+import { type Timer, timer } from "./clock";
 import {
   DM_PAGE_SIZE,
   completeFrom,
@@ -42,6 +43,8 @@ export class DmFeed {
   private loadingOlder = false;
   private closeLive: (() => void) | null = null;
   private closeOlder: (() => void) | null = null;
+  /** Cancels the in-flight page's deadline — nothing is owed once it has answered. */
+  private cancelDeadline: (() => void) | null = null;
   /** Bumped by every start/stop: a page that finishes unwrapping for an earlier run is dropped. */
   private run = 0;
   private readonly listeners = new Set<() => void>();
@@ -51,12 +54,20 @@ export class DmFeed {
   private readonly ownPubkey: string;
   private readonly unwrap: (wrap: VerifiedEvent) => Promise<Rumor>;
   private readonly now: () => number;
+  private readonly schedule: Timer;
 
-  constructor(client: FeedClient, ownPubkey: string, unwrap: (wrap: VerifiedEvent) => Promise<Rumor>, now: () => number) {
+  constructor(
+    client: FeedClient,
+    ownPubkey: string,
+    unwrap: (wrap: VerifiedEvent) => Promise<Rumor>,
+    now: () => number,
+    schedule: Timer = timer,
+  ) {
     this.client = client;
     this.ownPubkey = ownPubkey;
     this.unwrap = unwrap;
     this.now = now;
+    this.schedule = schedule;
   }
 
   /** Opens the subscription; the returned function closes it and any page in flight. */
@@ -87,7 +98,8 @@ export class DmFeed {
       this.run += 1;
       this.closeLive?.();
       this.closeOlder?.();
-      this.closeLive = this.closeOlder = null;
+      this.cancelDeadline?.();
+      this.closeLive = this.closeOlder = this.cancelDeadline = null;
       this.loadingOlder = false;
     };
   }
@@ -114,7 +126,8 @@ export class DmFeed {
         if (finished) return;
         finished = true;
         this.closeOlder?.();
-        this.closeOlder = null;
+        this.cancelDeadline?.();
+        this.closeOlder = this.cancelDeadline = null;
         void Promise.all(unwrapping).then(() => {
           if (run !== this.run) return;
           if (isLastDmPage(knownIds, [...page.values()])) {
@@ -128,8 +141,23 @@ export class DmFeed {
       },
     });
     // A relay that answers within subscribe() has already finished the page.
-    if (finished) unsubscribe();
-    else this.closeOlder = unsubscribe;
+    if (finished) {
+      unsubscribe();
+      return;
+    }
+    this.closeOlder = unsubscribe;
+    // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
+    // did bring stays, and how much history is left is still unknown (#232). The deadline covers
+    // the REQ, which is what a reconnect drops; unwrapping afterwards is the signer's own work,
+    // and `apply` already swallows a wrap that refuses to open.
+    this.cancelDeadline = this.schedule(() => {
+      if (finished) return;
+      finished = true;
+      this.closeOlder?.();
+      this.closeOlder = this.cancelDeadline = null;
+      this.loadingOlder = false;
+      this.emit();
+    }, PAGE_DEADLINE_MS);
   };
 
   getSnapshot = (): DmSnapshot => {

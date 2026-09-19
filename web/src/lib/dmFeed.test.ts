@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { DmFeed } from "./dmFeed";
+import { PAGE_DEADLINE_MS } from "./channelPagination";
 import { DM_PAGE_SIZE, OPEN_WINDOW_SECONDS, WRAP_BACKDATE_SECONDS } from "./dmPagination";
 import type { Rumor } from "./nip17";
 import { FakeRelay } from "./testing/fakeRelay";
@@ -212,6 +213,30 @@ describe("DmFeed", () => {
   });
 });
 
+/** Timers the test moves by hand: a deadline is a rule, not a wait. */
+class FakeTimers {
+  private pending: { at: number; fn: () => void }[] = [];
+
+  schedule = (fn: () => void, ms: number): (() => void) => {
+    const entry = { at: ms, fn };
+    this.pending.push(entry);
+    return () => {
+      this.pending = this.pending.filter((candidate) => candidate !== entry);
+    };
+  };
+
+  get scheduled(): number {
+    return this.pending.length;
+  }
+
+  /** Runs whatever was scheduled for `ms` or sooner, and forgets it. */
+  fire(ms: number): void {
+    const due = this.pending.filter((entry) => entry.at <= ms);
+    this.pending = this.pending.filter((entry) => entry.at > ms);
+    for (const entry of due) entry.fn();
+  }
+}
+
 /** A relay that answers only when the test says so — the real one is a socket away. */
 class ManualRelay {
   readonly subscriptions: {
@@ -254,6 +279,57 @@ describe("DmFeed against a relay that answers later", () => {
     relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
     return { relay, feed, stop, release };
   }
+
+  test("a page that never answers frees the paging once its deadline passes", async () => {
+    // The relay dropped and came back without re-emitting this subscription's EOSE. Without a
+    // deadline `loadOlder` was a no-op for the rest of the session (#232).
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW, timers.schedule);
+    feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    await flush();
+    let emitted = 0;
+    feed.subscribe(() => {
+      emitted += 1;
+    });
+    feed.loadOlder();
+    expect(relay.subscriptions).toHaveLength(2);
+    timers.fire(PAGE_DEADLINE_MS);
+    await flush();
+    expect(emitted).toBeGreaterThan(0);
+    // An overrun says nothing about how much history is left.
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    feed.loadOlder();
+    expect(relay.subscriptions).toHaveLength(3);
+    expect(relay.subscriptions[1]!.open).toBe(false);
+  });
+
+  test("stopping takes the deadline with it", async () => {
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW, timers.schedule);
+    const stop = feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    await flush();
+    feed.loadOlder();
+    expect(timers.scheduled).toBe(1);
+    stop();
+    expect(timers.scheduled).toBe(0);
+  });
+
+  test("a page that answers in time leaves no deadline behind", async () => {
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW, timers.schedule);
+    feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    await flush();
+    feed.loadOlder();
+    relay.answer(1, history(DM_PAGE_SIZE, NOW - 400 * DAY, 60, "o"));
+    await flush();
+    expect(timers.scheduled).toBe(0);
+  });
 
   test("a page stays in flight until its wraps are unwrapped, so asking again waits for it", async () => {
     const { relay, feed, release } = opened();
