@@ -300,9 +300,13 @@ export function AppShell({
           selectedConversationKey: selectedKey,
         })}
         onSelect={(item) => {
-          if (item.channelId) selectChannel(item.channelId);
-          if (item.peerPubkeys) openConversation(item.peerPubkeys);
-          else navigate({ mode: item.mode });
+          if (item.peerPubkeys) {
+            openConversation(item.peerPubkeys);
+          } else {
+            // A Channel row picks the Channel and still has to switch to its mode.
+            if (item.channelId) selectChannel(item.channelId);
+            navigate({ mode: item.mode });
+          }
         }}
         onSelectMode={(next) => navigate({ mode: next })}
         onNewMessage={() => setPickingMember(true)}
