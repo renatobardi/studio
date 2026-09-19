@@ -24,6 +24,13 @@ describe("ownDisplayName", () => {
     );
   });
 
+  test("falls back to the short npub, like the rest of the UI, once the relay answered without a kind 0 (#196)", () => {
+    // `{}`: asked for and answered, nothing published — an Agent, or someone who skipped the name step.
+    const name = ownDisplayName(new Map<string, Profile>([[PUBKEY, {}]]), PUBKEY);
+    expect(name).toBe(`${npub.slice(0, 9)}…${npub.slice(-4)}`);
+    expect(name).not.toContain(PUBKEY.slice(0, 8));
+  });
+
   test("is a neutral placeholder until the own kind 0 arrives, or before the pubkey is known", () => {
     expect(ownDisplayName(new Map(), PUBKEY)).toBe("…");
     expect(ownDisplayName(new Map(), null)).toBe("…");

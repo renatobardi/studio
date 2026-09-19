@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { ProfileStore, type ProfileClient } from "./profileStore";
-import type { SubscriptionHandlers } from "./relay";
+import type { ConnectionState, SubscriptionHandlers } from "./relay";
 
 interface FakeSubscription {
   filters: Filter[];
@@ -9,23 +9,39 @@ interface FakeSubscription {
   closed: boolean;
 }
 
-function fakeClient(): { client: ProfileClient; subscriptions: FakeSubscription[] } {
+/** Stands in for `RelayClient`: a REQ goes out only while the connection is open — on open it
+ * re-issues each subscription's current filters once, as `resubscribeAll` does. */
+function fakeClient(initial: ConnectionState = "open") {
   const subscriptions: FakeSubscription[] = [];
-  const client: ProfileClient = {
-    subscribe(filters, handlers) {
+  const stateListeners = new Set<(state: ConnectionState) => void>();
+  let reqs = 0;
+  const client = {
+    state: initial,
+    onStateChange(listener: (state: ConnectionState) => void) {
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
+    },
+    subscribe(filters: Filter[], handlers: SubscriptionHandlers) {
       const sub: FakeSubscription = { filters, handlers, closed: false };
       subscriptions.push(sub);
+      if (client.state === "open") reqs += 1;
       const close = () => {
         sub.closed = true;
       };
       return Object.assign(close, {
         update(next: Filter[]) {
           sub.filters = next;
+          if (client.state === "open") reqs += 1;
         },
       });
     },
+  } satisfies ProfileClient;
+  const setState = (state: ConnectionState) => {
+    client.state = state;
+    for (const listener of stateListeners) listener(state);
+    if (state === "open") reqs += subscriptions.filter((sub) => !sub.closed).length;
   };
-  return { client, subscriptions };
+  return { client, subscriptions, setState, reqs: () => reqs };
 }
 
 function profileEvent(pubkey: string, content: string): VerifiedEvent {
@@ -129,5 +145,92 @@ describe("ProfileStore.close", () => {
 
     expect(subscriptions).toHaveLength(2);
     expect(subscriptions[1]!.filters).toEqual([{ kinds: [0], authors: ["a"] }]);
+  });
+});
+
+/** A relay that has nothing for an author says so only by ending the query (#196): the store
+ * records that answer, so "not published" can be told apart from "not heard back yet". */
+describe("ProfileStore answers", () => {
+  test("an author the relay answered without a kind 0 is known to have none", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a", "b"]);
+    subscriptions[0]!.handlers.onEvent(profileEvent("a", JSON.stringify({ name: "Ana" })));
+    expect(store.getSnapshot().has("b")).toBe(false);
+
+    subscriptions[0]!.handlers.onEose?.();
+
+    expect(store.getSnapshot().get("a")).toEqual({ name: "Ana" });
+    expect(store.getSnapshot().get("b")).toEqual({});
+  });
+
+  test("an EOSE answers only the authors of the REQ it ends", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    store.ensure(["b"]);
+
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().get("a")).toEqual({});
+    expect(store.getSnapshot().has("b")).toBe(false);
+
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().get("b")).toEqual({});
+  });
+
+  test("asked before the connection opens, the one REQ it then sends answers every author", () => {
+    // The shell asks for its own pubkey and the Members' before the relay has authenticated: the
+    // client sends a single REQ on open, so a single EOSE has to answer both batches.
+    const { client, subscriptions, setState } = fakeClient("connecting");
+    const store = new ProfileStore(client);
+    store.ensure(["members"]);
+    store.ensure(["own"]);
+    setState("open");
+    subscriptions[0]!.handlers.onEose?.();
+    expect([...store.getSnapshot().keys()].sort()).toEqual(["members", "own"]);
+  });
+
+  test("a REQ lost with a dropped connection is answered by the one the reconnect sends", () => {
+    const { client, subscriptions, setState } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    store.ensure(["b"]);
+    setState("reconnecting");
+    setState("open");
+    subscriptions[0]!.handlers.onEose?.();
+    expect([...store.getSnapshot().keys()].sort()).toEqual(["a", "b"]);
+  });
+
+  test("each EOSE still answers only its own REQ while the connection stays open", () => {
+    const { client, subscriptions, setState, reqs } = fakeClient("connecting");
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    setState("open");
+    store.ensure(["b"]);
+    expect(reqs()).toBe(2);
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().has("b")).toBe(false);
+  });
+
+  test("a closed store stops following the connection", () => {
+    const { client, subscriptions, setState } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    store.close();
+    setState("open");
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().size).toBe(0);
+  });
+
+  test("a kind 0 published later replaces the empty answer", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    let heard = 0;
+    store.subscribe(() => (heard += 1));
+    store.ensure(["a"]);
+    subscriptions[0]!.handlers.onEose?.();
+    subscriptions[0]!.handlers.onEvent(profileEvent("a", JSON.stringify({ name: "Ana" })));
+    expect(store.getSnapshot().get("a")).toEqual({ name: "Ana" });
+    expect(heard).toBe(2);
   });
 });
