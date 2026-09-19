@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -54,7 +54,7 @@ jobs:
             api/coverage/coverage.xml
 
       - name: Publish API coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: coverage-api
           path: api/coverage/coverage.xml
@@ -108,7 +108,7 @@ jobs:
         run: docker compose down -v
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -138,7 +138,7 @@ jobs:
         run: sed -i 's|^SF:|SF:web/|' web/coverage/lcov.info
 
       - name: Publish web coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: coverage-web
           path: web/coverage/lcov.info
@@ -153,7 +153,7 @@ jobs:
     # to draw those baselines — the Playwright image pinned there, not
     # setup-bun on the runner — so CI and the baselines share one Chromium and
     # one rasterisation. A diff above maxDiffPixelRatio fails the job.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -171,7 +171,7 @@ jobs:
 
       - name: Publish the reference comparison
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: reference-compare
           path: web/test-results/reference-compare/
@@ -184,7 +184,7 @@ jobs:
         # expected / actual / diff PNGs per failing screen — PNGs only, as in
         # cd.yml: a retry records trace.zip, which is not what this is for.
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: visual-diffs
           path: web/test-results/**/*.png
@@ -194,7 +194,7 @@ jobs:
     # deploys only CI-validated SHAs, and (issue #54) that docker-compose.yml
     # still carries everything a fresh server needs — rendered with the
     # runner's own `docker compose`, so nothing else to install.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -215,25 +215,25 @@ jobs:
     # blocks where it can be acted on, which is the pull request the ruleset
     # requires it on.
     needs: [test, web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           # Blame data: shallow history makes every line look new.
           fetch-depth: 0
 
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: coverage-api
           path: api/coverage
 
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: coverage-web
           path: web/coverage
 
       - name: Scan and wait for the quality gate
-        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io

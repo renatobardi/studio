@@ -38,7 +38,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.conclusion == 'success'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
       stale: ${{ steps.pick.outputs.stale }}
@@ -80,7 +80,7 @@ jobs:
     # Positive match: a skipped or errored gate yields an empty output, which
     # must never read as "fresh".
     if: needs.gate.outputs.stale == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: studio-test
     concurrency:
       group: cd-studio-test
@@ -239,7 +239,7 @@ jobs:
         # itself must never be uploaded from this public repo's CI.
         # always(): flow 11 writes its captures on a green run too.
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: playwright-screenshots
           path: web/test-results/**/*.png

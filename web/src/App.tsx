@@ -161,6 +161,9 @@ export function App() {
         if (myGen === bootGen.current) setView("auth");
       }
     });
+    // Subscribes once: setView is stable (useAppView), and applyResolved only reaches state
+    // setters and the bootGen ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (view === "loading") return null;
