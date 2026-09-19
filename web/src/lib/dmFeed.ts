@@ -59,13 +59,15 @@ export class DmFeed {
   /** Opens the subscription; the returned function closes it and any page in flight. */
   start(): () => void {
     const run = ++this.run;
-    let firstPage = 0;
+    // What this REQ answered, not what the feed had never seen: a second start over the wraps a
+    // first one already held would otherwise read an empty page and call the history exhausted.
+    const firstPageIds = new Set<string>();
     let eosed = false;
     this.closeLive = this.client.subscribe(liveDmFilters(this.ownPubkey), {
       onEvent: (wrap) => {
-        if (!eosed && !this.wraps.has(wrap.id)) {
-          firstPage += 1;
-          this.paged.push(wrap);
+        if (!eosed && !firstPageIds.has(wrap.id)) {
+          firstPageIds.add(wrap.id);
+          if (!this.wraps.has(wrap.id)) this.paged.push(wrap);
         }
         void this.apply(wrap);
       },
@@ -73,7 +75,7 @@ export class DmFeed {
         // A reconnect re-issues the REQ: its EOSE is not a second first page.
         if (eosed) return;
         eosed = true;
-        this.hasMore = firstPage >= DM_PAGE_SIZE;
+        this.hasMore = firstPageIds.size >= DM_PAGE_SIZE;
         this.emit();
         if (run === this.run) this.backfill();
       },

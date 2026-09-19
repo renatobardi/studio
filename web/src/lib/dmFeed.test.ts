@@ -139,6 +139,18 @@ describe("DmFeed", () => {
     expect(relay.openFilters).toEqual([]);
   });
 
+  test("starting again over the wraps already held still reads a full first page", async () => {
+    // React's StrictMode mounts the effect, tears it down and mounts it again (main.tsx): the
+    // second REQ replays the same page, and its size is what says there is history behind it.
+    const { feed, stop } = start(history(DM_PAGE_SIZE, NOW - 10 * DAY, 60));
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    stop();
+    feed.start();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+  });
+
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();
