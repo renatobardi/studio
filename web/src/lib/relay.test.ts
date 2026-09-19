@@ -10,7 +10,10 @@ class FakeWebSocket {
   sent: unknown[] = [];
   closed = false;
 
-  constructor(public url: string) {
+  url: string;
+
+  constructor(url: string) {
+    this.url = url;
     FakeWebSocket.instances.push(this);
   }
 
@@ -303,8 +306,8 @@ describe("RelayClient reconnection", () => {
 describe("RelayClient.onProblem", () => {
   test("a refused subscription is reported to the app, not only to its own handlers", async () => {
     const { client, ws } = await connectedClient();
-    const problems: string[] = [];
-    client.onProblem((problem) => problems.push(problem.reason));
+    const problems: (string | undefined)[] = [];
+    client.onProblem((problem) => problems.push(problem?.reason));
 
     client.subscribe([{ kinds: [9] }], { onEvent: () => {} });
     const subId = ws.lastSent("REQ")[1] as string;
@@ -316,7 +319,7 @@ describe("RelayClient.onProblem", () => {
 
   test("a NOTICE reaches the app instead of being dropped on the floor", async () => {
     const { client, ws } = await connectedClient();
-    const problems: { kind: string; reason: string }[] = [];
+    const problems: ({ kind: string; reason: string } | null)[] = [];
     client.onProblem((problem) => problems.push(problem));
 
     ws.emitMessage(["NOTICE", "invalid: malformed frame"]);
@@ -326,7 +329,7 @@ describe("RelayClient.onProblem", () => {
 
   test("a rejected AUTH says why, rather than looping through silent reconnects", async () => {
     const client = newClient();
-    const problems: { kind: string; reason: string }[] = [];
+    const problems: ({ kind: string; reason: string } | null)[] = [];
     client.onProblem((problem) => problems.push(problem));
     client.connect().catch(() => {});
     const ws = FakeWebSocket.instances[0]!;

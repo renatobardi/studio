@@ -53,7 +53,6 @@ export function AppShell({
   workspace,
   signer,
   user = null,
-  accountPassword = null,
   onSignOut,
   client: providedClient,
 }: Readonly<{
@@ -62,7 +61,6 @@ export function AppShell({
   /** The Firebase session, for the Key Backup this Account holds (#150). Absent in the
    * preview harness, which never talks to Firebase. */
   user?: User | null;
-  accountPassword?: string | null;
   onSignOut: () => void;
   /** The preview harness hands in a relay of fixtures; the app opens the Workspace's own. */
   client?: RelayClient;
@@ -400,7 +398,6 @@ export function AppShell({
             client={client}
             pubkey={ownPubkey}
             user={user}
-            accountPassword={accountPassword}
             appearance={appearance}
             onAppearanceChange={updateAppearance}
             onSignOut={() => void handleSignOut()}

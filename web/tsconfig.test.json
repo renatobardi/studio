@@ -1,0 +1,11 @@
+{
+  // The unit tests, type-checked on their own: tsconfig.app.json leaves them out of the
+  // build, so nothing else notices a test rendering a component with props it lacks (#191).
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "types": ["vite/client", "vite-plugin-pwa/client", "bun"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/lib/testing"],
+  "exclude": []
+}

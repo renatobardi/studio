@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Flow 10 (#73): the MVP screens against their baselines, pixel for pixel.
@@ -48,6 +50,12 @@ const SCREENS: { id: string; screen: string; mobile?: boolean; dark?: boolean; q
   { id: "settings-profile-comfy-smaller", screen: "settings-profile", query: "density=comfy&fontScale=smaller" },
 ];
 
+/** Paints every secret on screen over (#190). A stylesheet rather than `toHaveScreenshot`'s
+ * `mask`: the font scale zooms the shell with CSS `zoom`, and `mask` places its box from
+ * coordinates that ignore it — at "larger" it drew beside the key and left it showing. A style
+ * lands on the element itself, at any scale. */
+const MASK_SECRETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "mask-secrets.css");
+
 test.use({ timezoneId: "UTC", locale: "en-GB", colorScheme: "light" });
 
 for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
@@ -68,9 +76,11 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
           await page.waitForSelector("html[data-preview-ready]");
           await page.evaluate(() => document.fonts.ready);
           expect(await page.evaluate(() => document.fonts.check('12px "Inter Variable"'))).toBe(true);
-          // Nothing dynamic is masked: the fixtures are fixed, the clock is UTC, and a
-          // component that renders differently is exactly what this flow is for.
-          await expect(page).toHaveScreenshot(`${viewportName}/${name}.png`);
+          // Only secrets are masked (#190): the private key the onboarding generates at runtime
+          // must never land in a baseline, blurred or not. Nothing else is: the fixtures are
+          // fixed, the clock is UTC, and a component that renders differently is exactly what
+          // this flow is for.
+          await expect(page).toHaveScreenshot(`${viewportName}/${name}.png`, { stylePath: MASK_SECRETS });
         });
       }
     }
