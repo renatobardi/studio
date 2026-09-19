@@ -3,11 +3,10 @@ import { Icon } from "../../components/icons/Icon";
 import type { WorkspaceMemberOut } from "../../lib/api";
 import type { Signer } from "../../lib/custody";
 import { addMemberToChannel, membersPaneList, type MemberSearch } from "../../lib/memberDirectory";
-import type { RelayClient } from "../../lib/relay";
 import { MemberCandidates } from "./MemberCandidates";
 import { MemberGroup } from "./MemberGroup";
 import { MemberProfile } from "./MemberProfile";
-import { profileName, useProfiles } from "./useProfiles";
+import { profileName, type ProfileLookup } from "./useProfiles";
 
 /** Channel Members from the kind 39002 projection (ADR-0002), read by ChannelView so the
  * header pill can count them without a second subscription (#143).
@@ -17,31 +16,35 @@ import { profileName, useProfiles } from "./useProfiles";
  * event (#145). "Add people and agents" is the admin console's add, offered to whoever the API
  * lets manage this Channel. */
 export function MembersPane({
-  client,
   signer,
   slug,
   channelId,
   memberPubkeys,
   channelAdmins,
   workspaceMembers,
+  workspaceMembersError,
   canManage,
   overlay = false,
+  profileLookup,
   onClose,
 }: Readonly<{
-  client: RelayClient;
   signer: Signer;
   slug: string;
   channelId: string;
   memberPubkeys: string[];
   channelAdmins: string[];
   workspaceMembers: WorkspaceMemberOut[];
+  /** Why the Workspace list could not be read: without it every role falls back to Member and
+   * Agents are not told apart, so the pane has to say so (#197). */
+  workspaceMembersError: string | null;
   canManage: boolean;
   overlay?: boolean;
+  profileLookup: ProfileLookup;
   onClose: () => void;
 }>) {
   const [viewing, setViewing] = useState<string | null>(null);
   const [search, setSearch] = useState<MemberSearch>({ query: "", error: null });
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
 
   useEffect(() => ensure(memberPubkeys), [memberPubkeys, ensure]);
   useEffect(() => ensure(workspaceMembers.map((m) => m.pubkey)), [workspaceMembers, ensure]);
@@ -62,7 +65,7 @@ export function MembersPane({
       </header>
       {viewing ? (
         <div className="side-pane-scroll">
-          <MemberProfile client={client} pubkey={viewing} onClose={() => setViewing(null)} />
+          <MemberProfile profileLookup={profileLookup} pubkey={viewing} onClose={() => setViewing(null)} />
         </div>
       ) : (
         <>
@@ -80,6 +83,7 @@ export function MembersPane({
             </div>
           )}
           <div className="members-pane-scroll">
+            {workspaceMembersError && <div className="error-banner">{workspaceMembersError}</div>}
             {search.error && <div className="error-banner">{search.error}</div>}
             {listing.mode === "candidates" ? (
               <MemberCandidates candidates={listing.candidates} profiles={profiles} onAdd={(pubkey) => void add(pubkey)} />

@@ -13,7 +13,7 @@ import { MembersPill } from "./MembersPill";
 import { ThreadPane } from "./ThreadPane";
 import { Timeline } from "./Timeline";
 import { useChannelFeed } from "./useChannelFeed";
-import { useProfiles } from "./useProfiles";
+import type { ProfileLookup } from "./useProfiles";
 
 type SidePane = { type: "thread"; root: TargetRef & { content: string; created_at?: number } } | { type: "members" } | null;
 
@@ -25,7 +25,9 @@ export function ChannelView({
   opened,
   workspace,
   workspaceMembers,
+  workspaceMembersError,
   threadView,
+  profileLookup,
 }: Readonly<{
   client: RelayClient;
   channel: ChannelOut;
@@ -37,12 +39,14 @@ export function ChannelView({
    * whether they may be managed, and its media_url is where attachments go. */
   workspace: WorkspaceOut;
   workspaceMembers: WorkspaceMemberOut[];
+  workspaceMembersError: string | null;
   /** Settings › Appearance › Thread view (#151). */
   threadView: ThreadView;
+  profileLookup: ProfileLookup;
 }>) {
   const channelId = channel.id;
   const feed = useChannelFeed(client, channelId);
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
   const [sidePane, setSidePane] = useState<SidePane>(null);
   /** The Channel's roster (kind 39002), null until the relay has sent one — the header pill
    * counts it and MembersPane lists it (#143). */
@@ -142,15 +146,16 @@ export function ChannelView({
         )}
         {sidePane?.type === "members" && (
           <MembersPane
-            client={client}
             signer={signer}
             slug={workspace.slug}
             channelId={channelId}
             memberPubkeys={memberPubkeys ?? []}
             channelAdmins={channelAdmins}
             workspaceMembers={workspaceMembers}
+            workspaceMembersError={workspaceMembersError}
             canManage={manageableChannels(workspace.role, [channel]).length > 0}
             overlay={layout.membersOverlay}
+            profileLookup={profileLookup}
             onClose={() => setSidePane(null)}
           />
         )}

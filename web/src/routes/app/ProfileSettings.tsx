@@ -2,30 +2,29 @@ import type { User } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { hasNip07 } from "../../lib/custody";
 import type { Custody } from "../../lib/onboardingSteps";
-import type { RelayClient } from "../../lib/relay";
 import { askForKeyBackup, keyBackupRow } from "../../lib/settingsProfile";
 import { KeyBackupDialog } from "./KeyBackupDialog";
 import { SignOutDialog } from "./SignOutDialog";
-import { shortNpub, useProfiles, type Profile } from "./useProfiles";
+import { shortNpub, type Profile, type ProfileLookup } from "./useProfiles";
 
 /** Settings › Profile as the prototype has it (#150): PROFILE INFO and IDENTITY read back, the
  * Key Backup managed from here, and SIGN OUT with the warning and its tinted destructive button.
  * Editing lives on the `profile` screen, where the prototype's "Edit profile" leads. The NIP-05
  * handle row is left out — Studio issues no handle in the MVP (docs/UI/REFERENCE.md › Decisões). */
 export function ProfileSettings({
-  client,
+  profileLookup,
   pubkey,
   user,
   onSignOut,
 }: Readonly<{
-  client: RelayClient;
+  profileLookup: ProfileLookup;
   pubkey: string;
   /** Null in the preview harness and wherever no Firebase session is at hand: the Key Backup
    * is then only reported, never managed. */
   user: User | null;
   onSignOut: () => void;
 }>) {
-  const { profiles, ensure } = useProfiles(client);
+  const { profiles, ensure } = profileLookup;
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
   return (
     <ProfileSettingsCards
