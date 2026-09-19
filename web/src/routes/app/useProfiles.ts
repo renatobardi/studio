@@ -39,8 +39,10 @@ export function displayName(profiles: Map<string, Profile>, pubkey: string): str
   return profiles.get(pubkey)?.name || shortNpub(pubkey);
 }
 
-/** The signed-in Identity's own name: a neutral "…" until its kind 0 arrives, so the
- * footer never flashes a key where every other session already shows the name. */
+/** The signed-in Identity's own name: a neutral "…" until the relay answers, so the footer
+ * never flashes a key where every other session already shows the name — then the same short
+ * npub as the rest of the UI when there turned out to be no kind 0 (#196). */
 export function ownDisplayName(profiles: Map<string, Profile>, pubkey: string | null): string {
-  return (pubkey && profileName(profiles, pubkey)) || "…";
+  if (pubkey === null || !profiles.has(pubkey)) return "…";
+  return displayName(profiles, pubkey);
 }

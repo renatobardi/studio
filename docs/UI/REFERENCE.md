@@ -124,7 +124,11 @@ Settings além de Appearance/Profile, popup Google simulado.
    diz Verified quando a Account guarda um Key Backup (`GET /api/account/key-backup`), que só
    chega ao servidor depois de verificado (#36); "Manage" reabre os mesmos cartões do onboarding
    (`KeyBackupSteps.tsx`) para criar e verificar um novo. Sob NIP-07 a linha diz que a extensão
-   guarda a chave e não há o que gerenciar. SIGN OUT traz o aviso do HTML e o "Delete my data"
+   guarda a chave e não há o que gerenciar. **Exceção: verificado mas não guardado (#200).** O protótipo só
+   tem os estados verify e verified. Quando o arquivo abre mas o upload para a Account falha, o
+   "Manage" não chega ao verified: título "Your backup file works", o card mantém "✓ Verified" com
+   "Not saved to your Account yet." e um "Try again" no lugar do campo, o erro diz que o arquivo
+   está certo e não foi guardado, e o rodapé fica em "Cancel" — "Done" só depois de guardado. SIGN OUT traz o aviso do HTML e o "Delete my data"
    tintado, que abre o mesmo `SignOutDialog` do menu da conta (#148); "Send feedback" abre
    https://github.com/renatobardi/studio/issues/new em outra aba. **Exceção: NIP-05.** O Studio
    não emite handle NIP-05 no MVP, então a linha some de Settings e da tela `profile`, e o nome
@@ -162,6 +166,18 @@ Settings além de Appearance/Profile, popup Google simulado.
     flow 10 contra o do protótipo, e `capture-reference.mjs` regrava a referência inteira, o que
     não cabe num PR de limpeza. Enquanto isso o `new-message` é uma tela de preview sem baseline —
     capturá-lo no protótipo e só então incluí-lo no flow 10 é trabalho do aceite visual (#154/#156).
+
+12. **Aviso de versão nova (#203).** O protótipo não tem tela para isso. Quando um service worker
+    novo assume uma página que um anterior carregou (ou há um esperando), o app mostra, sobre
+    qualquer tela — onboarding incluído —, uma linha discreta no tom de popover, fixa no topo ao
+    centro (longe do composer, que vive embaixo) e abaixo dos diálogos: "A new version of Studio is
+    available.", um botão "Reload" e um "×" que a dispensa até a próxima carga. **Nunca recarrega
+    sozinho**, nem sem rascunho: recarregar é sempre o clique da pessoa, então um rascunho no
+    composer nunca se perde sem ela pedir — e não volta o reload no meio da sessão que quebrou o
+    smoke do CD (`web/vite.config.ts`). A regra de quando avisar vive em `web/src/lib/appUpdate.ts`;
+    a PWA instalada pergunta por versão nova ao voltar a ficar visível ou ao ganhar foco
+    (`registration.update()`), não só na carga. Sem estado no `capture-reference.mjs`,
+    fica fora do flow 10, como o `new-message` (Decisão 11).
 
 ## Aceite visual (issue #73)
 

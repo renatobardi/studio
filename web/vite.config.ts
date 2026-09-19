@@ -15,9 +15,9 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       // registerType stays the default ('prompt'): 'autoUpdate' wires an automatic
-      // window.location.reload() on SW activation (see main.tsx's registerSW call), which
-      // fired mid-session on studio-test and broke the CD Playwright smoke — nothing here
-      // surfaces a reload prompt to the user, so there's no UI to drive it anyway.
+      // window.location.reload() on SW activation, which fired mid-session on studio-test
+      // and broke the CD Playwright smoke. A new version is offered instead, never forced:
+      // lib/appUpdate.ts raises "A new version is available · Reload" (#203).
       manifest: {
         name: 'Studio',
         short_name: 'Studio',

@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
+import { apiPath, authProof, listChannels, proofUrl, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
   ACCESS_PROJECTION_KINDS,
   accessLostAfterRefresh,
@@ -190,7 +190,7 @@ export function AppShell({
   }, [readAt]);
 
   const fetchChannels = useCallback(async () => {
-    const url = `${window.location.origin}/api/workspaces/${workspace.slug}/channels`;
+    const url = proofUrl(apiPath("workspaces", workspace.slug, "channels"));
     return listChannels(workspace.slug, await authProof(url, "GET", signer));
   }, [workspace.slug, signer]);
 
@@ -358,6 +358,7 @@ export function AppShell({
                 opened={opened}
                 workspace={workspace}
                 workspaceMembers={members}
+                workspaceMembersError={membersError}
                 threadView={appearance.threadView}
                 profileLookup={profileLookup}
               />

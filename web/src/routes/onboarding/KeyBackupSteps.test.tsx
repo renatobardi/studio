@@ -54,5 +54,15 @@ describe("BackupVerifyCard", () => {
     expect(html).toContain("✓ Verified");
     expect(html).toContain("Your passphrase unlocked the backup.");
     expect(html).not.toContain('placeholder="Backup passphrase"');
+    expect(html).not.toContain("Try again");
+  });
+
+  test("verified but not in the Account, it says so and offers to try again (#200)", () => {
+    const html = renderToStaticMarkup(
+      <BackupVerifyCard verified unsaved passphrase="" onPassphrase={() => {}} busy={false} onVerify={() => {}} />,
+    );
+    expect(html).toContain("✓ Verified");
+    expect(html).toContain("Not saved to your Account yet.");
+    expect(html).toContain("Try again");
   });
 });

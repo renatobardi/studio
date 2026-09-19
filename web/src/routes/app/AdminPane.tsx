@@ -68,8 +68,7 @@ export function AdminPane({
 }
 
 async function proofFor(slug: string, path: string, method: string, signer: Signer): Promise<string> {
-  const url = `${window.location.origin}/api/workspaces/${slug}${path}`;
-  return authProof(url, method, signer);
+  return authProof(api.workspaceProofUrl(slug, path), method, signer);
 }
 
 function InvitesTab({ signer, slug }: Readonly<{ signer: Signer; slug: string }>) {

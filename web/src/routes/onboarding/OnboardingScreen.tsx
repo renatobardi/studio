@@ -465,8 +465,8 @@ export function OnboardingScreen({
    * nobody any more — the reason is on screen by then (#46). */
   const redeemPendingInvite = async (signer: Signer): Promise<WorkspaceOut | null> => {
     const code = inviteCodeFromInput(inviteCode) ?? "";
-    const url = `${window.location.origin}/api/invites/${code}/redeem`;
     try {
+      const url = api.proofUrl(api.apiPath("invites", code, "redeem"));
       const joined = await api.redeemInvite(code, await api.authProof(url, "POST", signer));
       forgetInviteCode();
       return joined;
