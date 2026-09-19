@@ -188,9 +188,11 @@ Tolerância: `maxDiffPixelRatio 0.002`, `threshold 0.2` — o antialiasing de te
 sub-pixel mesmo numa mesma máquina; um componente que mudou de posição, tamanho ou cor passa
 disso com folga. Nada é mascarado além de segredos: as fixtures são fixas. **Tela com segredo
 entra mascarada (#190):** o elemento que mostra a chave privada (`.nsec-reveal`, a nsec gerada em
-runtime no onboarding) sai como retângulo no `mask` do `toHaveScreenshot` — revelada ou borrada
-por CSS, nunca legível num PNG do repo, e nunca estabilizada fixando uma chave. Um segredo novo
-na UI entra no mesmo `mask` antes de ganhar baseline. Os baselines levam sufixo de plataforma
+runtime no onboarding) sai como bloco sólido, pintado por `web/e2e/mask-secrets.css` (`stylePath`
+do `toHaveScreenshot`) — revelada ou borrada por CSS, nunca legível num PNG do repo, e nunca
+estabilizada fixando uma chave. Não é o `mask` do Playwright: ele calcula a caixa ignorando o
+`zoom` da escala de fonte e, em "larger", pintou ao lado da chave. Um segredo novo na UI entra
+nesse CSS antes de ganhar baseline. Os baselines levam sufixo de plataforma
 (`-darwin`, `-linux`): texto rasteriza diferente por SO, então um baseline gerado no macOS nunca
 é comparado no Linux.
 
