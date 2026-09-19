@@ -1400,6 +1400,28 @@ button.sidebar-group-label:hover {
   flex-shrink: 0;
 }
 
+/* "A new version is available" (#203): no prototype screen — a small popover-toned line floating
+   above the bottom edge of any screen, under dialogs, never covering the composer's full width. */
+.update-notice {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 190;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+}
+
 /* Admin and Settings scroll as a whole; the conversation views scroll only their history. */
 .app-scroll {
   flex: 1;
