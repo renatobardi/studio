@@ -1,4 +1,4 @@
-import { addChannelMember, authProof, type WorkspaceMemberOut } from "./api";
+import { addChannelMember, apiPath, authProof, proofUrl, type WorkspaceMemberOut } from "./api";
 import type { Signer } from "./custody";
 
 /**
@@ -112,7 +112,7 @@ export async function addMemberToChannel(
   signer: Signer,
 ): Promise<MemberSearch> {
   try {
-    const url = `${window.location.origin}/api/workspaces/${slug}/channels/${channelId}/members`;
+    const url = proofUrl(apiPath("workspaces", slug, "channels", channelId, "members"));
     await addChannelMember(slug, channelId, pubkey, "member", await authProof(url, "POST", signer));
     return { query: "", error: null };
   } catch {

@@ -70,14 +70,40 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // encodeURIComponent leaves "." alone, so a value of ".." would survive as a
-  // segment that the URL parser resolves to a different endpoint than this call
-  // names — with the same method and credentials. No real code, slug or pubkey
-  // is only dots; answer as the server would to a value it cannot find.
-  if (path.split("/").some((segment) => segment === "." || segment === "..")) {
+/**
+ * The API path for these segments, each one encoded — the only way a code, slug or pubkey gets
+ * into a path, so the URL requested and the URL a NIP-98 proof signs (`proofUrl`) cannot drift
+ * apart (#198).
+ *
+ * encodeURIComponent leaves "." alone, so a value of ".." would survive as a segment that the
+ * URL parser resolves to a different endpoint than this call names — with the same method and
+ * credentials. No real code, slug or pubkey is only dots; answer as the server would to a value
+ * it cannot find.
+ */
+export function apiPath(...segments: string[]): string {
+  if (segments.some((segment) => segment === "." || segment === "..")) {
     throw new ApiError(400, "not a valid path segment");
   }
+  return segments.map((segment) => `/${encodeURIComponent(segment)}`).join("");
+}
+
+/** The absolute URL a NIP-98 proof for `path` (from `apiPath`) signs — the one the call requests.
+ * The server compares it with the URL it rebuilds from the *decoded* path (api/src/studio_api/
+ * auth.py), so it matches for every real slug, code, pubkey and Channel id, whose characters
+ * encoding leaves alone; a value encoding changes gets a proof the server refuses, never a URL a
+ * pasted code chose. */
+export function proofUrl(path: string, origin: string = window.location.origin): string {
+  return `${origin}/api${path}`;
+}
+
+/** The proof URL for a Workspace endpoint named by its path under the Workspace (`/members/…`),
+ * through `apiPath` like every other. Only for server-issued values — hex pubkeys and Channel ids,
+ * `token_urlsafe` codes — which never hold a "/"; anything a person types goes to `apiPath`. */
+export function workspaceProofUrl(slug: string, path: string, origin: string = window.location.origin): string {
+  return proofUrl(apiPath("workspaces", slug, ...path.split("/").filter(Boolean)), origin);
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -87,13 +113,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Public preview of an Invite — no auth, used before any Identity exists. */
-export function previewInvite(code: string): Promise<InvitePreview> {
-  return request(`/invites/${encodeURIComponent(code)}`);
+export async function previewInvite(code: string): Promise<InvitePreview> {
+  return request(apiPath("invites", code));
 }
 
 /** Redeems an Invite for the caller's Identity. `nip98Token` proves pubkey ownership (Authorization: Nostr ...). */
-export function redeemInvite(code: string, nip98Token: string): Promise<WorkspaceOut> {
-  return request(`/invites/${encodeURIComponent(code)}/redeem`, {
+export async function redeemInvite(code: string, nip98Token: string): Promise<WorkspaceOut> {
+  return request(apiPath("invites", code, "redeem"), {
     method: "POST",
     headers: { Authorization: nip98Token },
   });
@@ -185,41 +211,41 @@ export function createWorkspace(
 }
 
 /** Re-fetches a previously-joined Workspace, e.g. on app resume. Member-only. */
-export function getWorkspace(slug: string, nip98Token: string): Promise<WorkspaceOut> {
-  return request(`/workspaces/${encodeURIComponent(slug)}`, {
+export async function getWorkspace(slug: string, nip98Token: string): Promise<WorkspaceOut> {
+  return request(apiPath("workspaces", slug), {
     headers: { Authorization: nip98Token },
   });
 }
 
 /** The caller's Channels in this Workspace. */
-export function listChannels(slug: string, nip98Token: string): Promise<ChannelOut[]> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/channels`, {
+export async function listChannels(slug: string, nip98Token: string): Promise<ChannelOut[]> {
+  return request(apiPath("workspaces", slug, "channels"), {
     headers: { Authorization: nip98Token },
   });
 }
 
 // --- Admin: Invites --------------------------------------------------------
 
-export function createInvite(
+export async function createInvite(
   slug: string,
   nip98Token: string,
   body: { role?: string; expires_at?: number | null; max_uses?: number | null } = {},
 ): Promise<InviteOut> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/invites`, {
+  return request(apiPath("workspaces", slug, "invites"), {
     method: "POST",
     headers: { Authorization: nip98Token, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-export function listInvites(slug: string, nip98Token: string): Promise<InviteOut[]> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/invites`, {
+export async function listInvites(slug: string, nip98Token: string): Promise<InviteOut[]> {
+  return request(apiPath("workspaces", slug, "invites"), {
     headers: { Authorization: nip98Token },
   });
 }
 
-export function revokeInvite(slug: string, code: string, nip98Token: string): Promise<{ status: string }> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/invites/${encodeURIComponent(code)}`, {
+export async function revokeInvite(slug: string, code: string, nip98Token: string): Promise<{ status: string }> {
+  return request(apiPath("workspaces", slug, "invites", code), {
     method: "DELETE",
     headers: { Authorization: nip98Token },
   });
@@ -227,31 +253,31 @@ export function revokeInvite(slug: string, code: string, nip98Token: string): Pr
 
 // --- Admin: Workspace Members -----------------------------------------------
 
-export function listWorkspaceMembers(slug: string, nip98Token: string): Promise<WorkspaceMemberOut[]> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/members`, {
+export async function listWorkspaceMembers(slug: string, nip98Token: string): Promise<WorkspaceMemberOut[]> {
+  return request(apiPath("workspaces", slug, "members"), {
     headers: { Authorization: nip98Token },
   });
 }
 
-export function setWorkspaceMemberRole(
+export async function setWorkspaceMemberRole(
   slug: string,
   pubkey: string,
   role: string,
   nip98Token: string,
 ): Promise<WorkspaceMemberOut> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/members/${encodeURIComponent(pubkey)}`, {
+  return request(apiPath("workspaces", slug, "members", pubkey), {
     method: "PATCH",
     headers: { Authorization: nip98Token, "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
 }
 
-export function removeWorkspaceMember(
+export async function removeWorkspaceMember(
   slug: string,
   pubkey: string,
   nip98Token: string,
 ): Promise<{ status: string }> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/members/${encodeURIComponent(pubkey)}`, {
+  return request(apiPath("workspaces", slug, "members", pubkey), {
     method: "DELETE",
     headers: { Authorization: nip98Token },
   });
@@ -259,30 +285,30 @@ export function removeWorkspaceMember(
 
 // --- Admin: Channels ---------------------------------------------------------
 
-export function createChannel(
+export async function createChannel(
   slug: string,
   nip98Token: string,
   body: { name: string; about: string; private: boolean },
 ): Promise<ChannelOut> {
-  return request(`/workspaces/${encodeURIComponent(slug)}/channels`, {
+  return request(apiPath("workspaces", slug, "channels"), {
     method: "POST",
     headers: { Authorization: nip98Token, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-export function listChannelMembers(
+export async function listChannelMembers(
   slug: string,
   channelId: string,
   nip98Token: string,
 ): Promise<ChannelMemberOut[]> {
   return request(
-    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members`,
+    apiPath("workspaces", slug, "channels", channelId, "members"),
     { headers: { Authorization: nip98Token } },
   );
 }
 
-export function addChannelMember(
+export async function addChannelMember(
   slug: string,
   channelId: string,
   pubkey: string,
@@ -290,7 +316,7 @@ export function addChannelMember(
   nip98Token: string,
 ): Promise<{ status: string }> {
   return request(
-    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members`,
+    apiPath("workspaces", slug, "channels", channelId, "members"),
     {
       method: "POST",
       headers: { Authorization: nip98Token, "Content-Type": "application/json" },
@@ -299,14 +325,14 @@ export function addChannelMember(
   );
 }
 
-export function removeChannelMember(
+export async function removeChannelMember(
   slug: string,
   channelId: string,
   pubkey: string,
   nip98Token: string,
 ): Promise<{ status: string }> {
   return request(
-    `/workspaces/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(pubkey)}`,
+    apiPath("workspaces", slug, "channels", channelId, "members", pubkey),
     { method: "DELETE", headers: { Authorization: nip98Token } },
   );
 }
