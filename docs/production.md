@@ -90,7 +90,8 @@ first promotion.
    `/api/ready`, `/manifest.webmanifest` and `/sw.js`, and runs
    `scripts/ci/cache-headers.sh` — taken from the promoted SHA — to require
    `Cache-Control: no-cache` on the shell and `immutable` on the hashed assets
-   (#203). The host's Nginx must pass `Cache-Control` through unchanged.
+   (#203). The host's Nginx must pass `Cache-Control` through unchanged — an
+   assumption the first promotion with this check is what confirms.
 6. **Authenticated smoke, by a person**, with test Accounts of the
    `studio-prd` Firebase project and a Workspace kept for testing only —
    never real people's data: sign in, send a Message in a Channel, attach a photo
