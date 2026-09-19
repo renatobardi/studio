@@ -120,6 +120,18 @@ describe("DmFeed", () => {
     expect(calls).toBe(heard);
   });
 
+  test("hands out the same snapshot until something changes, with its own loadOlder (#194)", async () => {
+    // What the shell renders from: a new object on every render would redo every conversation.
+    const { relay, feed } = start(history(150, NOW, DAY));
+    await flush();
+    const first = feed.getSnapshot();
+    expect(feed.getSnapshot()).toBe(first);
+    first.loadOlder();
+    await flush();
+    expect(relay.allFilters.at(-1)?.until).toBe(NOW - 99 * DAY);
+    expect(feed.getSnapshot()).not.toBe(first);
+  });
+
   test("stopping closes every subscription", async () => {
     const { relay, stop } = start(history(300, NOW, DAY));
     await flush();

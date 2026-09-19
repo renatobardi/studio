@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { VerifiedEvent } from "nostr-tools";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as channelEvents from "../../lib/channelEvents";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { Timeline } from "./Timeline";
@@ -62,5 +63,20 @@ describe("Timeline", () => {
 
   test("draws no divider before a Channel has been opened", () => {
     expect(render([away], null)).not.toContain("new-divider");
+  });
+});
+
+/** #194: every row read its Reactions and Thread by filtering the Channel's whole data again —
+ * once per Message, on every render. The rows now read one index, built once per render at most
+ * (and not at all when only the composer changed, since it is memoised on the data). */
+describe("Timeline's per-Message data", () => {
+  test("is indexed once for the whole timeline, not once per Message", () => {
+    const spy = spyOn(channelEvents, "messageIndex");
+    try {
+      render([message("a", OTHER, 1, "one"), message("b", OTHER, 2, "two"), message("c", ME, 3, "three")], null);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

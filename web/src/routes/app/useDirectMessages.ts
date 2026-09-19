@@ -5,12 +5,13 @@ import { DmFeed, type DmSnapshot } from "../../lib/dmFeed";
 import { unwrapGiftWrap } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 
-const NOTHING: DmSnapshot = { rumors: [], hasMore: false, completeFrom: -Infinity };
+const NOTHING: DmSnapshot = { rumors: [], hasMore: false, completeFrom: -Infinity, loadOlder: () => {} };
 const noSubscription = () => () => {};
 const nothing = () => NOTHING;
 
 /** React's view of the caller's Direct Messages (ticket #7), paged by gift wrap (#185) — the stream
- * itself lives in `DmFeed`. Nothing until the own pubkey is known. */
+ * itself lives in `DmFeed`. Nothing until the own pubkey is known. The snapshot as it comes: the
+ * same object until the feed changes, so the shell's conversations are not redone per render (#194). */
 export function useDirectMessages(client: RelayClient, signer: Signer, ownPubkey: string | null) {
   const feed = useMemo(
     () => (ownPubkey === null ? null : new DmFeed(client, ownPubkey, (wrap) => unwrapGiftWrap(signer, wrap), nowSeconds)),
@@ -19,5 +20,5 @@ export function useDirectMessages(client: RelayClient, signer: Signer, ownPubkey
   );
   useEffect(() => feed?.start(), [feed]);
   const snapshot = useSyncExternalStore(feed?.subscribe ?? noSubscription, feed?.getSnapshot ?? nothing, feed?.getSnapshot ?? nothing);
-  return { ...snapshot, loadOlder: () => feed?.loadOlder() };
+  return snapshot;
 }
