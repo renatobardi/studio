@@ -111,16 +111,26 @@ describe("ChannelFeed", () => {
       deadlines.push(entry);
       return () => deadlines.splice(deadlines.indexOf(entry), 1);
     });
-    feed.start();
+    const dispose = feed.start();
+    let emitted = 0;
+    feed.subscribe(() => {
+      emitted += 1;
+    });
     feed.loadOlder();
     expect(asks).toBe(1);
     expect(deadlines.map((entry) => entry.ms)).toEqual([PAGE_DEADLINE_MS]);
-    deadlines[0]!.fn();
+    // Firing it takes it off the list, as a real timer does.
+    deadlines.shift()!.fn();
     expect(closed).toBe(true);
+    // Without the emit the "Load older" button never re-enables.
+    expect(emitted).toBeGreaterThan(0);
     // The overrun proves nothing about the history: asking again is allowed, and still asks.
     expect(feed.getSnapshot().hasMore).toBe(true);
     feed.loadOlder();
     expect(asks).toBe(2);
+    // Disposing takes the second page's deadline with it.
+    dispose();
+    expect(deadlines).toHaveLength(0);
   });
 
   test("a reconnect that replays the page changes nothing", () => {

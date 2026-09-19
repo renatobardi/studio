@@ -1,5 +1,4 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
-import { type Timer, timer } from "./clock";
 import {
   PAGE_DEADLINE_MS,
   PAGE_SIZE,
@@ -9,6 +8,7 @@ import {
   olderMessagesFilters,
   rootCompanionFilters,
 } from "./channelPagination";
+import { type Timer, timer } from "./clock";
 import type { SubscriptionHandle } from "./relay";
 
 /** All `ChannelFeed` needs of a `RelayClient` — and all a test has to stand in for. */
@@ -43,6 +43,8 @@ export class ChannelFeed {
   private readonly deletions = new Map<string, VerifiedEvent>();
   private hasMore = false;
   private loadingOlder = false;
+  /** Cancels the in-flight page's deadline — nothing is owed once it has answered. */
+  private cancelDeadline: (() => void) | null = null;
   private readonly coveredRoots = new Set<string>();
   private readonly pendingRootFetches = new Set<() => void>();
   private readonly disposers: (() => void)[] = [];
@@ -85,6 +87,8 @@ export class ChannelFeed {
     // which under StrictMode outlives a start()/dispose() pair.
     return () => {
       for (const dispose of this.disposers.splice(0)) dispose();
+      this.cancelDeadline?.();
+      this.cancelDeadline = null;
       for (const close of this.pendingRootFetches) close();
       this.pendingRootFetches.clear();
       this.coveredRoots.clear();
@@ -102,7 +106,6 @@ export class ChannelFeed {
     const page: VerifiedEvent[] = [];
     this.loadingOlder = true;
     let unsubscribe: (() => void) | null = null;
-    let cancelDeadline: (() => void) | null = null;
     let finished = false;
     unsubscribe = this.client.subscribe(filters, {
       onEvent: (event) => {
@@ -114,7 +117,8 @@ export class ChannelFeed {
         this.coverRoots(page);
         this.loadingOlder = false;
         finished = true;
-        cancelDeadline?.();
+        this.cancelDeadline?.();
+        this.cancelDeadline = null;
         unsubscribe?.();
         this.emit();
       },
@@ -125,9 +129,11 @@ export class ChannelFeed {
     }
     // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
     // did bring stays, and how much history is left is still unknown (#232).
-    cancelDeadline = this.schedule(() => {
+    this.cancelDeadline = this.schedule(() => {
       if (finished) return;
       finished = true;
+      // Whatever the page did bring stays, so its roots still need their companions.
+      this.coverRoots(page);
       this.loadingOlder = false;
       unsubscribe?.();
       this.emit();

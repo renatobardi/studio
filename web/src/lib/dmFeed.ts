@@ -1,7 +1,7 @@
 import type { VerifiedEvent } from "nostr-tools";
 import type { FeedClient } from "./channelFeed";
-import { type Timer, timer } from "./clock";
 import { PAGE_DEADLINE_MS, oldestCreatedAt } from "./channelPagination";
+import { type Timer, timer } from "./clock";
 import {
   DM_PAGE_SIZE,
   completeFrom,
@@ -147,9 +147,11 @@ export class DmFeed {
     }
     this.closeOlder = unsubscribe;
     // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
-    // did bring stays, and how much history is left is still unknown (#232).
+    // did bring stays, and how much history is left is still unknown (#232). The deadline covers
+    // the REQ, which is what a reconnect drops; unwrapping afterwards is the signer's own work,
+    // and `apply` already swallows a wrap that refuses to open.
     this.cancelDeadline = this.schedule(() => {
-      if (finished || run !== this.run) return;
+      if (finished) return;
       finished = true;
       this.closeOlder?.();
       this.closeOlder = this.cancelDeadline = null;

@@ -229,7 +229,8 @@ class FakeTimers {
     return this.pending.length;
   }
 
-  advance(ms: number): void {
+  /** Runs whatever was scheduled for `ms` or sooner, and forgets it. */
+  fire(ms: number): void {
     const due = this.pending.filter((entry) => entry.at <= ms);
     this.pending = this.pending.filter((entry) => entry.at > ms);
     for (const entry of due) entry.fn();
@@ -294,7 +295,7 @@ describe("DmFeed against a relay that answers later", () => {
     });
     feed.loadOlder();
     expect(relay.subscriptions).toHaveLength(2);
-    timers.advance(PAGE_DEADLINE_MS);
+    timers.fire(PAGE_DEADLINE_MS);
     await flush();
     expect(emitted).toBeGreaterThan(0);
     // An overrun says nothing about how much history is left.
@@ -302,6 +303,19 @@ describe("DmFeed against a relay that answers later", () => {
     feed.loadOlder();
     expect(relay.subscriptions).toHaveLength(3);
     expect(relay.subscriptions[1]!.open).toBe(false);
+  });
+
+  test("stopping takes the deadline with it", async () => {
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW, timers.schedule);
+    const stop = feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    await flush();
+    feed.loadOlder();
+    expect(timers.scheduled).toBe(1);
+    stop();
+    expect(timers.scheduled).toBe(0);
   });
 
   test("a page that answers in time leaves no deadline behind", async () => {
