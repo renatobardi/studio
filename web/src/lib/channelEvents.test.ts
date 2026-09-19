@@ -171,6 +171,19 @@ describe("messageIndex", () => {
     expect(messageIndex(data)(m1).reactions).toEqual([{ emoji: "👍", count: 1, reactorPubkeys: [getPublicKey(alice)] }]);
   });
 
+  test("a removal signed by someone else takes nobody's Reaction away", () => {
+    const forged = at(buildReactionRemoval("c", r1.id), bob, 15);
+    const lookup = messageIndex({ ...data, deletions: [forged] });
+    expect(lookup(m1).reactions).toEqual([{ emoji: "👍", count: 2, reactorPubkeys: [getPublicKey(alice), getPublicKey(bob)] }]);
+  });
+
+  test("a Reply counts only for the root it names", () => {
+    const toM2 = at(buildThreadReply("c", target(m2), "other root"), alice, 40);
+    const lookup = messageIndex({ ...data, replies: [...data.replies, toM2] });
+    expect(lookup(m1).thread.count).toBe(2);
+    expect(lookup(m2).thread).toEqual({ count: 1, participantPubkeys: [getPublicKey(alice)], lastReplyAt: 40 });
+  });
+
   test("a Message nothing points at has no Reactions and no Thread", () => {
     expect(messageIndex(data)("9".repeat(64))).toEqual({
       reactions: [],
