@@ -5,12 +5,16 @@ import type { RelayClient } from "../../lib/relay";
 
 export type { Profile };
 
-/** React's view of the kind 0 profiles this pane needs — the lookup itself lives in
- * `ProfileStore`, which holds exactly one subscription and releases it on unmount. */
-export function useProfiles(client: RelayClient): {
+/** The kind 0 profiles known so far, and how to ask for more. */
+export interface ProfileLookup {
   profiles: Map<string, Profile>;
   ensure: (pubkeys: string[]) => void;
-} {
+}
+
+/** React's view of the kind 0 profiles the app needs — the lookup itself lives in `ProfileStore`,
+ * which holds exactly one subscription and releases it on unmount. Only the shell calls it: every
+ * pane below reads the shell's `ProfileLookup`, so there is one kind 0 REQ, not one per pane (#195). */
+export function useProfiles(client: RelayClient): ProfileLookup {
   const store = useMemo(() => new ProfileStore(client), [client]);
   useEffect(() => () => store.close(), [store]);
   // The third snapshot is what renderToStaticMarkup needs to render this outside a browser —
