@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -108,7 +108,7 @@ jobs:
         run: docker compose down -v
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -153,7 +153,7 @@ jobs:
     # to draw those baselines — the Playwright image pinned there, not
     # setup-bun on the runner — so CI and the baselines share one Chromium and
     # one rasterisation. A diff above maxDiffPixelRatio fails the job.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -194,7 +194,7 @@ jobs:
     # deploys only CI-validated SHAs, and (issue #54) that docker-compose.yml
     # still carries everything a fresh server needs — rendered with the
     # runner's own `docker compose`, so nothing else to install.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -215,7 +215,7 @@ jobs:
     # blocks where it can be acted on, which is the pull request the ruleset
     # requires it on.
     needs: [test, web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
