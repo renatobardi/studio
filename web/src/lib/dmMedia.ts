@@ -114,19 +114,26 @@ export async function fetchDmAttachmentObjectUrl(
   keyHex: string,
   originalMime: string,
   signer: Signer,
+  signal?: AbortSignal,
 ): Promise<string> {
   const pubkey = await signer.getPublicKey();
   const cached = await readCachedBlob(pubkey, url);
   const ciphertextBytes =
-    cached && sha256Hex(cached.bytes) === sha256 ? cached.bytes : await downloadCiphertext(url, sha256, pubkey, signer);
+    cached && sha256Hex(cached.bytes) === sha256 ? cached.bytes : await downloadCiphertext(url, sha256, pubkey, signer, signal);
   const plaintextBytes = decryptDmAttachmentBytes(ciphertextBytes, keyHex);
   return URL.createObjectURL(new Blob([plaintextBytes as BlobPart], { type: originalMime }));
 }
 
-async function downloadCiphertext(url: string, sha256: string, pubkey: string, signer: Signer): Promise<ArrayBuffer> {
+async function downloadCiphertext(
+  url: string,
+  sha256: string,
+  pubkey: string,
+  signer: Signer,
+  signal: AbortSignal | undefined,
+): Promise<ArrayBuffer> {
   const epochAtFetchStart = mediaCacheEpoch();
   const authEvent = await buildBlossomAuthEvent("get", {}, signer);
-  const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) } });
+  const response = await fetch(url, { headers: { Authorization: blossomAuthorizationHeader(authEvent) }, signal });
   if (!response.ok) throw new MediaError("fetch-failed", "Couldn't load the image.");
   const bytes = await response.arrayBuffer();
   if (sha256Hex(bytes) !== sha256) {

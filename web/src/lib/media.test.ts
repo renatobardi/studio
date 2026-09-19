@@ -160,6 +160,21 @@ describe("fetchBlobObjectUrl", () => {
     restoreCaches();
   });
 
+  test("hands the queue's signal to the download, so a deadline or sign-out can abort it", async () => {
+    // #188: without it an aborted item freed its slot but kept the connection open.
+    stubCaches();
+    let seen: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input: string, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response(bytes.buffer as ArrayBuffer, { status: 200, headers: { "content-type": "image/png" } });
+    }) as typeof fetch;
+    const signal = new AbortController().signal;
+
+    await fetchBlobObjectUrl(url, hash, signerFor(generateIdentity().secretKey), signal);
+
+    expect(seen).toBe(signal);
+  });
+
   test("the same Identity's second view of an image doesn't download it again", async () => {
     // Ticket #6: caching by content hash is the point — within one Identity's scope.
     stubCaches();

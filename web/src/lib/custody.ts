@@ -75,6 +75,7 @@ export async function storeIdentity(nsec: string): Promise<void> {
  * The queued photo downloads go first, and synchronously: one that started
  * after the wipe would look its Identity's cache up, and the lookup would
  * bring the cache back. Cancelling has to happen before the wipe, not race it.
+ * Downloads already in flight are aborted along with them (#188).
  *
  * Everything is attempted before anything is reported: a cache that refuses to
  * go must not leave the key behind. Throws when some of it survived, so the
