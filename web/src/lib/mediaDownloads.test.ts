@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { loadAttachment } from "./mediaDownloads";
+import { downloadPriority, loadAttachment, mediaDownloads } from "./mediaDownloads";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -79,5 +79,36 @@ describe("loadAttachment", () => {
     cleanup();
 
     expect(revoke).toHaveBeenCalledWith("blob:photo");
+  });
+});
+
+/** The queue is one line for both surfaces, so what goes into it has to be one scale (#234). */
+describe("downloadPriority", () => {
+  test("a photo just sent in a conversation goes before a Channel's history", async () => {
+    // Four slots, all taken: what waits behind them is ordered by priority alone. The Channel
+    // Message is the two-hundredth of its list and the conversation's is the first of its own,
+    // so an index would have put the history in front.
+    const release: (() => void)[] = [];
+    const holding = [0, 0, 0, 0].map(() =>
+      mediaDownloads.run(0, () => new Promise<string>((resolve) => release.push(() => resolve("blob:held")))),
+    );
+    await settle();
+    const started: string[] = [];
+    const channelHistory = mediaDownloads.run(downloadPriority(1_700_000_000), async () => {
+      started.push("channel");
+      return "blob:channel";
+    });
+    const justSent = mediaDownloads.run(downloadPriority(1_700_000_600), async () => {
+      started.push("dm");
+      return "blob:dm";
+    });
+    await settle();
+    expect(started).toEqual([]);
+
+    for (const free of release) free();
+    await settle();
+    // Order, not timing: each one frees its slot as it answers, so both get to run.
+    expect(started).toEqual(["dm", "channel"]);
+    await Promise.all([...holding.map((held) => held.result), channelHistory.result, justSent.result]);
   });
 });

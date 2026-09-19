@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as channelEvents from "../../lib/channelEvents";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
+import { downloadPriority } from "../../lib/mediaDownloads";
+import * as attachmentImage from "./AttachmentImage";
 import { Timeline } from "./Timeline";
 
 const ME = "1".padEnd(64, "a");
@@ -34,6 +36,27 @@ function render(messages: VerifiedEvent[], opened: { readAt: number; openedAt: n
     />,
   );
 }
+
+const photo = (id: string, createdAt: number, sha: string) => {
+  const message_ = message(id, OTHER, createdAt, "");
+  return { ...message_, tags: [["imeta", `url https://media.example/${sha}`, `x ${sha}`, "m image/png"]] } as VerifiedEvent;
+};
+
+/** A photo's place in the shared download queue is the Message's send time, never its index in
+ * this timeline: the queue is the Direct Messages' too (#234). */
+describe("Timeline attachments", () => {
+  test("gives a photo the priority of the Message carrying it", () => {
+    const stub = spyOn(attachmentImage, "AttachmentImage").mockImplementation(({ descriptor, priority }) => (
+      <i data-photo={descriptor.sha256} data-priority={priority} />
+    ));
+    const html = render([photo("old", 1000, "a".repeat(64)), photo("new", 2000, "b".repeat(64))], null);
+    stub.mockRestore();
+
+    const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
+    expect(priorityOf("a".repeat(64))).toBe(downloadPriority(1000));
+    expect(priorityOf("b".repeat(64))).toBe(downloadPriority(2000));
+  });
+});
 
 /** The "New" divider sits above the first Message that arrived while the Channel was not on
  * screen (#147) — the timeline renders what `messagesWithDivider` decides. */

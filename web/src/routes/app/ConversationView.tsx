@@ -25,6 +25,7 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
+import { downloadPriority } from "../../lib/mediaDownloads";
 import { DM_SHOWN_STEP, askOlder, asksForOlder, dmHistoryView, type ShownState } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -249,8 +250,13 @@ export function ConversationView({
                 testId="dm-message"
               >
                 {parseDmImetaTags(message.tags).map((dmAttachment, position) => (
-                  // `priority={index}`: the newest Message's photos are the ones being waited on.
-                  <DmAttachmentImage key={`${position}:${dmAttachment.sha256}`} attachment={dmAttachment} signer={signer} priority={index} />
+                  // The Message's send time, the one scale the shared queue is ordered by (#234).
+                  <DmAttachmentImage
+                    key={`${position}:${dmAttachment.sha256}`}
+                    attachment={dmAttachment}
+                    signer={signer}
+                    priority={downloadPriority(message.created_at)}
+                  />
                 ))}
               </MessageRow>
             );

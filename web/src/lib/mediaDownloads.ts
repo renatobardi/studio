@@ -16,6 +16,16 @@ import { createPriorityQueue } from "./fetchQueue";
 export const mediaDownloads = createPriorityQueue(4, 30_000);
 
 /**
+ * What a photo's place in the queue is worth, on one scale for every surface: the send time of
+ * the Message carrying it. The queue is global — Channel and Direct Message share the origin's
+ * four connections — so a position inside one list says nothing against the other's, and a
+ * Channel's two-hundredth Message used to outrank a photo just sent in a conversation (#234).
+ */
+export function downloadPriority(messageCreatedAt: number): number {
+  return messageCreatedAt;
+}
+
+/**
  * One attachment's download, for the effect that shows it: queued at `priority`, handed to
  * `onLoad` as an object URL, or to `onError` as the message to show. Returns the cleanup — it
  * takes a download that has not started out of the queue, aborts one in flight (#188), and
