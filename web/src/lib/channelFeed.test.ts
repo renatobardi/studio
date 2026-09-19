@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { ChannelFeed } from "./channelFeed";
-import { PAGE_SIZE } from "./channelPagination";
+import { PAGE_DEADLINE_MS, PAGE_SIZE } from "./channelPagination";
 import { FakeRelay, MAX_LIMIT } from "./testing/fakeRelay";
 
 const CHANNEL = "chan";
@@ -90,6 +90,37 @@ describe("ChannelFeed", () => {
     const first = inFlight;
     feed.loadOlder();
     expect(inFlight).toBe(first);
+  });
+
+  test("a page that never answers frees the paging once its deadline passes", () => {
+    // Same hole as the Direct Message feed had (#232): a relay that drops and comes back does
+    // not re-emit the EOSE of a subscription it already answered.
+    const relay = new FakeRelay(messages(PAGE_SIZE * 3));
+    let asks = 0;
+    let closed = false;
+    const stalling = {
+      subscribe(filters: Filter[], handlers: { onEvent(e: VerifiedEvent): void; onEose?(): void }) {
+        if (filters[0]?.until === undefined) return relay.subscribe(filters, handlers);
+        asks += 1;
+        return Object.assign(() => (closed = true), { update: () => {} });
+      },
+    };
+    const deadlines: { fn: () => void; ms: number }[] = [];
+    const feed = new ChannelFeed(stalling, CHANNEL, (fn, ms) => {
+      const entry = { fn, ms };
+      deadlines.push(entry);
+      return () => deadlines.splice(deadlines.indexOf(entry), 1);
+    });
+    feed.start();
+    feed.loadOlder();
+    expect(asks).toBe(1);
+    expect(deadlines.map((entry) => entry.ms)).toEqual([PAGE_DEADLINE_MS]);
+    deadlines[0]!.fn();
+    expect(closed).toBe(true);
+    // The overrun proves nothing about the history: asking again is allowed, and still asks.
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    feed.loadOlder();
+    expect(asks).toBe(2);
   });
 
   test("a reconnect that replays the page changes nothing", () => {

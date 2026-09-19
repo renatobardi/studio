@@ -1,5 +1,7 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import { type Timer, timer } from "./clock";
 import {
+  PAGE_DEADLINE_MS,
   PAGE_SIZE,
   channelCompanionFilters,
   isEndOfHistory,
@@ -49,10 +51,12 @@ export class ChannelFeed {
 
   private readonly client: FeedClient;
   private readonly channelId: string;
+  private readonly schedule: Timer;
 
-  constructor(client: FeedClient, channelId: string) {
+  constructor(client: FeedClient, channelId: string, schedule: Timer = timer) {
     this.client = client;
     this.channelId = channelId;
+    this.schedule = schedule;
   }
 
   /** Opens the Channel's subscriptions; the returned function closes every one of them. */
@@ -98,6 +102,7 @@ export class ChannelFeed {
     const page: VerifiedEvent[] = [];
     this.loadingOlder = true;
     let unsubscribe: (() => void) | null = null;
+    let cancelDeadline: (() => void) | null = null;
     let finished = false;
     unsubscribe = this.client.subscribe(filters, {
       onEvent: (event) => {
@@ -109,11 +114,24 @@ export class ChannelFeed {
         this.coverRoots(page);
         this.loadingOlder = false;
         finished = true;
+        cancelDeadline?.();
         unsubscribe?.();
         this.emit();
       },
     });
-    if (finished) unsubscribe();
+    if (finished) {
+      unsubscribe();
+      return;
+    }
+    // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
+    // did bring stays, and how much history is left is still unknown (#232).
+    cancelDeadline = this.schedule(() => {
+      if (finished) return;
+      finished = true;
+      this.loadingOlder = false;
+      unsubscribe?.();
+      this.emit();
+    }, PAGE_DEADLINE_MS);
   }
 
   getSnapshot = (): FeedSnapshot => {

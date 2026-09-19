@@ -4,6 +4,15 @@ import type { Filter, VerifiedEvent } from "nostr-tools";
 export const PAGE_SIZE = 50;
 
 /**
+ * How long a page may stay in flight before the feed stops waiting for its EOSE and lets the
+ * reader ask again. A relay that drops and reconnects does not re-emit the EOSE of a
+ * subscription it already answered, and without a deadline that page blocks every later one for
+ * the rest of the session (#232) — the same reason the download queue has one (#188). Generous
+ * on purpose: it is a stuck subscription's escape, not a latency budget.
+ */
+export const PAGE_DEADLINE_MS = 20_000;
+
+/**
  * A Channel's timeline REQ: Messages (kind 9) only. Asking for the four content kinds under
  * one limit let a burst of Reactions fill the page and leave the Channel looking empty (#41).
  */
