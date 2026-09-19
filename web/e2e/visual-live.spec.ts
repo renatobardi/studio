@@ -1,73 +1,82 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { reachAppViaRestore } from "./helpers";
+import { CHANNEL_SCRIPT, DM_SCRIPT, FIXTURE_CHANNEL, PROFILES } from "../tools/seed-fixtures-lib";
+import { reachAppViaRestoreWithCredentials, testFixturesAccount, testWorkspaceSlug } from "./helpers";
 import { VIEWPORTS } from "./viewports";
 
 /**
- * Flow 11 (#73): the authenticated app on studio-test, captured for comparison — not compared
- * here. A live Workspace has whatever Messages the other flows left, so it cannot be a
- * baseline; what it proves is that the deployed SHA renders the shell with real fonts and
- * data, in both themes and at both viewports. CD uploads web/test-results/**\/*.png, so every
- * deploy leaves these behind. Opt in with STUDIO_VISUAL_CAPTURE=1.
+ * Flow 11 (#73, #157): the authenticated app on studio-test, captured for comparison — not compared
+ * here. It signs in as the fixtures Account, whose Channel, thread and Direct Message CD seeds just
+ * before the smoke (tools/seed-fixtures.ts), so every deploy captures the same conversation: what
+ * it proves is that the deployed SHA renders it, with real fonts, in both themes and at both
+ * viewports. CD uploads web/test-results/**\/*.png, so every deploy leaves these behind. Opt in
+ * with STUDIO_VISUAL_CAPTURE=1.
  */
 test.skip(process.env.STUDIO_VISUAL_CAPTURE !== "1", "STUDIO_VISUAL_CAPTURE=1 captures the deployed app");
 
 const OUT = "test-results/visual-live";
+type Viewport = keyof typeof VIEWPORTS;
 
 test.use({ timezoneId: "UTC", locale: "en-GB" });
 
-test("captures the shell on the deployed app", async ({ page, browserName }) => {
+const shot = (page: Page, viewport: Viewport, name: string) =>
+  page.screenshot({ path: `${OUT}/${viewport}/${name}.png`, animations: "disabled", caret: "hide" });
+
+test("captures the seeded conversations on the deployed app", async ({ page, browserName }) => {
   test.slow();
   await mkdir(OUT, { recursive: true });
   // The sign-in screen is the one screen before authentication a fixed Account can show.
-  for (const [viewport, size] of Object.entries(VIEWPORTS) as ["desktop" | "mobile", { width: number; height: number }][]) {
+  for (const [viewport, size] of Object.entries(VIEWPORTS) as [Viewport, { width: number; height: number }][]) {
     await page.setViewportSize(size);
     await page.goto("/");
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
-    await page.screenshot({ path: `${OUT}/${viewport}/auth-signin.png`, animations: "disabled", caret: "hide" });
+    await shot(page, viewport, "auth-signin");
   }
   await page.setViewportSize(VIEWPORTS.desktop);
-  await reachAppViaRestore(page);
-  await expect(page.getByTestId("account-menu-button")).toBeVisible();
-  // The footer holds "…" until the own kind 0 arrives (#149): wait for the name, so desktop
-  // and mobile capture the same one.
-  await expect(page.locator(".account-name")).not.toHaveText("…");
+  await reachAppViaRestoreWithCredentials(page, {
+    email: testFixturesAccount.email(),
+    password: testFixturesAccount.password(),
+    backupPassphrase: testFixturesAccount.backupPassphrase(),
+  });
+  await expect(page.locator(".account-name")).toHaveText(PROFILES.me.name);
 
-  const shot = async (viewport: "desktop" | "mobile", name: string) => {
-    await page.screenshot({ path: `${OUT}/${viewport}/${name}.png`, animations: "disabled", caret: "hide" });
-  };
-  const toggleTheme = () => page.getByRole("button", { name: /Switch to (dark|light)/ }).click();
+  const channelItem = page.getByTestId("channel-list-item").filter({ hasText: new RegExp(`^${FIXTURE_CHANNEL}$`) });
+  const threadRoot = CHANNEL_SCRIPT.messages[CHANNEL_SCRIPT.thread.root].text;
+  const lastMessage = CHANNEL_SCRIPT.messages.at(-1)!.text;
+  const lastReply = CHANNEL_SCRIPT.thread.replies.at(-1)!.text;
+  const lastDmLine = DM_SCRIPT.at(-1)!.text;
 
-  for (const [viewport, size] of Object.entries(VIEWPORTS) as ["desktop" | "mobile", { width: number; height: number }][]) {
+  for (const [viewport, size] of Object.entries(VIEWPORTS) as [Viewport, { width: number; height: number }][]) {
     await page.setViewportSize(size);
-    await page.getByTestId("channel-list-item").first().click();
-    await shot(viewport, "channel");
-    const thread = page.getByTestId("open-thread").first();
-    if (await thread.isVisible()) {
-      await page.getByTestId("timeline-message").filter({ has: thread }).first().hover();
-      await thread.click();
-      await expect(page.getByTestId("thread-pane")).toBeVisible();
-      await shot(viewport, "channel-thread");
+    for (const theme of ["light", "dark"] as const) {
+      const suffix = theme === "dark" ? "-dark" : "";
+      await channelItem.click();
+      await expect(page.getByTestId("timeline-message").filter({ hasText: lastMessage })).toBeVisible();
+      await shot(page, viewport, `channel${suffix}`);
+
+      // The reply count under the root opens the thread without a hover.
+      await page.getByTestId("timeline-message").filter({ hasText: threadRoot }).getByTestId("open-thread").last().click();
+      await expect(page.getByTestId("thread-pane").getByText(lastReply)).toBeVisible();
+      await shot(page, viewport, `channel-thread${suffix}`);
       await page.getByRole("button", { name: "Close thread" }).click();
+
+      await page.getByRole("button", { name: "Members", exact: true }).click();
+      await expect(page.getByTestId("members-pane").getByText(PROFILES.ada.name)).toBeVisible();
+      await shot(page, viewport, `channel-members${suffix}`);
+      await page.getByRole("button", { name: "Close members" }).click();
+
+      await page.getByTestId("conversation-list-item").filter({ hasText: PROFILES.ada.name }).click();
+      await expect(page.getByTestId("conversation-view").getByText(lastDmLine)).toBeVisible();
+      await shot(page, viewport, `dm${suffix}`);
+
+      await page.getByTestId("mode-settings").click();
+      await shot(page, viewport, `settings-appearance${suffix}`);
+      await page.getByRole("complementary", { name: "Settings sections" }).getByRole("button", { name: "Profile" }).click();
+      await expect(page.getByTestId("profile-settings")).toBeVisible();
+      await shot(page, viewport, `settings-profile${suffix}`);
+
+      await page.getByRole("button", { name: /Switch to (dark|light)/ }).click();
     }
-    await page.getByRole("button", { name: "Members", exact: true }).click();
-    await expect(page.getByTestId("members-pane")).toBeVisible();
-    await shot(viewport, "channel-members");
-    await page.getByRole("button", { name: "Close members" }).click();
-    const conversation = page.getByTestId("conversation-list-item").first();
-    // Conversations reach the sidebar only once decrypted: give them a moment, not a failure.
-    if (await conversation.waitFor({ timeout: 5_000 }).then(() => true, () => false)) {
-      await conversation.click();
-      await expect(page.getByTestId("conversation-view")).toBeVisible();
-      await shot(viewport, "dm");
-    }
-    await page.getByTestId("mode-settings").click();
-    await shot(viewport, "settings-appearance");
-    await toggleTheme();
-    await shot(viewport, "settings-appearance-dark");
-    await page.getByTestId("channel-list-item").first().click();
-    await shot(viewport, "channel-dark");
-    await toggleTheme();
   }
 
   await writeFile(
@@ -76,6 +85,9 @@ test("captures the shell on the deployed app", async ({ page, browserName }) => 
       {
         sha: process.env.GITHUB_SHA ?? null,
         url: process.env.STUDIO_WEB_URL ?? null,
+        workspace: testWorkspaceSlug(),
+        channel: FIXTURE_CHANNEL,
+        account: "fixtures (STUDIO_TEST_FIXTURES_EMAIL)",
         browser: browserName,
         capturedAt: new Date().toISOString(),
         viewports: { desktop: "1440x900", mobile: "390x844" },
