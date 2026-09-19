@@ -1,5 +1,5 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
-import type { SubscriptionHandle, SubscriptionHandlers } from "./relay";
+import type { ConnectionState, SubscriptionHandle, SubscriptionHandlers } from "./relay";
 
 /** A kind 0's content — or `{}` for an author the relay answered for without one, which is how
  * "never published" reads apart from "not heard back yet" (no entry at all, #196). */
@@ -12,6 +12,9 @@ export interface Profile {
 /** All `ProfileStore` needs of a `RelayClient` — and all a test has to stand in for. */
 export interface ProfileClient {
   subscribe(filters: Filter[], handlers: SubscriptionHandlers): SubscriptionHandle;
+  /** A REQ goes out only while open; on (re)open the client re-issues each subscription once. */
+  readonly state: ConnectionState;
+  onStateChange(listener: (state: ConnectionState) => void): () => void;
 }
 
 /**
@@ -27,9 +30,10 @@ export class ProfileStore {
   private readonly requested = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private handle: SubscriptionHandle | null = null;
-  /** The authors of each REQ still waiting for its EOSE, oldest first: an `update()` re-issues
-   * the REQ, and each one ends with an EOSE of its own. */
-  private readonly unanswered: string[][] = [];
+  /** The authors of each REQ sent and still waiting for its EOSE, oldest first: an `update()`
+   * re-issues the REQ, and each one ends with an EOSE of its own. */
+  private unanswered: string[][] = [];
+  private stopFollowing: (() => void) | null = null;
   private snapshot = new Map<string, Profile>();
   private readonly client: ProfileClient;
 
@@ -44,7 +48,8 @@ export class ProfileStore {
     if (missing.length === 0 && (this.handle !== null || pubkeys.length === 0)) return;
     for (const pubkey of missing) this.requested.add(pubkey);
     const filters: Filter[] = [{ kinds: [0], authors: [...this.requested] }];
-    this.unanswered.push([...this.requested]);
+    this.stopFollowing ??= this.client.onStateChange(this.onConnection);
+    if (this.client.state === "open") this.unanswered.push([...this.requested]);
     if (this.handle !== null) this.handle.update(filters);
     else this.handle = this.client.subscribe(filters, { onEvent: this.onEvent, onEose: this.onEose });
   };
@@ -59,7 +64,9 @@ export class ProfileStore {
   close = (): void => {
     this.handle?.();
     this.handle = null;
-    this.unanswered.length = 0;
+    this.stopFollowing?.();
+    this.stopFollowing = null;
+    this.unanswered = [];
   };
 
   private readonly onEvent = (event: VerifiedEvent): void => {
@@ -73,10 +80,16 @@ export class ProfileStore {
     this.notify();
   };
 
-  /** Whoever the ended REQ asked for and got no kind 0 from has published none — so far. A
-   * reconnect re-issues the REQ with no entry queued: that EOSE answers everyone requested. */
+  /** Opening sends one REQ with every author requested so far — whatever was asked while closed,
+   * and whatever a dropped connection lost before its EOSE came back. */
+  private readonly onConnection = (state: ConnectionState): void => {
+    this.unanswered = state === "open" && this.handle !== null ? [[...this.requested]] : [];
+  };
+
+  /** Whoever the ended REQ asked for and got no kind 0 from has published none — so far. */
   private readonly onEose = (): void => {
-    const authors = this.unanswered.shift() ?? [...this.requested];
+    const authors = this.unanswered.shift();
+    if (authors === undefined) return;
     const silent = authors.filter((pubkey) => !this.snapshot.has(pubkey));
     if (silent.length === 0) return;
     this.snapshot = new Map([...this.snapshot, ...silent.map((pubkey): [string, Profile] => [pubkey, {}])]);
