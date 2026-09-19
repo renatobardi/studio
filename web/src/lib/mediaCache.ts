@@ -42,24 +42,44 @@ export interface CachedBlob {
  *
  * Asks whether the cache exists before opening it — `caches.open` creates what it does not
  * find, so a lookup that lands after sign-out would re-create the very cache the wipe just
- * removed, under the pubkey of an Identity no longer here (#39). */
+ * removed, under the pubkey of an Identity no longer here (#39). A prune can still land between
+ * the two, so the open is checked against the epoch too (#187). */
 export async function readCachedBlob(pubkey: string, url: string): Promise<CachedBlob | undefined> {
   if (typeof caches === "undefined") return undefined;
   const name = mediaCacheName(pubkey);
+  const epochAtStart = epoch;
   if (!(await caches.has(name))) return undefined;
-  const cache = await caches.open(name);
+  const cache = await openUnlessPruned(name, epochAtStart);
+  if (!cache) return undefined;
   const response = await cache.match(url);
   if (!response) return undefined;
   return { bytes: await response.arrayBuffer(), contentType: response.headers.get("content-type") ?? "" };
 }
 
+/** `caches.open`, unless a prune ran since `epochAtStart`: then the cache the open may have just
+ * re-created is deleted again, and nothing is returned (#187). */
+async function openUnlessPruned(name: string, epochAtStart: number): Promise<Cache | undefined> {
+  const cache = await caches.open(name);
+  if (epoch === epochAtStart) return cache;
+  await caches.delete(name);
+  return undefined;
+}
+
 /** Keeps `bytes` for this Identity, keyed by the content-hash URL they came from (#6). For a
- * Direct Message photo these are the ciphertext bytes — the plaintext never reaches the cache. */
-export async function cacheBlob(pubkey: string, url: string, bytes: ArrayBuffer, contentType: string): Promise<void> {
+ * Direct Message photo these are the ciphertext bytes — the plaintext never reaches the cache.
+ * `epochAtFetchStart` is `mediaCacheEpoch()` from before the bytes were fetched: if a prune ran
+ * since, nothing is written (#187). */
+export async function cacheBlob(
+  pubkey: string,
+  url: string,
+  bytes: ArrayBuffer,
+  contentType: string,
+  epochAtFetchStart: number,
+): Promise<void> {
   if (typeof caches === "undefined") return;
   try {
-    const cache = await caches.open(mediaCacheName(pubkey));
-    await cache.put(url, new Response(bytes, { headers: { "content-type": contentType } }));
+    const cache = await openUnlessPruned(mediaCacheName(pubkey), epochAtFetchStart);
+    await cache?.put(url, new Response(bytes, { headers: { "content-type": contentType } }));
   } catch {
     // A full quota costs the next view a download; it must not fail this one.
     // Failing to *delete* is the opposite — see pruneMediaCaches.

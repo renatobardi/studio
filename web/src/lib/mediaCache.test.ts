@@ -14,7 +14,7 @@ describe("the media cache", () => {
   test("gives back to the same Identity what it cached, hash key and all", async () => {
     stubCaches();
 
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png", mediaCacheEpoch());
     const cached = await readCachedBlob(PUBKEY_A, URL_);
 
     expect(cached && new Uint8Array(cached.bytes)).toEqual(new Uint8Array([1, 2, 3]));
@@ -27,13 +27,13 @@ describe("the media cache", () => {
     // whether B may read it.
     stubCaches();
 
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png", mediaCacheEpoch());
 
     expect(await readCachedBlob(PUBKEY_B, URL_)).toBeUndefined();
   });
 
   test("a browser with no Cache Storage neither caches nor reads", async () => {
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png"); // must not throw
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch()); // must not throw
     expect(await readCachedBlob(PUBKEY_A, URL_)).toBeUndefined();
   });
 
@@ -41,8 +41,8 @@ describe("the media cache", () => {
     // The leftovers of an Identity that never signed out cleanly — closed tab,
     // failed cleanup — must not survive the next sign-in.
     const { stores } = stubCaches();
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
-    await cacheBlob(PUBKEY_B, URL_, bytesOf(2), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
+    await cacheBlob(PUBKEY_B, URL_, bytesOf(2), "image/png", mediaCacheEpoch());
     stores["studio-media-v1"] = {}; // the origin-wide cache this replaces
 
     await pruneMediaCaches(PUBKEY_A);
@@ -52,7 +52,7 @@ describe("the media cache", () => {
 
   test("pruning to no Identity empties every media cache, and leaves the app shell alone", async () => {
     const { stores } = stubCaches();
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
     stores["workbox-precache-v2"] = {};
 
     await pruneMediaCaches(null);
@@ -63,7 +63,7 @@ describe("the media cache", () => {
   test("a cache that cannot be deleted is reported, not passed off as cleaned", async () => {
     // Sign-out must not claim success it did not get: the bytes are still there.
     const { failDeleteOf } = stubCaches();
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
     failDeleteOf(mediaCacheName(PUBKEY_A));
 
     await expect(pruneMediaCaches(null)).rejects.toThrow(/cached media/i);
@@ -75,10 +75,41 @@ describe("the media cache", () => {
     // `studio-media-v1-<the pubkey that just left>` — empty, but present, and
     // sign-out promised nothing of that Identity would be left here (#39).
     const { stores } = stubCaches();
-    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png");
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
     await pruneMediaCaches(null);
 
     expect(await readCachedBlob(PUBKEY_A, URL_)).toBeUndefined();
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("a write whose open lands after the wipe leaves no cache for the Identity that left", async () => {
+    // #187: the caller's epoch check passed, so the write went ahead — but `caches.open` only
+    // resolved after sign-out's prune, re-creating `studio-media-v1-<pubkey that left>`.
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(null);
+    release();
+    await write;
+
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("a read whose open lands after the wipe leaves no cache for the Identity that left", async () => {
+    // #187: `caches.has` said yes, then the prune ran before `caches.open` resolved — and the
+    // open re-created the cache, empty.
+    const { stores, holdOpens } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
+    const release = holdOpens();
+
+    const read = readCachedBlob(PUBKEY_A, URL_);
+    await Promise.resolve(); // let the read get past `caches.has`
+    await pruneMediaCaches(null);
+    release();
+
+    expect(await read).toBeUndefined();
     expect(Object.keys(stores)).toEqual([]);
   });
 
