@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
+import { buildDmImetaTag } from "../../lib/dmMedia";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { ConversationView } from "./ConversationView";
+import * as dmAttachmentImage from "./DmAttachmentImage";
 import { shortNpub, type Profile } from "./useProfiles";
 
 const ME = "1".padEnd(64, "a");
@@ -53,5 +55,37 @@ describe("ConversationView", () => {
     const html = render([ANA, BRUNO], profiles);
     expect(html).toContain("Ana Petrova, Bruno Sá");
     expect(html).not.toContain("conversation-handle");
+  });
+
+  test("gives the newest Message's photo the highest download priority", () => {
+    // #181/#188: a conversation queues every photo of its history at once; the one just sent is
+    // the one being waited on, so it must not queue behind the oldest.
+    const photo = (sha: string, createdAt: number): Rumor => ({
+      id: sha.slice(0, 8),
+      pubkey: ANA,
+      created_at: createdAt,
+      kind: 14,
+      tags: [buildDmImetaTag({ url: `https://media.example/${sha}`, sha256: sha, size: 1, type: "application/octet-stream" }, "k".repeat(64), "image/png")],
+      content: "",
+    });
+    const stub = spyOn(dmAttachmentImage, "DmAttachmentImage").mockImplementation(({ attachment, priority }) => (
+      <i data-photo={attachment.sha256} data-priority={priority} />
+    ));
+
+    const html = renderToStaticMarkup(
+      <ConversationView
+        client={{} as RelayClient}
+        ownPubkey={ME}
+        peerPubkeys={[ANA]}
+        signer={{} as Signer}
+        mediaUrl="https://media.example"
+        messages={[photo("o".repeat(64), 1), photo("n".repeat(64), 2)]}
+        profiles={named(ANA, "Ana Petrova")}
+      />,
+    );
+    stub.mockRestore();
+
+    const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
+    expect(priorityOf("n".repeat(64))).toBeGreaterThan(priorityOf("o".repeat(64)));
   });
 });

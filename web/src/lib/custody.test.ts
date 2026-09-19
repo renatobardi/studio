@@ -143,12 +143,28 @@ describe("signing out", () => {
       started = true;
       await cacheBlob(pubkey, "https://studio.test/media/" + "e".repeat(64), new Uint8Array([2]).buffer as ArrayBuffer, "image/png", mediaCacheEpoch());
     });
-    queued.catch(() => {});
+    queued.result.catch(() => {});
 
     await clearIdentity();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(started).toBe(false);
     expect(Object.keys(stores)).not.toContain(mediaCacheName(pubkey));
+  });
+
+  test("aborts the photo downloads already in flight", async () => {
+    // #188 (#182's follow-up): a download that started belongs to the Identity leaving too.
+    stubCaches();
+    let seen: AbortSignal | undefined;
+    const inFlight = mediaDownloads.run(0, (signal) => {
+      seen = signal;
+      return new Promise<void>(() => {});
+    });
+    inFlight.result.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await clearIdentity();
+
+    expect(seen?.aborted).toBe(true);
   });
 });
