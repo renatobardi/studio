@@ -160,7 +160,7 @@ jobs:
           # changed input is a bind-mounted file (the Caddyfile).
           on_host "set -eu; cd /opt/app; git fetch --quiet origin main; git checkout --force --detach $DEPLOY_SHA; docker compose up -d --build; docker compose restart caddy"
 
-          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r')
+          running=$(on_host 'cd /opt/app && git rev-parse HEAD' | tr -d '\r"')
           if [[ "$running" != "$DEPLOY_SHA" ]]; then
             echo "::error::studio-test is running $running, expected $DEPLOY_SHA"
             exit 1
@@ -200,6 +200,26 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Seed flow 11's fixtures (idempotent — issue #157)
+        # The fixtures Account's Identity and Key Backup, the "fixtures" Channel and a Direct
+        # Message — published only where missing, so this also restores them after studio-test is
+        # re-seeded. Firebase's web API key is public (it ships in the bundle); it is read from the
+        # host's web/.env rather than kept as one more secret.
+        working-directory: web
+        env:
+          HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
+          STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+          STUDIO_TEST_WORKSPACE_SLUG: ${{ secrets.STUDIO_TEST_WORKSPACE_SLUG }}
+          STUDIO_TEST_OWNER_PRIVATE_KEY_HEX: ${{ secrets.STUDIO_TEST_OWNER_PRIVATE_KEY_HEX }}
+          STUDIO_TEST_FIXTURES_EMAIL: ${{ secrets.STUDIO_TEST_FIXTURES_EMAIL }}
+          STUDIO_TEST_FIXTURES_PASSWORD: ${{ secrets.STUDIO_TEST_FIXTURES_PASSWORD }}
+          STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE }}
+        run: |
+          STUDIO_FIREBASE_API_KEY=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
+            "lxc exec studio-test -- sed -n 's/^VITE_FIREBASE_API_KEY=//p' /opt/app/web/.env" | tr -d '\r"')
+          export STUDIO_FIREBASE_API_KEY
+          bun tools/seed-fixtures.ts
+
       - name: Install Playwright browsers
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
@@ -235,7 +255,11 @@ jobs:
           STUDIO_TEST_ONBOARDING_PASSWORD: ${{ secrets.STUDIO_TEST_ONBOARDING_PASSWORD }}
           # Flow 11 (#73): capture the deployed shell at both viewports and themes; the
           # PNGs ride the artifact below and are compared by hand against docs/UI/reference.
+          # It signs in as the fixtures Account the step above seeded (#157).
           STUDIO_VISUAL_CAPTURE: "1"
+          STUDIO_TEST_FIXTURES_EMAIL: ${{ secrets.STUDIO_TEST_FIXTURES_EMAIL }}
+          STUDIO_TEST_FIXTURES_PASSWORD: ${{ secrets.STUDIO_TEST_FIXTURES_PASSWORD }}
+          STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE: ${{ secrets.STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE }}
         run: bun run test:e2e
 
       - name: Upload screenshots (failures, and flow 11's visual captures)

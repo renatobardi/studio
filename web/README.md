@@ -23,6 +23,8 @@ bun test         # unit tests over src and tools: the framework-free logic (iden
                  # client reconnection) plus a few components rendered with renderToStaticMarkup
 bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see scripts/ops/seed-e2e-test-account.sh
 bun run test:visual      # flow 10: the MVP screens over preview.html against their baselines (docs/UI/REFERENCE.md)
+bun tools/seed-fixtures.ts # flow 11's Channel, thread and Direct Message on studio-test (#157); CD runs it
+                           # before every smoke, so a re-seeded studio-test gets them back on the next deploy
 bun run capture:reference # re-captures docs/UI/reference from the prototype
 ```
 

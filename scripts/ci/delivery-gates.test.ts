@@ -94,6 +94,13 @@ describe('cd.yml', () => {
     expect(deployCommands).toContain('superseded')
   })
 
+  test("seeds flow 11's fixtures after the Accounts exist and before the smoke (#157)", () => {
+    const at = (text: string) => deploy.steps.findIndex((step) => (step.run ?? '').includes(text))
+    const seed = at('bun tools/seed-fixtures.ts')
+    expect(seed).toBeGreaterThan(at('studio_api.ensure_e2e_accounts'))
+    expect(seed).toBeLessThan(at('bun run test:e2e'))
+  })
+
   test('verifies the commit actually running on the host, and records it', () => {
     expect(deployCommands).toContain('rev-parse HEAD')
     expect(deployCommands).toContain('GITHUB_STEP_SUMMARY')

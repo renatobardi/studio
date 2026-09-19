@@ -51,6 +51,16 @@ export const testOnboardingAccount = {
   password: () => requiredEnv("STUDIO_TEST_ONBOARDING_PASSWORD"),
 };
 
+/** Flow 11's Account (#157): its Identity, Key Backup and conversations are fixtures, seeded by
+ * `tools/seed-fixtures.ts` before every smoke — so what flow 11 captures is the same every run.
+ * No other flow signs in as it or writes to it: its inbox has to stay within one page of gift
+ * wraps, or the app opens the Direct Message on its last day only (#231). */
+export const testFixturesAccount = {
+  email: () => requiredEnv("STUDIO_TEST_FIXTURES_EMAIL"),
+  password: () => requiredEnv("STUDIO_TEST_FIXTURES_PASSWORD"),
+  backupPassphrase: () => requiredEnv("STUDIO_TEST_FIXTURES_BACKUP_PASSPHRASE"),
+};
+
 /** A Workspace owner/admin identity used only to grant the just-onboarded test Identity Channel
  * membership (see `ensureChannelMembership`) — never used to sign in through the UI. Redeeming
  * an Invite only grants Workspace membership (`repository.py`'s `redeem_invite`); flows 2 & 3
