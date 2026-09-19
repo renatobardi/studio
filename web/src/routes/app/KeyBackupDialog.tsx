@@ -22,19 +22,18 @@ import { Dialog } from "./Dialog";
  */
 export function KeyBackupDialog({
   user,
-  accountPassword,
   pubkey,
   onClose,
   onStored,
 }: Readonly<{
   user: User;
-  accountPassword: string | null;
   /** The Identity this browser signs with — what the backup has to decrypt to. */
   pubkey: string;
   onClose: () => void;
   onStored: () => void;
 }>) {
-  const [knownPassword, setKnownPassword] = useState<string | null>(accountPassword);
+  // Asked for here, never handed down: the signed-in app holds no Account password (#189).
+  const [knownPassword, setKnownPassword] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
   const [verifyPassphrase, setVerifyPassphrase] = useState("");

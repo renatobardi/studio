@@ -21,7 +21,6 @@ export function SettingsView({
   client,
   pubkey,
   user,
-  accountPassword,
   appearance,
   onAppearanceChange,
   onSignOut,
@@ -33,7 +32,6 @@ export function SettingsView({
   pubkey: string;
   /** The Firebase session behind the Key Backup row, when there is one (#150). */
   user: User | null;
-  accountPassword: string | null;
   appearance: Appearance;
   onAppearanceChange: (next: Appearance) => void;
   onSignOut: () => void;
@@ -83,7 +81,6 @@ export function SettingsView({
               client={client}
               pubkey={pubkey}
               user={user}
-              accountPassword={accountPassword}
               onSignOut={onSignOut}
             />
           )}

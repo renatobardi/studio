@@ -16,7 +16,6 @@ export function ProfileSettings({
   client,
   pubkey,
   user,
-  accountPassword,
   onSignOut,
 }: Readonly<{
   client: RelayClient;
@@ -24,7 +23,6 @@ export function ProfileSettings({
   /** Null in the preview harness and wherever no Firebase session is at hand: the Key Backup
    * is then only reported, never managed. */
   user: User | null;
-  accountPassword: string | null;
   onSignOut: () => void;
 }>) {
   const { profiles, ensure } = useProfiles(client);
@@ -34,7 +32,6 @@ export function ProfileSettings({
       profile={profiles.get(pubkey)}
       pubkey={pubkey}
       user={user}
-      accountPassword={accountPassword}
       onSignOut={onSignOut}
     />
   );
@@ -46,13 +43,11 @@ export function ProfileSettingsCards({
   profile,
   pubkey,
   user,
-  accountPassword,
   onSignOut,
 }: Readonly<{
   profile: Profile | undefined;
   pubkey: string;
   user: User | null;
-  accountPassword: string | null;
   onSignOut: () => void;
 }>) {
   const [custody] = useState<Custody>(() => (hasNip07() ? "extension" : "local"));
@@ -109,7 +104,6 @@ export function ProfileSettingsCards({
       {managing && user && (
         <KeyBackupDialog
           user={user}
-          accountPassword={accountPassword}
           pubkey={pubkey}
           onClose={() => setManaging(false)}
           onStored={() => setStoredBackup(true)}

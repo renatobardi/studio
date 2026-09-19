@@ -31,3 +31,13 @@ export function resolveInitialView({ account, hasIdentity, hasWorkspace }: Routi
   if (!hasIdentity || !hasWorkspace) return "onboarding";
   return "app";
 }
+
+/**
+ * What is left of the typed Account password once the app moves to `view` (#189). Onboarding needs
+ * it to keep the Key Backup passphrase different from it (#36); past that — in the signed-in app,
+ * or back at sign-in after Sign out — nothing does, so nothing holds it. Settings asks for it again
+ * through AccountPasswordGate.
+ */
+export function accountPasswordKeptFor(view: AppView, password: string | null): string | null {
+  return view === "loading" || view === "onboarding" ? password : null;
+}

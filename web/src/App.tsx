@@ -15,7 +15,7 @@ import {
 import { localIdentityMatches } from "./lib/accountIdentity";
 import { isEmailVerified } from "./lib/emailVerification";
 import { inviteCodeFromUrl, rememberInviteCode } from "./lib/invites";
-import { resolveInitialView, type AppView } from "./lib/routing";
+import { accountPasswordKeptFor, resolveInitialView, type AppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
 import { AppShell } from "./routes/app/AppShell";
@@ -118,12 +118,19 @@ export function App() {
   // sign-out/sign-in) landing after a fresher one already set the view (#103).
   const bootGen = useRef(0);
 
+  // Every change of view goes through here, so the typed Account password never outlives the
+  // views that need it (#189).
+  const goTo = (next: AppView) => {
+    setView(next);
+    setAccountPassword((held) => accountPasswordKeptFor(next, held));
+  };
+
   const applyResolved = (myGen: number, resolved: Awaited<ReturnType<typeof resolveBoot>>) => {
     if (myGen !== bootGen.current) return;
     setAccount(resolved.account);
     setWorkspace(resolved.workspace);
     setSigner(resolved.signer);
-    setView(
+    goTo(
       resolveInitialView({
         account: resolved.routingAccount,
         hasIdentity: resolved.signer !== null,
@@ -154,12 +161,12 @@ export function App() {
       // An unverified user can only ever land back on "auth" — skip the
       // "loading" gate so a fresh signup's verify step (still on AuthScreen,
       // holding the typed password) isn't unmounted while this resolves.
-      if (isEmailVerified(firebaseUser)) setView("loading");
+      if (isEmailVerified(firebaseUser)) goTo("loading");
       const myGen = ++bootGen.current;
       try {
         applyResolved(myGen, await resolveBoot(firebaseUser));
       } catch {
-        if (myGen === bootGen.current) setView("auth");
+        if (myGen === bootGen.current) goTo("auth");
       }
     });
   }, []);
@@ -174,7 +181,7 @@ export function App() {
         onAuthenticated={(authedUser, password) => {
           setUser(authedUser);
           setAccountPassword(password);
-          setView("loading");
+          goTo("loading");
           // Verifying an email reloads the pending user in place and doesn't
           // fire a new onAuthStateChanged event, so this path resolves the
           // boot itself instead of waiting for that listener (#103).
@@ -182,7 +189,7 @@ export function App() {
           resolveBoot(authedUser)
             .then((resolved) => applyResolved(myGen, resolved))
             .catch(() => {
-              if (myGen === bootGen.current) setView("auth");
+              if (myGen === bootGen.current) goTo("auth");
             });
         }}
       />
@@ -198,7 +205,7 @@ export function App() {
         onComplete={async (ws) => {
           setWorkspace(ws);
           setSigner(await getSigner());
-          setView("app");
+          goTo("app");
         }}
         onAccountChanged={setAccount}
       />
@@ -212,7 +219,6 @@ export function App() {
           workspace={workspace}
           signer={signer}
           user={user}
-          accountPassword={accountPassword}
           onSignOut={async () => {
             // What could not be wiped is said out loud on the screen this
             // returns to, rather than passed off as a clean sign-out (#39).
@@ -225,7 +231,7 @@ export function App() {
             await signOut(auth);
             setAccount(null);
             setWorkspace(null);
-            setView("auth");
+            goTo("auth");
           }}
         />
       );
