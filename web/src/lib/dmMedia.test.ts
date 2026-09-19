@@ -195,7 +195,7 @@ describe("fetchDmAttachmentObjectUrl", () => {
 
     expect(calls).toHaveLength(1);
     const scope = Object.keys(stores)[0]!;
-    expect(new Uint8Array(scope ? stores[scope]![url]!.bytes : new ArrayBuffer(0))).toEqual(ciphertext);
+    expect(new Uint8Array(scope ? stores[scope]![url]!.bytes : new ArrayBuffer(0))).toEqual(new Uint8Array(ciphertext));
   });
 
   test("another Identity on the same browser is refused instead of served A's copy", async () => {

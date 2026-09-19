@@ -11,7 +11,7 @@ import {
 } from "./channelPagination";
 
 function message(id: string, createdAt: number): VerifiedEvent {
-  return { id, kind: 9, created_at: createdAt, pubkey: "author", tags: [], content: "", sig: "" } as VerifiedEvent;
+  return { id, kind: 9, created_at: createdAt, pubkey: "author", tags: [], content: "", sig: "" } as unknown as VerifiedEvent;
 }
 
 describe("liveMessageFilters", () => {

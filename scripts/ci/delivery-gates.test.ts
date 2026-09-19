@@ -105,6 +105,12 @@ describe('ci.yml', () => {
     // renaming a job here silently unprotects main.
     expect(Object.keys(ci.jobs).sort()).toEqual(['gates', 'sonar', 'test', 'visual', 'web'])
   })
+
+  test('type-checks the test files too, not only what the build ships', () => {
+    // tsconfig.app.json leaves *.test.ts(x) out of the build, so a test passing a
+    // prop the component does not have ran green for weeks (#191).
+    expect(commandsOf(ci.jobs.web)).toContain('bun run typecheck:tests')
+  })
 })
 
 // Flow 10 on every pull request (issue #155). CI runs the same script a person

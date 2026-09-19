@@ -15,7 +15,7 @@ import {
 import { localIdentityMatches } from "./lib/accountIdentity";
 import { isEmailVerified } from "./lib/emailVerification";
 import { inviteCodeFromUrl, rememberInviteCode } from "./lib/invites";
-import { resolveInitialView, type AppView } from "./lib/routing";
+import { resolveInitialView, useAppView } from "./lib/routing";
 import { AuthScreen } from "./routes/auth/AuthScreen";
 import { OnboardingScreen } from "./routes/onboarding/OnboardingScreen";
 import { AppShell } from "./routes/app/AppShell";
@@ -107,9 +107,8 @@ async function resumeWorkspace(signer: Signer, user: User | null): Promise<Works
 }
 
 export function App() {
-  const [view, setView] = useState<AppView>("loading");
+  const { view, setView, accountPassword, setAccountPassword } = useAppView();
   const [user, setUser] = useState<User | null>(null);
-  const [accountPassword, setAccountPassword] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
   const [signer, setSigner] = useState<Signer | null>(null);
   const [account, setAccount] = useState<api.AccountOut | null>(null);
@@ -212,7 +211,6 @@ export function App() {
           workspace={workspace}
           signer={signer}
           user={user}
-          accountPassword={accountPassword}
           onSignOut={async () => {
             // What could not be wiped is said out loud on the screen this
             // returns to, rather than passed off as a clean sign-out (#39).
