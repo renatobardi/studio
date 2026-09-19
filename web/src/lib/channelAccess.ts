@@ -70,20 +70,37 @@ export function rosterPubkeys(roster: { tags: string[][] }): string[] {
   return roster.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]);
 }
 
+/** Whether `candidate` replaces `current` as the same addressable event: newer, or of the same
+ * second with the lower id (NIP-01). */
+function replaces(candidate: { created_at: number; id: string }, current: { created_at: number; id: string } | undefined): boolean {
+  if (current === undefined) return true;
+  if (candidate.created_at !== current.created_at) return candidate.created_at > current.created_at;
+  return candidate.id < current.id;
+}
+
 /** The two projections the Channel's member views read: its roster (39002), which the header
  * pill counts and the members pane lists, and its admins (39001), which the pane labels Admin
- * (#145). One subscription for both, so opening the pane costs nothing extra (#143). */
+ * (#145). One subscription for both, so opening the pane costs nothing extra (#143). Each is
+ * replaceable: one older than the one applied — a reconnect's replay, another relay — is
+ * ignored rather than rolling the roster back (#197). */
 export function subscribeRoster(
   client: RosterClient,
   channelId: string,
   onRoster: (pubkeys: string[]) => void,
   onAdmins: (pubkeys: string[]) => void,
 ): () => void {
+  const applied = new Map<number, { created_at: number; id: string }>();
   return client.subscribe(
     [
       { kinds: [39002], "#d": [channelId] },
       { kinds: [39001], "#d": [channelId] },
     ],
-    { onEvent: (event) => (event.kind === 39001 ? onAdmins : onRoster)(rosterPubkeys(event)) },
+    {
+      onEvent: (event) => {
+        if (!replaces(event, applied.get(event.kind))) return;
+        applied.set(event.kind, event);
+        (event.kind === 39001 ? onAdmins : onRoster)(rosterPubkeys(event));
+      },
+    },
   );
 }
