@@ -131,3 +131,57 @@ describe("ProfileStore.close", () => {
     expect(subscriptions[1]!.filters).toEqual([{ kinds: [0], authors: ["a"] }]);
   });
 });
+
+/** A relay that has nothing for an author says so only by ending the query (#196): the store
+ * records that answer, so "not published" can be told apart from "not heard back yet". */
+describe("ProfileStore answers", () => {
+  test("an author the relay answered without a kind 0 is known to have none", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a", "b"]);
+    subscriptions[0]!.handlers.onEvent(profileEvent("a", JSON.stringify({ name: "Ana" })));
+    expect(store.getSnapshot().has("b")).toBe(false);
+
+    subscriptions[0]!.handlers.onEose?.();
+
+    expect(store.getSnapshot().get("a")).toEqual({ name: "Ana" });
+    expect(store.getSnapshot().get("b")).toEqual({});
+  });
+
+  test("an EOSE answers only the authors of the REQ it ends", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a"]);
+    store.ensure(["b"]);
+
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().get("a")).toEqual({});
+    expect(store.getSnapshot().has("b")).toBe(false);
+
+    subscriptions[0]!.handlers.onEose?.();
+    expect(store.getSnapshot().get("b")).toEqual({});
+  });
+
+  test("the EOSE of a REQ a reconnect re-issued answers every author requested", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    store.ensure(["a", "b"]);
+    subscriptions[0]!.handlers.onEose?.();
+    store.ensure(["c"]);
+    subscriptions[0]!.handlers.onEose?.();
+    subscriptions[0]!.handlers.onEose?.();
+    expect([...store.getSnapshot().keys()].sort()).toEqual(["a", "b", "c"]);
+  });
+
+  test("a kind 0 published later replaces the empty answer", () => {
+    const { client, subscriptions } = fakeClient();
+    const store = new ProfileStore(client);
+    let heard = 0;
+    store.subscribe(() => (heard += 1));
+    store.ensure(["a"]);
+    subscriptions[0]!.handlers.onEose?.();
+    subscriptions[0]!.handlers.onEvent(profileEvent("a", JSON.stringify({ name: "Ana" })));
+    expect(store.getSnapshot().get("a")).toEqual({ name: "Ana" });
+    expect(heard).toBe(2);
+  });
+});

@@ -1,6 +1,8 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import type { SubscriptionHandle, SubscriptionHandlers } from "./relay";
 
+/** A kind 0's content — or `{}` for an author the relay answered for without one, which is how
+ * "never published" reads apart from "not heard back yet" (no entry at all, #196). */
 export interface Profile {
   name?: string;
   picture?: string;
@@ -25,6 +27,9 @@ export class ProfileStore {
   private readonly requested = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private handle: SubscriptionHandle | null = null;
+  /** The authors of each REQ still waiting for its EOSE, oldest first: an `update()` re-issues
+   * the REQ, and each one ends with an EOSE of its own. */
+  private readonly unanswered: string[][] = [];
   private snapshot = new Map<string, Profile>();
   private readonly client: ProfileClient;
 
@@ -39,8 +44,9 @@ export class ProfileStore {
     if (missing.length === 0 && (this.handle !== null || pubkeys.length === 0)) return;
     for (const pubkey of missing) this.requested.add(pubkey);
     const filters: Filter[] = [{ kinds: [0], authors: [...this.requested] }];
+    this.unanswered.push([...this.requested]);
     if (this.handle !== null) this.handle.update(filters);
-    else this.handle = this.client.subscribe(filters, { onEvent: this.onEvent });
+    else this.handle = this.client.subscribe(filters, { onEvent: this.onEvent, onEose: this.onEose });
   };
 
   subscribe = (listener: () => void): (() => void) => {
@@ -53,6 +59,7 @@ export class ProfileStore {
   close = (): void => {
     this.handle?.();
     this.handle = null;
+    this.unanswered.length = 0;
   };
 
   private readonly onEvent = (event: VerifiedEvent): void => {
@@ -63,6 +70,20 @@ export class ProfileStore {
       return;
     }
     this.snapshot = new Map(this.snapshot).set(event.pubkey, parsed);
-    for (const listener of this.listeners) listener();
+    this.notify();
   };
+
+  /** Whoever the ended REQ asked for and got no kind 0 from has published none — so far. A
+   * reconnect re-issues the REQ with no entry queued: that EOSE answers everyone requested. */
+  private readonly onEose = (): void => {
+    const authors = this.unanswered.shift() ?? [...this.requested];
+    const silent = authors.filter((pubkey) => !this.snapshot.has(pubkey));
+    if (silent.length === 0) return;
+    this.snapshot = new Map([...this.snapshot, ...silent.map((pubkey): [string, Profile] => [pubkey, {}])]);
+    this.notify();
+  };
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
 }
