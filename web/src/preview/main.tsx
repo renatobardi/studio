@@ -131,7 +131,6 @@ function mountedScreen(client: RelayClient) {
       workspace={WORKSPACE}
       signer={previewSigner(OWN)}
       user={PREVIEW_USER}
-      accountPassword="preview-account-password"
       client={client}
       onSignOut={() => {}}
     />

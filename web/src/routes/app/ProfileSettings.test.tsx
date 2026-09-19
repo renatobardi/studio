@@ -13,7 +13,6 @@ const render = (profile: Profile | undefined, withUser = true) =>
       profile={profile}
       pubkey={PUBKEY}
       user={withUser ? user : null}
-      accountPassword={null}
       onSignOut={() => {}}
     />,
   );
