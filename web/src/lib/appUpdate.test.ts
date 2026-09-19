@@ -37,6 +37,17 @@ describe("createUpdateNotice", () => {
     expect(notice.getSnapshot()).toBe(false);
   });
 
+  test("dismissing hides it for the rest of this page's life, and tells the listeners", () => {
+    const notice = createUpdateNotice(true);
+    let heard = 0;
+    notice.subscribe(() => (heard += 1));
+    notice.report("waiting");
+    notice.dismiss();
+    notice.report("controllerchange");
+    expect(notice.getSnapshot()).toBe(false);
+    expect(heard).toBe(2);
+  });
+
   test("a listener that unsubscribed hears nothing", () => {
     const notice = createUpdateNotice(true);
     let heard = 0;
@@ -50,6 +61,7 @@ describe("watchForNewVersion", () => {
   function harness(controller: object | null) {
     const listeners = new Map<string, () => void>();
     const documentListeners = new Map<string, () => void>();
+    const windowListeners = new Map<string, () => void>();
     let options: Parameters<Parameters<typeof watchForNewVersion>[0]["registerSW"]>[0] | null = null;
     let updates = 0;
     const doc = {
@@ -62,9 +74,10 @@ describe("watchForNewVersion", () => {
         options = given;
       },
       document: doc,
+      window: { addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener) },
     });
     const registration = { update: async () => void (updates += 1) } as unknown as ServiceWorkerRegistration;
-    return { notice, listeners, documentListeners, options: () => options!, doc, registration, updates: () => updates };
+    return { notice, listeners, documentListeners, windowListeners, options: () => options!, doc, registration, updates: () => updates };
   }
 
   test("registers the worker at once, as main.tsx did", () => {
@@ -108,8 +121,30 @@ describe("watchForNewVersion", () => {
     expect(updates()).toBe(1);
   });
 
+  test("so does the window regaining focus — a desktop PWA switched back to never changes visibility", () => {
+    const { options, windowListeners, registration, updates } = harness({});
+    options().onRegisteredSW!("/sw.js", registration);
+    windowListeners.get("focus")!();
+    expect(updates()).toBe(1);
+  });
+
+  test("a check that fails offline is dropped quietly, not left as an unhandled rejection", async () => {
+    const { options, windowListeners } = harness({});
+    let asked = 0;
+    const offline = { update: () => (asked += 1, Promise.reject(new Error("offline"))) } as unknown as ServiceWorkerRegistration;
+    options().onRegisteredSW!("/sw.js", offline);
+    windowListeners.get("focus")!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(asked).toBe(1);
+  });
+
   test("works where the browser has no service worker at all", () => {
-    const notice = watchForNewVersion({ serviceWorker: undefined, registerSW: () => {}, document: { visibilityState: "visible", addEventListener: () => {} } });
+    const notice = watchForNewVersion({
+      serviceWorker: undefined,
+      registerSW: () => {},
+      document: { visibilityState: "visible", addEventListener: () => {} },
+      window: { addEventListener: () => {} },
+    });
     expect(notice.getSnapshot()).toBe(false);
   });
 });

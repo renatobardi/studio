@@ -165,13 +165,14 @@ Settings além de Appearance/Profile, popup Google simulado.
 
 12. **Aviso de versão nova (#203).** O protótipo não tem tela para isso. Quando um service worker
     novo assume uma página que um anterior carregou (ou há um esperando), o app mostra, sobre
-    qualquer tela — onboarding incluído —, uma linha discreta no tom de popover, fixa acima da
-    borda de baixo e abaixo dos diálogos: "A new version of Studio is available." e um botão
-    "Reload". **Nunca recarrega sozinho**, nem sem rascunho: recarregar é sempre o clique da
-    pessoa, então um rascunho no composer nunca se perde sem ela pedir — e não volta o reload no
-    meio da sessão que quebrou o smoke do CD (`web/vite.config.ts`). A regra de quando avisar
-    vive em `web/src/lib/appUpdate.ts`; a PWA instalada pergunta por versão nova ao voltar a ficar
-    visível (`registration.update()`), não só na carga. Sem estado no `capture-reference.mjs`,
+    qualquer tela — onboarding incluído —, uma linha discreta no tom de popover, fixa no topo ao
+    centro (longe do composer, que vive embaixo) e abaixo dos diálogos: "A new version of Studio is
+    available.", um botão "Reload" e um "×" que a dispensa até a próxima carga. **Nunca recarrega
+    sozinho**, nem sem rascunho: recarregar é sempre o clique da pessoa, então um rascunho no
+    composer nunca se perde sem ela pedir — e não volta o reload no meio da sessão que quebrou o
+    smoke do CD (`web/vite.config.ts`). A regra de quando avisar vive em `web/src/lib/appUpdate.ts`;
+    a PWA instalada pergunta por versão nova ao voltar a ficar visível ou ao ganhar foco
+    (`registration.update()`), não só na carga. Sem estado no `capture-reference.mjs`,
     fica fora do flow 10, como o `new-message` (Decisão 11).
 
 ## Aceite visual (issue #73)

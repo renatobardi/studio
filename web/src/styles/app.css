@@ -1401,12 +1401,12 @@ button.sidebar-group-label:hover {
 }
 
 /* "A new version is available" (#203): no prototype screen — a small popover-toned line floating
-   above the bottom edge of any screen, under dialogs, never covering the composer's full width. */
+   at the top centre of any screen, clear of the composer, under the dialogs, and dismissible. */
 .update-notice {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: 16px;
+  top: 12px;
   z-index: 190;
   display: flex;
   align-items: center;

@@ -17,5 +17,6 @@ describe("UpdateNotice", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain("A new version of Studio is available.");
     expect(html).toContain(">Reload</button>");
+    expect(html).toContain('aria-label="Dismiss"');
   });
 });

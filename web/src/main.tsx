@@ -6,7 +6,7 @@ import { App } from "./App";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { watchForNewVersion } from "./lib/appUpdate";
 
-const updates = watchForNewVersion({ serviceWorker: navigator.serviceWorker, registerSW, document });
+const updates = watchForNewVersion({ serviceWorker: navigator.serviceWorker, registerSW, document, window });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
