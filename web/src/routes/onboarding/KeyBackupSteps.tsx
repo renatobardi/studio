@@ -54,12 +54,15 @@ export function BackupPassphraseCard({
 
 export function BackupVerifyCard({
   verified,
+  unsaved = false,
   passphrase,
   onPassphrase,
   busy,
   onVerify,
 }: Readonly<{
   verified: boolean;
+  /** Proved, but the upload to the Account failed: retrying runs the verify step again (#200). */
+  unsaved?: boolean;
   passphrase: string;
   onPassphrase: (value: string) => void;
   busy: boolean;
@@ -99,9 +102,18 @@ export function BackupVerifyCard({
           </span>
           <span className="auth-panel-text">
             <span className="auth-panel-title">✓ Verified</span>
-            <span className="auth-panel-meta">Your passphrase unlocked the backup.</span>
+            <span className="auth-panel-meta">
+              {unsaved ? "Not saved to your Account yet." : "Your passphrase unlocked the backup."}
+            </span>
           </span>
         </div>
+      )}
+      {verified && unsaved && (
+        <span className="onboarding-card-action">
+          <button className="btn btn-primary btn-xs" disabled={busy} onClick={onVerify}>
+            Try again
+          </button>
+        </span>
       )}
     </div>
   );
