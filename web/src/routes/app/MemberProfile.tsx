@@ -1,15 +1,14 @@
 import { useEffect } from "react";
-import type { RelayClient } from "../../lib/relay";
 import { Avatar } from "./Avatar";
-import { displayName, useProfiles } from "./useProfiles";
+import { displayName, type ProfileLookup } from "./useProfiles";
 
 /** Read-only view of another Workspace Member's kind 0 profile. */
 export function MemberProfile({
-  client,
+  profileLookup,
   pubkey,
   onClose,
-}: Readonly<{ client: RelayClient; pubkey: string; onClose: () => void }>) {
-  const { profiles, ensure } = useProfiles(client);
+}: Readonly<{ profileLookup: ProfileLookup; pubkey: string; onClose: () => void }>) {
+  const { profiles, ensure } = profileLookup;
   useEffect(() => ensure([pubkey]), [pubkey, ensure]);
   const profile = profiles.get(pubkey);
   const name = displayName(profiles, pubkey);

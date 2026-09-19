@@ -18,6 +18,7 @@ const render = (channel: ChannelOut) =>
       workspace={{ slug: "family", role: "member", media_url: "https://media.example" } as WorkspaceOut}
       workspaceMembers={[]}
       threadView="split"
+      profileLookup={{ profiles: new Map(), ensure: () => {} }}
     />,
   );
 
