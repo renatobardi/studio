@@ -17,6 +17,7 @@ from support import new_keypair, sign_event
 from studio_api.auth import AuthError
 from studio_api.control.repository import ControlPlaneRepository
 from studio_api.control.routes import router
+from studio_api.nostr.model import Filter
 from studio_api.nostr.store import EventStore
 
 SERVER_SECRET = "test-server-secret"
@@ -741,6 +742,57 @@ class TestChannels:
             headers=nostr_header(owner_sk, owner_pubkey, url=remove_url, method="DELETE"),
         )
         assert remove.status_code == 200
+
+    async def test_demoting_a_channel_admin_republishes_the_admins_without_them(
+        self, client: AsyncClient, store: EventStore
+    ) -> None:
+        # #186: promoting re-published 39001 with the new admin; demoting (re-adding
+        # with role "member") re-published only 39002, so the members pane kept
+        # labelling as Admin someone the API already treats as a Member.
+        owner_sk, owner_pubkey = await self._create_workspace(client)
+        create = await client.post(
+            "/api/workspaces/family/channels",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/channels", method="POST"
+            ),
+            json={"name": "general"},
+        )
+        channel_id = create.json()["id"]
+        invite = await client.post(
+            "/api/workspaces/family/invites",
+            headers=nostr_header(
+                owner_sk, owner_pubkey, url="http://test/api/workspaces/family/invites", method="POST"
+            ),
+            json={},
+        )
+        code = invite.json()["code"]
+        member_sk, member_pubkey = new_keypair()
+        await client.post(
+            f"/api/invites/{code}/redeem",
+            headers=nostr_header(
+                member_sk, member_pubkey, url=f"http://test/api/invites/{code}/redeem", method="POST"
+            ),
+        )
+        add_url = f"http://test/api/workspaces/family/channels/{channel_id}/members"
+
+        async def set_role(role: str) -> None:
+            response = await client.post(
+                f"/api/workspaces/family/channels/{channel_id}/members",
+                headers=nostr_header(owner_sk, owner_pubkey, url=add_url, method="POST"),
+                json={"pubkey": member_pubkey, "role": role},
+            )
+            assert response.status_code == 200
+
+        async def projected_admins() -> set[str]:
+            events = await store.for_workspace("family").query([Filter(kinds=[39001], tags={"d": [channel_id]})])
+            assert len(events) == 1
+            return {t[1] for t in events[0]["tags"] if t[0] == "p"}
+
+        await set_role("admin")
+        assert await projected_admins() == {owner_pubkey, member_pubkey}
+        await set_role("member")
+
+        assert await projected_admins() == {owner_pubkey}
 
     async def test_a_channel_member_lists_channel_members(self, client: AsyncClient) -> None:
         owner_sk, owner_pubkey = await self._create_workspace(client)
