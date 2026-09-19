@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
   ACCESS_PROJECTION_KINDS,
@@ -128,15 +128,21 @@ export function AppShell({
     if (ownPubkey) ensureProfiles([ownPubkey]);
   }, [ownPubkey, ensureProfiles]);
 
-  const dm = directMessages({
-    rumors: dmFeed.rumors,
-    myPubkey: ownPubkey,
-    members,
-    selectedPeerPubkeys,
-    readState: dmRead,
-    completeFrom: dmFeed.completeFrom,
-    nameOf: (peer) => displayName(profiles, peer),
-  });
+  // Only when what it reads changes: the shell re-renders on every Channel Message (activityAt),
+  // and regrouping the whole DM history each time is what #194 took out.
+  const dm = useMemo(
+    () =>
+      directMessages({
+        rumors: dmFeed.rumors,
+        myPubkey: ownPubkey,
+        members,
+        selectedPeerPubkeys,
+        readState: dmRead,
+        completeFrom: dmFeed.completeFrom,
+        nameOf: (peer) => displayName(profiles, peer),
+      }),
+    [dmFeed.rumors, ownPubkey, members, selectedPeerPubkeys, dmRead, dmFeed.completeFrom, profiles],
+  );
   const namedPubkeysKey = dm.namedPubkeys.join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- namedPubkeysKey already tracks the pubkeys' contents
   useEffect(() => ensureProfiles(namedPubkeysKey.split(",").filter(Boolean)), [namedPubkeysKey, ensureProfiles]);

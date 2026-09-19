@@ -17,6 +17,9 @@ export interface DmSnapshot {
   hasMore: boolean;
   /** The send time from which `rumors` holds every Message there is (`completeFrom`). */
   completeFrom: number;
+  /** `DmFeed.loadOlder`, carried along so the snapshot is all a caller renders from — the same
+   * object until something changes (#194). */
+  loadOlder: () => void;
 }
 
 /**
@@ -86,7 +89,7 @@ export class DmFeed {
 
   /** Fetches the page of gift wraps before the oldest paged in. A no-op while one is in flight,
    * or once the history is known to be exhausted. */
-  loadOlder(): void {
+  loadOlder = (): void => {
     if (this.loadingOlder || !this.hasMore) return;
     const run = this.run;
     const knownIds = new Set(this.wraps.keys());
@@ -119,13 +122,14 @@ export class DmFeed {
     // A relay that answers within subscribe() has already finished the page.
     if (finished) unsubscribe();
     else this.closeOlder = unsubscribe;
-  }
+  };
 
   getSnapshot = (): DmSnapshot => {
     this.snapshot ??= {
       rumors: [...this.rumors.values()],
       hasMore: this.hasMore,
       completeFrom: completeFrom(oldestCreatedAt(this.paged), this.hasMore),
+      loadOlder: this.loadOlder,
     };
     return this.snapshot;
   };

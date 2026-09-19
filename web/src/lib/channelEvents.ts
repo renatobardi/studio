@@ -102,3 +102,56 @@ export function summarizeThread(replies: VerifiedEvent[], rootId: string): Threa
     lastReplyAt: thread[0]?.created_at ?? null,
   };
 }
+
+/** What a timeline row shows under a Message: its Reactions, grouped, and its Thread's summary. */
+export interface MessageExtras {
+  reactions: ReactionGroup[];
+  thread: ThreadSummary;
+}
+
+function pushTo<T>(map: Map<string, T[]>, key: string, value: T): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
+/**
+ * Every Message's Reactions and Thread, sorted into place in one pass over the Channel's data —
+ * built once per change of that data, not once per Message on every render, which re-filtered
+ * all of it for each row on every keystroke in the composer (#194). A deletion belongs to the
+ * Message whose Reaction it removes.
+ */
+export function messageIndex({
+  reactions,
+  deletions,
+  replies,
+}: {
+  reactions: VerifiedEvent[];
+  deletions: VerifiedEvent[];
+  replies: VerifiedEvent[];
+}): (messageId: string) => MessageExtras {
+  const reactionsOf = new Map<string, VerifiedEvent[]>();
+  const messageOfReaction = new Map<string, string>();
+  for (const reaction of reactions) {
+    const messageId = firstTag(reaction, "e");
+    if (messageId === undefined) continue;
+    pushTo(reactionsOf, messageId, reaction);
+    messageOfReaction.set(reaction.id, messageId);
+  }
+  const deletionsOf = new Map<string, VerifiedEvent[]>();
+  for (const deletion of deletions) {
+    const messageIds = new Set(
+      deletion.tags.filter((tag) => tag[0] === "e").flatMap((tag) => messageOfReaction.get(tag[1]) ?? []),
+    );
+    for (const messageId of messageIds) pushTo(deletionsOf, messageId, deletion);
+  }
+  const repliesOf = new Map<string, VerifiedEvent[]>();
+  for (const reply of replies) {
+    const rootId = firstTag(reply, "E");
+    if (rootId !== undefined) pushTo(repliesOf, rootId, reply);
+  }
+  return (messageId) => ({
+    reactions: groupReactions(reactionsOf.get(messageId) ?? [], deletionsOf.get(messageId) ?? []),
+    thread: summarizeThread(repliesOf.get(messageId) ?? [], messageId),
+  });
+}

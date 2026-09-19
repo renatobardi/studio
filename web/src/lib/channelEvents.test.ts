@@ -6,7 +6,9 @@ import {
   buildReactionRemoval,
   buildThreadReply,
   groupReactions,
+  messageIndex,
   summarizeThread,
+  type TargetRef,
 } from "./channelEvents";
 
 function sign(template: { kind: number; tags: string[][]; content: string }, secretKey: Uint8Array): VerifiedEvent {
@@ -131,6 +133,48 @@ describe("summarizeThread", () => {
       count: 5,
       participantPubkeys: [getPublicKey(ana!), getPublicKey(tomas!), getPublicKey(sprig!), getPublicKey(marina!)],
       lastReplyAt: 48,
+    });
+  });
+});
+
+/** What each Message of a timeline carries, built once per change of the Channel's data rather than
+ * once per Message per render (#194) — the same answer `groupReactions` and `summarizeThread` give
+ * Message by Message. */
+describe("messageIndex", () => {
+  const alice = generateSecretKey();
+  const bob = generateSecretKey();
+  const target = (id: string): TargetRef => ({ id, kind: 9, pubkey: getPublicKey(alice) });
+  const at = (template: { kind: number; tags: string[][]; content: string }, secretKey: Uint8Array, createdAt: number) =>
+    finalizeEvent({ ...template, created_at: createdAt }, secretKey);
+
+  const m1 = "1".repeat(64);
+  const m2 = "2".repeat(64);
+  const r1 = at(buildReaction("c", target(m1), "👍"), alice, 10);
+  const r2 = at(buildReaction("c", target(m1), "👍"), bob, 11);
+  const r3 = at(buildReaction("c", target(m2), "🎉"), bob, 12);
+  const removeR2 = at(buildReactionRemoval("c", r2.id), bob, 13);
+  const unrelatedRemoval = at(buildReactionRemoval("c", "f".repeat(64)), bob, 14);
+  const reply1 = at(buildThreadReply("c", target(m1), "first"), bob, 20);
+  const reply2 = at(buildThreadReply("c", target(m1), "second"), alice, 30);
+  const data = { reactions: [r1, r2, r3], deletions: [removeR2, unrelatedRemoval], replies: [reply1, reply2] };
+
+  test("gives each Message what groupReactions and summarizeThread give it one by one", () => {
+    const lookup = messageIndex(data);
+    for (const id of [m1, m2]) {
+      const own = data.reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === id);
+      const ownDeletions = data.deletions.filter((d) => d.tags.some((t) => t[0] === "e" && own.some((r) => r.id === t[1])));
+      expect(lookup(id)).toEqual({ reactions: groupReactions(own, ownDeletions), thread: summarizeThread(data.replies, id) });
+    }
+  });
+
+  test("a removed Reaction no longer counts, and a removal of nothing on screen changes nothing", () => {
+    expect(messageIndex(data)(m1).reactions).toEqual([{ emoji: "👍", count: 1, reactorPubkeys: [getPublicKey(alice)] }]);
+  });
+
+  test("a Message nothing points at has no Reactions and no Thread", () => {
+    expect(messageIndex(data)("9".repeat(64))).toEqual({
+      reactions: [],
+      thread: { count: 0, participantPubkeys: [], lastReplyAt: null },
     });
   });
 });

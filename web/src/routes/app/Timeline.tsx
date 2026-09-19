@@ -1,12 +1,11 @@
 import type { VerifiedEvent } from "nostr-tools";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Signer } from "../../lib/custody";
 import {
   buildMessage,
   buildReaction,
   buildReactionRemoval,
-  groupReactions,
-  summarizeThread,
+  messageIndex,
   type TargetRef,
 } from "../../lib/channelEvents";
 import { nowSeconds } from "../../lib/clock";
@@ -215,6 +214,9 @@ export function Timeline({
   };
 
   const { sorted, newMessageId } = messagesWithDivider(messages, opened, ownPubkey);
+  // Keyed on the Channel's data only: a keystroke in the composer, or the clock's tick, re-renders
+  // the rows without sorting that data into them again (#194).
+  const extrasOf = useMemo(() => messageIndex({ reactions, deletions, replies }), [reactions, deletions, replies]);
 
   return (
     <div className="timeline">
@@ -235,11 +237,7 @@ export function Timeline({
         <ul className="message-list">
           {sorted.map((message, index) => {
             const target: TargetRef = { id: message.id, kind: message.kind, pubkey: message.pubkey };
-            const reactionsForMessage = reactions.filter((r) => r.tags.find((t) => t[0] === "e")?.[1] === message.id);
-            const deletionsForMessage = deletions.filter((d) =>
-              d.tags.some((t) => t[0] === "e" && reactionsForMessage.some((r) => r.id === t[1])),
-            );
-            const thread = summarizeThread(replies, message.id);
+            const { reactions: reactionGroups, thread } = extrasOf(message.id);
             const replyCount = thread.count;
             const continuation = isContinuation(sorted[index - 1], message);
             const author = displayName(profiles, message.pubkey);
@@ -283,7 +281,7 @@ export function Timeline({
                     <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} priority={index} />
                   ))}
                   <ReactionBar
-                    groups={groupReactions(reactionsForMessage, deletionsForMessage)}
+                    groups={reactionGroups}
                     ownPubkey={ownPubkey}
                     onAdd={(emoji) => void react(target, emoji)}
                     onRemoveOwn={(emoji) => void unreact(message.id, emoji)}
