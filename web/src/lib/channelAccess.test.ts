@@ -118,8 +118,8 @@ describe("subscribeRoster", () => {
       },
     };
   };
-  const projection = (kind: number, pubkeys: string[]) =>
-    ({ kind, tags: [["d", "c1"], ...pubkeys.map((p) => ["p", p])] }) as VerifiedEvent;
+  const projection = (kind: number, pubkeys: string[], createdAt = 100, id = `${kind}-${createdAt}`) =>
+    ({ id, kind, created_at: createdAt, tags: [["d", "c1"], ...pubkeys.map((p) => ["p", p])] }) as VerifiedEvent;
 
   test("asks one subscription for both of the Channel's projections", () => {
     const { client, subscriptions } = rosterClient();
@@ -144,6 +144,36 @@ describe("subscribeRoster", () => {
 
     expect(roster).toEqual([["aa", "bb"]]);
     expect(admins).toEqual([["aa"]]);
+  });
+
+  test("ignores a projection older than the one already applied, per kind (#197)", () => {
+    // A reconnect, or a second relay, can deliver the replaced event after its replacement.
+    const { client, subscriptions } = rosterClient();
+    const roster: string[][] = [];
+    const admins: string[][] = [];
+    subscribeRoster(client, "c1", (pubkeys) => roster.push(pubkeys), (pubkeys) => admins.push(pubkeys));
+    const { onEvent } = subscriptions[0]!.handlers;
+
+    onEvent(projection(39002, ["aa", "bb"], 200));
+    onEvent(projection(39001, ["aa"], 50));
+    onEvent(projection(39002, ["aa"], 150));
+    onEvent(projection(39001, ["bb"], 60));
+
+    expect(roster).toEqual([["aa", "bb"]]);
+    expect(admins).toEqual([["aa"], ["bb"]]);
+  });
+
+  test("between two projections of the same second, keeps the lower id, as NIP-01 replaces", () => {
+    const { client, subscriptions } = rosterClient();
+    const roster: string[][] = [];
+    subscribeRoster(client, "c1", (pubkeys) => roster.push(pubkeys), () => {});
+    const { onEvent } = subscriptions[0]!.handlers;
+
+    onEvent(projection(39002, ["bb"], 100, "b"));
+    onEvent(projection(39002, ["aa"], 100, "a"));
+    onEvent(projection(39002, ["cc"], 100, "c"));
+
+    expect(roster).toEqual([["bb"], ["aa"]]);
   });
 
   test("hands back the unsubscribe, so leaving the Channel closes it", () => {

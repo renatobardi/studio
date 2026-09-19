@@ -36,6 +36,7 @@ const panes: [string, () => ReactElement, string | null][] = [
       memberPubkeys={[ANA]}
       channelAdmins={[]}
       workspaceMembers={[]}
+      workspaceMembersError={null}
       canManage={false}
       profileLookup={profileLookup}
       onClose={() => {}}
@@ -106,6 +107,7 @@ const panes: [string, () => ReactElement, string | null][] = [
       opened={null}
       workspace={{ slug: "family", role: "member", media_url: "https://media.example" } as WorkspaceOut}
       workspaceMembers={[]}
+      workspaceMembersError={null}
       threadView="split"
       profileLookup={profileLookup}
     />,

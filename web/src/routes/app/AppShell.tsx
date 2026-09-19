@@ -352,6 +352,7 @@ export function AppShell({
                 opened={opened}
                 workspace={workspace}
                 workspaceMembers={members}
+                workspaceMembersError={membersError}
                 threadView={appearance.threadView}
                 profileLookup={profileLookup}
               />
