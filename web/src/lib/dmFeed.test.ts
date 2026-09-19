@@ -139,6 +139,39 @@ describe("DmFeed", () => {
     expect(relay.openFilters).toEqual([]);
   });
 
+  test("starting again over the wraps already held still reads a full first page", async () => {
+    // React's StrictMode mounts the effect, tears it down and mounts it again (main.tsx): the
+    // second REQ replays the same page, and its size is what says there is history behind it.
+    const { relay, feed, stop } = start(history(DM_PAGE_SIZE, NOW - 10 * DAY, 60));
+    await flush();
+    const before = feed.getSnapshot();
+    expect(before.hasMore).toBe(true);
+    stop();
+    const stopAgain = feed.start();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    // The replay is the page already held: it moves neither the cursor nor where the history
+    // is complete.
+    expect(feed.getSnapshot().completeFrom).toBe(before.completeFrom);
+    feed.loadOlder();
+    expect(relay.allFilters.at(-1)?.until).toBe(NOW - 10 * DAY - (DM_PAGE_SIZE - 1) * 60);
+    stopAgain();
+  });
+
+  test("a history already paged to its end is not reopened by starting again", async () => {
+    const { feed, stop } = start(history(DM_PAGE_SIZE + 50, NOW - 10 * DAY, 60));
+    await flush();
+    feed.loadOlder();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(false);
+    stop();
+    const stopAgain = feed.start();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(false);
+    expect(feed.getSnapshot().completeFrom).toBe(-Infinity);
+    stopAgain();
+  });
+
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();
