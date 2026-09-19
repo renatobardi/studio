@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChannelOut, WorkspaceOut } from "../../lib/api";
+import { DEFAULT_APPEARANCE } from "../../lib/appearance";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import { AdminPane } from "./AdminPane";
@@ -10,6 +11,7 @@ import { MemberProfile } from "./MemberProfile";
 import { MembersPane } from "./MembersPane";
 import { ProfileScreen } from "./ProfileScreen";
 import { ProfileSettings } from "./ProfileSettings";
+import { SettingsView } from "./SettingsView";
 import * as useProfilesModule from "./useProfiles";
 import type { Profile, ProfileLookup } from "./useProfiles";
 
@@ -70,6 +72,29 @@ const panes: [string, () => ReactElement, string | null][] = [
       profileLookup={profileLookup}
     />,
     null,
+  ],
+  [
+    "AdminPane › Channels",
+    () => (
+      <AdminPane client={client} signer={signer} slug="family" workspaceRole="owner" initialTab="channels" profileLookup={profileLookup} />
+    ),
+    null,
+  ],
+  [
+    "SettingsView › Profile",
+    () => (
+      <SettingsView
+        initialSection="profile"
+        profileLookup={profileLookup}
+        pubkey={ANA}
+        user={null}
+        appearance={DEFAULT_APPEARANCE}
+        onAppearanceChange={() => {}}
+        onSignOut={() => {}}
+        onClose={() => {}}
+      />
+    ),
+    "Ana Petrova",
   ],
   [
     "ChannelView",

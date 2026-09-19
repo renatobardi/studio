@@ -358,15 +358,7 @@ function ChannelsTab({
           </li>
         ))}
       </ul>
-      {managing && (
-        <ChannelMembersEditor
-          client={client}
-          signer={signer}
-          slug={slug}
-          channelId={managing}
-          profileLookup={profileLookup}
-        />
-      )}
+      {managing && <ChannelMembersEditor client={client} signer={signer} slug={slug} channelId={managing} profileLookup={profileLookup} />}
     </div>
   );
 }
