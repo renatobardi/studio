@@ -12,7 +12,11 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { Icon } from "../../components/icons/Icon";
-import { DM_ENCRYPTION_NOTICE, DM_LOOKING_FOR_OLDER, dmComposerPlaceholder } from "../../lib/conversationCopy";
+import {
+  DM_ENCRYPTION_NOTICE,
+  dmComposerPlaceholder,
+  dmEmptyNotice,
+} from "../../lib/conversationCopy";
 import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
@@ -25,7 +29,7 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { askOlder, asksForOlder, countOpeningPage, dmHistoryView, openedConversation } from "../../lib/dmPagination";
+import { askOlder, asksForOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
@@ -55,6 +59,7 @@ export function ConversationView({
   messages,
   completeFrom,
   hasMore,
+  pages,
   onLoadOlder,
   profiles,
 }: Readonly<{
@@ -67,6 +72,9 @@ export function ConversationView({
   /** Where the Direct Message history held is complete (#185) — nothing older is shown. */
   completeFrom: number;
   hasMore: boolean;
+  /** Older pages settled so far (`DmSnapshot.pages`): what a conversation waiting on one watches,
+   * since a page that brought nothing here moves nothing else. */
+  pages: number;
   onLoadOlder: () => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
 }>) {
@@ -87,18 +95,18 @@ export function ConversationView({
   // Only what is mounted fetches its photos (#185): the newest step, more as the reader asks.
   // An opening fetches what it needs on its own: a conversation quiet for a day sits below where
   // the history is complete, and would otherwise open blank behind a button (#231).
-  const [shownState, setShownState] = useState(() => openedConversation(completeFrom));
-  const view = dmHistoryView(messages, completeFrom, shownState, hasMore);
+  const [shownState, setShownState] = useState(() => openedConversation(pages));
+  const view = dmHistoryView(messages, completeFrom, shownState, hasMore, pages);
   const oldestShownId = view.messages[0]?.id;
+  const emptyNotice = dmEmptyNotice(view);
 
-  // Deps, not every render: a page arriving moves `completeFrom`, and that is what spends one of
-  // this opening's pages. Re-running per render would ask the feed again for nothing.
+  // Deps, not every render: one ask per page that settled. `pages` moves even when a page brought
+  // nothing for this conversation — or gave up on its deadline — which is what keeps a conversation
+  // waiting on one from waiting forever.
   useEffect(() => {
-    if (!view.fetchOlder) return;
-    setShownState((prev) => countOpeningPage(prev, completeFrom));
-    onLoadOlder();
+    if (view.fetchOlder) onLoadOlder();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoadOlder is the feed's own bound method
-  }, [view.fetchOlder, completeFrom]);
+  }, [view.fetchOlder, pages]);
 
   // Older Messages prepend; giving back the height they added keeps the reader where they were.
   // A request that ends with nothing new clears too, or the next live Message would be taken for it.
@@ -114,7 +122,7 @@ export function ConversationView({
   const loadOlder = () => {
     if (heightBeforeOlder.current !== null) return;
     heightBeforeOlder.current = scrollRef.current?.scrollHeight ?? null;
-    setShownState((prev) => askOlder(prev, view));
+    setShownState((prev) => askOlder(prev, { ...view, pages }));
   };
 
   const upload = async (id: string, file: File, previewUrl: string) => {
@@ -239,9 +247,9 @@ export function ConversationView({
             Load older messages
           </button>
         )}
-        {view.messages.length === 0 && view.fetchOlder && (
-          <p className="meta dm-looking-older" data-testid="dm-looking-older">
-            {DM_LOOKING_FOR_OLDER}
+        {emptyNotice !== null && (
+          <p className="meta dm-empty-notice" data-testid="dm-empty-notice">
+            {emptyNotice}
           </p>
         )}
         <ul className="message-list">

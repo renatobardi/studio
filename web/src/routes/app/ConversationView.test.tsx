@@ -17,7 +17,7 @@ const BRUNO = "3".padEnd(64, "c");
 const render = (
   peerPubkeys: string[],
   profiles: Map<string, Profile>,
-  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean } = {},
+  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean; pages?: number } = {},
 ) =>
   renderToStaticMarkup(
     <ConversationView
@@ -29,6 +29,7 @@ const render = (
       messages={history.messages ?? []}
       completeFrom={history.completeFrom ?? -Infinity}
       hasMore={history.hasMore ?? false}
+      pages={history.pages ?? 0}
       onLoadOlder={() => {}}
       profiles={profiles}
     />,
@@ -99,6 +100,7 @@ describe("ConversationView", () => {
         mediaUrl="https://media.example"
         messages={[photo("o".repeat(64), 1), photo("n".repeat(64), 2)]}
         completeFrom={-Infinity}
+        pages={0}
         hasMore={false}
         onLoadOlder={() => {}}
         profiles={named(ANA, "Ana Petrova")}

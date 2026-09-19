@@ -18,6 +18,10 @@ export interface DmSnapshot {
   hasMore: boolean;
   /** The send time from which `rumors` holds every Message there is (`completeFrom`). */
   completeFrom: number;
+  /** How many older pages have settled — by their EOSE or by their deadline. A page that
+   * brought nothing moves nothing else, so this is what tells a reader waiting on one that it
+   * is over and they may ask again (#231, #232). */
+  pages: number;
   /** `DmFeed.loadOlder`, carried along so the snapshot is all a caller renders from — the same
    * object until something changes (#194). */
   loadOlder: () => void;
@@ -35,6 +39,7 @@ export class DmFeed {
   private readonly paged: VerifiedEvent[] = [];
   private readonly rumors = new Map<string, Rumor>();
   private hasMore = false;
+  private pagesSettled = 0;
   /** Set once a page proved nothing older is left: starting again reads a full first page, and
    * that says nothing about history a cursor has already walked past the end of. */
   private exhausted = false;
@@ -135,6 +140,7 @@ export class DmFeed {
             this.exhausted = true;
           }
           this.loadingOlder = false;
+          this.pagesSettled += 1;
           this.emit();
           this.backfill();
         });
@@ -156,6 +162,7 @@ export class DmFeed {
       this.closeOlder?.();
       this.closeOlder = this.cancelDeadline = null;
       this.loadingOlder = false;
+      this.pagesSettled += 1;
       this.emit();
     }, PAGE_DEADLINE_MS);
   };
@@ -165,6 +172,7 @@ export class DmFeed {
       rumors: [...this.rumors.values()],
       hasMore: this.hasMore,
       completeFrom: completeFrom(oldestCreatedAt(this.paged), this.hasMore),
+      pages: this.pagesSettled,
       loadOlder: this.loadOlder,
     };
     return this.snapshot;

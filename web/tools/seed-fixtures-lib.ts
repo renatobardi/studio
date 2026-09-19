@@ -97,7 +97,7 @@ export function dmRumors(cast: Cast): Rumor[] {
   });
 }
 
-/** The rumors the reader's newest page of gift wraps does not carry — the page the app opens on. */
+/** The rumors the gift wraps scanned out of the reader's inbox do not carry. */
 export function missingRumors(rumors: Rumor[], seen: Set<string>): Rumor[] {
   return rumors.filter((rumor) => !seen.has(rumor.id));
 }

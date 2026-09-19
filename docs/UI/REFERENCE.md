@@ -183,9 +183,11 @@ Settings além de Appearance/Profile, popup Google simulado.
     completo (`completeFrom`, #185): antes ela abria como um painel vazio com um botão, ao lado de
     uma linha da sidebar que dizia haver conversa ali. Agora a abertura busca sozinha, com um
     limite de páginas por abertura (`DM_OPENING_PAGES`, `web/src/lib/dmPagination.ts`), e enquanto
-    busca o painel mostra uma linha de meta centrada — "Looking for older messages…"
-    (`web/src/lib/conversationCopy.ts`) — no lugar da lista vazia; o botão "Load older messages"
-    segue no topo, desabilitado enquanto a busca corre. Sem estado no `capture-reference.mjs`,
+    busca o painel mostra uma linha de meta centrada no lugar da lista vazia — "Looking for older
+    messages…" — e, se a abertura gastar o limite sem alcançar a conversa, "Nothing from this
+    conversation yet. Load older messages to keep looking."; qual das duas vive em
+    `dmEmptyNotice` (`web/src/lib/conversationCopy.ts`). O botão "Load older messages" segue no
+    topo, desabilitado enquanto a busca corre. Sem estado no `capture-reference.mjs`,
     fica fora do flow 10, como o `new-message` (Decisão 11) e o aviso de versão (Decisão 12).
 
 ## Aceite visual (issue #73)
