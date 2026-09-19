@@ -78,10 +78,13 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   const channelMessage = page.getByTestId("timeline-message").filter({ hasText: channelContent });
   await expect(channelMessage.getByTestId("attachment-image")).toBeVisible({ timeout: 15_000 });
 
-  // --- And sends B a Direct Message photo. Leaving the Channel cancels its
-  // photos still queued (#188), so what A fetched from here on is the DMs'.
-  served = servedToAInDms;
+  // --- And sends B a Direct Message photo. "New message" opens over the
+  // Channel, which stays mounted and keeps downloading until a Member is
+  // picked; picking one unmounts it (cancelling its queued photos, #188) and
+  // opens the conversation in the same render — so that click is where A's
+  // Channel fetches end and its Direct message fetches begin.
   await page.getByTestId("dm-new-conversation").click();
+  served = servedToAInDms;
   await page.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
   await page.getByTestId("dm-attach-input").setInputFiles(TEST_IMAGE);
   await expect(page.getByTestId("dm-attachment-preview")).toBeVisible();
