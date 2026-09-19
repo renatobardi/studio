@@ -96,6 +96,13 @@ export function proofUrl(path: string, origin: string = window.location.origin):
   return `${origin}/api${path}`;
 }
 
+/** The proof URL for a Workspace endpoint named by its path under the Workspace (`/members/…`),
+ * through `apiPath` like every other. Only for server-issued values — hex pubkeys and Channel ids,
+ * `token_urlsafe` codes — which never hold a "/"; anything a person types goes to `apiPath`. */
+export function workspaceProofUrl(slug: string, path: string, origin: string = window.location.origin): string {
+  return proofUrl(apiPath("workspaces", slug, ...path.split("/").filter(Boolean)), origin);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
   if (!res.ok) {

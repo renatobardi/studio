@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as api from "./api";
-import { ApiError, apiPath, previewInvite, proofUrl, redeemInvite, revokeInvite } from "./api";
+import { ApiError, apiPath, previewInvite, proofUrl, redeemInvite, revokeInvite, workspaceProofUrl } from "./api";
 
 // Every dynamic path segment goes through encodeURIComponent, which does not
 // encode "." — so an Invite code of ".." became /api/invites/.., and the URL
@@ -56,6 +56,13 @@ describe("apiPath and proofUrl", () => {
 
   test("the proof URL is the origin, /api and the same path", () => {
     expect(proofUrl(apiPath("invites", hostile, "redeem"), ORIGIN)).toBe(`${ORIGIN}/api/invites/a%2Fb%3Fc%23d/redeem`);
+  });
+
+  test("a Workspace endpoint named by its path signs through apiPath too — the admin console's proofs", () => {
+    expect(workspaceProofUrl("family", `/members/${"ab".repeat(32)}`, ORIGIN)).toBe(
+      proofUrl(apiPath("workspaces", "family", "members", "ab".repeat(32)), ORIGIN),
+    );
+    expect(() => workspaceProofUrl("family", "/invites/..", ORIGIN)).toThrow(ApiError);
   });
 
   test("what a call fetches is what its proof signs", async () => {
