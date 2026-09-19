@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export type AppView = "loading" | "auth" | "onboarding" | "app";
 
@@ -48,11 +48,12 @@ export function accountPasswordKeptFor(view: AppView, password: string | null): 
  * password with `accountPasswordKeptFor`, so Sign out, or reaching the signed-in app, lets go of
  * it (#189). */
 export function useAppView() {
-  const [view, setViewState] = useState<AppView>("loading");
+  const [view, setView] = useState<AppView>("loading");
   const [accountPassword, setAccountPassword] = useState<string | null>(null);
-  const setView = (next: AppView) => {
-    setViewState(next);
+  // Stable, like the setters it wraps: App subscribes to Firebase once and calls it from there.
+  const moveTo = useCallback((next: AppView) => {
+    setView(next);
     setAccountPassword((held) => accountPasswordKeptFor(next, held));
-  };
-  return { view, setView, accountPassword, setAccountPassword };
+  }, []);
+  return { view, setView: moveTo, accountPassword, setAccountPassword };
 }

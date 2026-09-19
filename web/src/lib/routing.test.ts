@@ -71,6 +71,7 @@ describe("accountPasswordKeptFor", () => {
 describe("useAppView", () => {
   afterEach(() => {
     spyOn(React, "useState").mockRestore();
+    spyOn(React, "useCallback").mockRestore();
   });
 
   /** Moves a hook that already holds "hunter22" to `view`, and returns what it still holds. */
@@ -82,6 +83,7 @@ describe("useAppView", () => {
     spyOn(React, "useState")
       .mockReturnValueOnce(["onboarding", () => {}] as never)
       .mockReturnValueOnce([held, setHeld] as never);
+    spyOn(React, "useCallback").mockImplementation((callback) => callback);
 
     // oxlint-disable-next-line react-hooks/rules-of-hooks -- called outside React on purpose, with useState stubbed
     useAppView().setView(view);
