@@ -124,10 +124,14 @@ class TestAccountsFromEnv:
             "STUDIO_TEST_PASSWORD_2": "pw-b",
             "STUDIO_TEST_EXTENSION_EMAIL": "c@example.com",
             "STUDIO_TEST_EXTENSION_PASSWORD": "pw-c",
+            # Flow 11's Account (#157): signed in on every run, so its uid must stay.
+            "STUDIO_TEST_FIXTURES_EMAIL": "d@example.com",
+            "STUDIO_TEST_FIXTURES_PASSWORD": "pw-d",
         }
 
         assert accounts_from_env(env) == [
             ("a@example.com", "pw-a"),
             ("b@example.com", "pw-b"),
             ("c@example.com", "pw-c"),
+            ("d@example.com", "pw-d"),
         ]
