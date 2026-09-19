@@ -6,13 +6,14 @@ import {
   OPEN_WINDOW_SECONDS,
   WRAP_BACKDATE_SECONDS,
   askOlder,
+  asksForOlder,
   completeFrom,
+  dmHistoryView,
   isLastDmPage,
   keepFetchingOlder,
   liveDmFilters,
   needsOpeningBackfill,
   olderDmFilters,
-  shownMessages,
 } from "./dmPagination";
 
 const ME = "me";
@@ -25,13 +26,18 @@ describe("DM paging filters", () => {
     expect(liveDmFilters(ME)).toEqual([{ kinds: [1059], "#p": [ME], limit: DM_PAGE_SIZE }]);
   });
 
-  test("an older page reaches below the oldest gift wrap held, past the wraps replayed at that second", () => {
-    const held = [wrap("a", 500), wrap("b", 300), wrap("c", 300)];
-    expect(olderDmFilters(ME, held)).toEqual([{ kinds: [1059], "#p": [ME], until: 300, limit: DM_PAGE_SIZE + 2 }]);
+  test("an older page reaches below the oldest gift wrap paged in, past the wraps replayed at that second", () => {
+    const paged = [wrap("a", 500), wrap("b", 300)];
+    const held = [...paged, wrap("c", 300), wrap("live", 100)];
+    expect(olderDmFilters(ME, paged, held)).toEqual([
+      { kinds: [1059], "#p": [ME], until: 300, limit: DM_PAGE_SIZE + 2 },
+    ]);
   });
 
-  test("with nothing held there is nothing to page from", () => {
-    expect(olderDmFilters(ME, [])).toEqual([]);
+  test("a wrap that arrived live never moves the cursor, however far back it is dated", () => {
+    // NIP-59 backdates it by up to two days: paging from it would skip every wrap in between.
+    const paged = [wrap("a", 500)];
+    expect(olderDmFilters(ME, paged, [...paged, wrap("live", 100)])[0]?.until).toBe(500);
   });
 });
 
@@ -78,24 +84,54 @@ describe("needsOpeningBackfill", () => {
   });
 });
 
-describe("shownMessages", () => {
-  test("leaves out Messages older than where the history is complete", () => {
+describe("dmHistoryView", () => {
+  const unasked = { shown: DM_SHOWN_STEP, waitingPast: null };
+
+  test("leaves out Messages older than where the history is complete, and offers to load them", () => {
     const messages = [rumor("old", 10), rumor("mid", 20), rumor("new", 30)];
-    expect(shownMessages(messages, 20, DM_SHOWN_STEP)).toEqual({
-      messages: [rumor("mid", 20), rumor("new", 30)],
-      hidden: 0,
-    });
+    const view = dmHistoryView(messages, 20, unasked, true);
+    expect(view.messages).toEqual([rumor("mid", 20), rumor("new", 30)]);
+    expect(view.hidden).toBe(0);
+    expect(view.canLoadOlder).toBe(true);
   });
 
   test("mounts only the newest ones asked for, counting the complete ones kept back", () => {
     const messages = Array.from({ length: 5 }, (_, i) => rumor(`m${i}`, i));
-    expect(shownMessages(messages, -Infinity, 2)).toEqual({ messages: [rumor("m3", 3), rumor("m4", 4)], hidden: 3 });
+    const view = dmHistoryView(messages, -Infinity, { shown: 2, waitingPast: null }, false);
+    expect(view.messages).toEqual([rumor("m3", 3), rumor("m4", 4)]);
+    expect(view.hidden).toBe(3);
+    expect(view.complete).toBe(5);
+    expect(view.canLoadOlder).toBe(true);
+  });
+
+  test("offers nothing older once all of it is on screen", () => {
+    expect(dmHistoryView([rumor("only", 1)], -Infinity, unasked, false).canLoadOlder).toBe(false);
+  });
+
+  test("keeps fetching while the reader waits on a page that brought nothing here", () => {
+    const view = dmHistoryView([rumor("only", 1)], -Infinity, { shown: 100, waitingPast: 1 }, true);
+    expect(view.fetchOlder).toBe(true);
+  });
+});
+
+describe("asksForOlder", () => {
+  test("reaching the top while scrolling up asks for older Messages", () => {
+    expect(asksForOlder(100, 40, 48)).toBe(true);
+  });
+
+  test("scrolling down from the top — where a conversation opens — does not", () => {
+    expect(asksForOlder(0, 40, 48)).toBe(false);
+  });
+
+  test("scrolling up far from the top does not", () => {
+    expect(asksForOlder(300, 200, 48)).toBe(false);
   });
 });
 
 describe("asking for older Direct Messages", () => {
   test("shows another step of what is already held, without waiting on the relay", () => {
     const state = askOlder({ shown: 50, waitingPast: null }, { hidden: 10, complete: 60, hasMore: true });
+    expect(askOlder(state, { hidden: 0, complete: 60, hasMore: false })).toEqual({ shown: 150, waitingPast: null });
     expect(state).toEqual({ shown: 100, waitingPast: null });
     expect(keepFetchingOlder(state, { complete: 60, hasMore: true })).toBe(false);
   });

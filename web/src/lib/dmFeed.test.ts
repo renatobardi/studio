@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { VerifiedEvent } from "nostr-tools";
+import type { Filter, VerifiedEvent } from "nostr-tools";
 import { DmFeed } from "./dmFeed";
 import { DM_PAGE_SIZE, OPEN_WINDOW_SECONDS, WRAP_BACKDATE_SECONDS } from "./dmPagination";
 import type { Rumor } from "./nip17";
@@ -98,10 +98,139 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().rumors.map((r) => r.content)).toContain("live");
   });
 
+  test("the same Message wrapped twice is one Message", async () => {
+    const twice = wrap("b", NOW - DAY);
+    twice.content = wrap("a", NOW - DAY).content;
+    const { feed } = start([wrap("a", NOW - 2 * DAY), twice]);
+    await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(1);
+  });
+
+  test("tells a listener when a Message arrives, until it unsubscribes", async () => {
+    const { relay, feed } = start([]);
+    let calls = 0;
+    const unsubscribe = feed.subscribe(() => (calls += 1));
+    relay.publish(wrap("live", NOW));
+    await flush();
+    expect(calls).toBeGreaterThan(0);
+    const heard = calls;
+    unsubscribe();
+    relay.publish(wrap("later", NOW));
+    await flush();
+    expect(calls).toBe(heard);
+  });
+
   test("stopping closes every subscription", async () => {
     const { relay, stop } = start(history(300, NOW, DAY));
     await flush();
     stop();
     expect(relay.openFilters).toEqual([]);
+  });
+
+  test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
+    const { relay, feed } = start(history(300, NOW, DAY));
+    await flush();
+    const before = feed.getSnapshot().completeFrom;
+    relay.publish(wrap("live", NOW - 200 * DAY, NOW));
+    await flush();
+    expect(feed.getSnapshot().completeFrom).toBe(before);
+    feed.loadOlder();
+    expect(relay.allFilters.at(-1)?.until).toBe(NOW - 99 * DAY);
+  });
+});
+
+/** A relay that answers only when the test says so — the real one is a socket away. */
+class ManualRelay {
+  readonly subscriptions: {
+    filters: Filter[];
+    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void };
+    open: boolean;
+  }[] = [];
+
+  subscribe(filters: Filter[], handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void }) {
+    const entry = { filters, handlers, open: true };
+    this.subscriptions.push(entry);
+    const unsubscribe = () => {
+      entry.open = false;
+    };
+    return Object.assign(unsubscribe, { update: () => {} });
+  }
+
+  answer(index: number, events: VerifiedEvent[]): void {
+    const { handlers } = this.subscriptions[index]!;
+    for (const event of events) handlers.onEvent(event);
+    handlers.onEose?.();
+  }
+}
+
+describe("DmFeed against a relay that answers later", () => {
+  /** An unwrap that resolves only when released, as a remote signer's would. */
+  function heldUnwrap() {
+    const releases: (() => void)[] = [];
+    const unwrapLater = (event: VerifiedEvent) =>
+      new Promise<Rumor>((resolve) => releases.push(() => resolve(JSON.parse(event.content) as Rumor)));
+    return { unwrapLater, release: () => releases.splice(0).forEach((release) => release()) };
+  }
+
+  function opened() {
+    const relay = new ManualRelay();
+    const { unwrapLater, release } = heldUnwrap();
+    const feed = new DmFeed(relay, ME, unwrapLater, () => NOW);
+    const stop = feed.start();
+    // A full first page, a year back: the history is complete for the last day already.
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    return { relay, feed, stop, release };
+  }
+
+  test("a page stays in flight until its wraps are unwrapped, so asking again waits for it", async () => {
+    const { relay, feed, release } = opened();
+    release();
+    await flush();
+    feed.loadOlder();
+    relay.answer(1, history(DM_PAGE_SIZE, NOW - 400 * DAY, 60, "o"));
+    feed.loadOlder();
+    expect(relay.subscriptions).toHaveLength(2);
+    expect(relay.subscriptions[1]!.open).toBe(false);
+    release();
+    await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(2 * DM_PAGE_SIZE);
+    feed.loadOlder();
+    expect(relay.subscriptions).toHaveLength(3);
+  });
+
+  test("a page replayed after a reconnect does not count its wraps twice", async () => {
+    const { relay, feed, release } = opened();
+    release();
+    await flush();
+    feed.loadOlder();
+    const replayedPage = history(DM_PAGE_SIZE / 2, NOW - 400 * DAY, 60, "o");
+    const { handlers } = relay.subscriptions[1]!;
+    for (const event of [...replayedPage, ...replayedPage]) handlers.onEvent(event);
+    handlers.onEose?.();
+    release();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(false);
+  });
+
+  test("a page that finishes unwrapping after a stop decides nothing for the next start", async () => {
+    const { relay, feed, stop, release } = opened();
+    release();
+    await flush();
+    feed.loadOlder();
+    // A short page would end the history — but it belongs to a run that is over.
+    relay.answer(1, history(DM_PAGE_SIZE / 2, NOW - 400 * DAY, 60, "o"));
+    stop();
+    feed.start();
+    release();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+  });
+
+  test("a first page answered again after a reconnect is not a second first page", async () => {
+    const { relay, feed, release } = opened();
+    relay.answer(0, []);
+    release();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
   });
 });

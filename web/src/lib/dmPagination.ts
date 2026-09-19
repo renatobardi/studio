@@ -1,10 +1,11 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import { oldestCreatedAt } from "./channelPagination";
 import { GIFT_WRAP } from "./nip17";
 
 /** Gift wraps per page — the relay orders and cuts by the wrap's own created_at (#185). */
 export const DM_PAGE_SIZE = 100;
 
-/** Direct Messages mounted per step of an open conversation: each mounted photo is a download. */
+/** Messages mounted per step of an open conversation: each mounted photo is a download. */
 export const DM_SHOWN_STEP = 50;
 
 /**
@@ -23,13 +24,19 @@ export function liveDmFilters(ownPubkey: string): Filter[] {
 
 /**
  * The next page of older gift wraps, paged by the wrap's created_at — the rumor's is only
- * readable after unwrapping. `until` is inclusive, so the limit carries the wraps already held at
- * the cursor second on top of a page, as `olderMessagesFilters` does for a Channel.
+ * readable after unwrapping. The cursor is the oldest wrap a page brought: one that arrived live
+ * is backdated by up to two days, and paging from it would skip every wrap in between. `until` is
+ * inclusive, so the limit carries every wrap held at the cursor second on top of a page, as
+ * `olderMessagesFilters` does for a Channel.
  */
-export function olderDmFilters(ownPubkey: string, wraps: readonly VerifiedEvent[]): Filter[] {
-  if (wraps.length === 0) return [];
-  const oldest = Math.min(...wraps.map((wrap) => wrap.created_at));
-  const knownAtCursor = wraps.filter((wrap) => wrap.created_at === oldest).length;
+export function olderDmFilters(
+  ownPubkey: string,
+  paged: readonly VerifiedEvent[],
+  held: readonly VerifiedEvent[],
+): Filter[] {
+  const oldest = oldestCreatedAt([...paged]);
+  if (oldest === null) return [];
+  const knownAtCursor = held.filter((wrap) => wrap.created_at === oldest).length;
   return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], until: oldest, limit: DM_PAGE_SIZE + knownAtCursor }];
 }
 
@@ -42,7 +49,7 @@ export function isLastDmPage(knownIds: ReadonlySet<string>, page: readonly Verif
 }
 
 /**
- * The send time from which every Direct Message held is all there is. A Message sent before it
+ * The send time from which every Message held is all there is. A Message sent before it
  * may have a sibling whose wrap was backdated below the oldest wrap held, so showing it would show
  * a history with holes in it.
  */
@@ -51,21 +58,9 @@ export function completeFrom(oldestWrapAt: number | null, hasMore: boolean): num
   return oldestWrapAt + WRAP_BACKDATE_SECONDS;
 }
 
-/** Whether opening the app still has to page before the last day of Direct Messages is complete. */
+/** Whether opening the app still has to page before the last day of Messages is complete. */
 export function needsOpeningBackfill(from: number, now: number): boolean {
   return from > now - OPEN_WINDOW_SECONDS;
-}
-
-/** The newest `shown` of a conversation's complete Messages (oldest first), and how many complete
- * ones are held back. */
-export function shownMessages<T extends { created_at: number }>(
-  messages: readonly T[],
-  from: number,
-  shown: number,
-): { messages: T[]; hidden: number } {
-  const complete = messages.filter((message) => message.created_at >= from);
-  const hidden = Math.max(0, complete.length - shown);
-  return { messages: complete.slice(hidden), hidden };
 }
 
 /** How much of a conversation the reader asked to see, and — while a page is awaited — how many
@@ -85,4 +80,39 @@ export function askOlder(
  * nothing for this one: keep paging until it does, or the history runs out. */
 export function keepFetchingOlder(state: ShownState, { complete, hasMore }: { complete: number; hasMore: boolean }): boolean {
   return state.waitingPast !== null && complete <= state.waitingPast && hasMore;
+}
+
+/** What an open conversation shows: the newest `shown` of its complete Messages (oldest first),
+ * how many complete ones are held back, and whether there is anything older to offer or fetch. */
+export interface DmHistoryView<T> {
+  messages: T[];
+  hidden: number;
+  complete: number;
+  hasMore: boolean;
+  canLoadOlder: boolean;
+  fetchOlder: boolean;
+}
+
+export function dmHistoryView<T extends { created_at: number }>(
+  messages: readonly T[],
+  from: number,
+  state: ShownState,
+  hasMore: boolean,
+): DmHistoryView<T> {
+  const complete = messages.filter((message) => message.created_at >= from);
+  const hidden = Math.max(0, complete.length - state.shown);
+  return {
+    messages: complete.slice(hidden),
+    hidden,
+    complete: complete.length,
+    hasMore,
+    canLoadOlder: hidden > 0 || hasMore,
+    fetchOlder: keepFetchingOlder(state, { complete: complete.length, hasMore }),
+  };
+}
+
+/** Reaching the top asks for older Messages only while scrolling up: a conversation opens at the
+ * top, and the first scroll down from there must not pull in another step. */
+export function asksForOlder(previousTop: number, top: number, threshold: number): boolean {
+  return top < previousTop && top <= threshold;
 }

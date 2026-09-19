@@ -25,7 +25,7 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { DM_SHOWN_STEP, askOlder, keepFetchingOlder, shownMessages, type ShownState } from "../../lib/dmPagination";
+import { DM_SHOWN_STEP, askOlder, asksForOlder, dmHistoryView, type ShownState } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { publishFailureMessage } from "../../lib/relayReasons";
@@ -81,31 +81,33 @@ export function ConversationView({
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastScrollTop = useRef(0);
+  /** The height before older Messages were asked for — set while that request is pending. */
   const heightBeforeOlder = useRef<number | null>(null);
   // Only what is mounted fetches its photos (#185): the newest step, more as the reader asks.
   const [shownState, setShownState] = useState<ShownState>({ shown: DM_SHOWN_STEP, waitingPast: null });
-  const shown = shownMessages(messages, completeFrom, shownState.shown);
-  const complete = shown.messages.length + shown.hidden;
-  const fetchOlder = keepFetchingOlder(shownState, { complete, hasMore });
+  const view = dmHistoryView(messages, completeFrom, shownState, hasMore);
+  const oldestShownId = view.messages[0]?.id;
 
   useEffect(() => {
-    if (fetchOlder) onLoadOlder();
+    if (view.fetchOlder) onLoadOlder();
   });
 
   // Older Messages prepend; giving back the height they added keeps the reader where they were.
+  // A request that ends with nothing new clears too, or the next live Message would be taken for it.
   useLayoutEffect(() => {
     const timeline = scrollRef.current;
     const before = heightBeforeOlder.current;
-    if (timeline === null || before === null || timeline.scrollHeight === before) return;
-    timeline.scrollTop += timeline.scrollHeight - before;
+    if (timeline === null || before === null) return;
+    if (timeline.scrollHeight !== before) timeline.scrollTop += timeline.scrollHeight - before;
+    else if (view.fetchOlder) return;
     heightBeforeOlder.current = null;
-  }, [shown.messages.length]);
+  }, [oldestShownId, view.fetchOlder]);
 
-  const canLoadOlder = shown.hidden > 0 || hasMore;
   const loadOlder = () => {
-    if (fetchOlder) return;
+    if (heightBeforeOlder.current !== null) return;
     heightBeforeOlder.current = scrollRef.current?.scrollHeight ?? null;
-    setShownState((prev) => askOlder(prev, { hidden: shown.hidden, complete, hasMore }));
+    setShownState((prev) => askOlder(prev, view));
   };
 
   const upload = async (id: string, file: File, previewUrl: string) => {
@@ -216,21 +218,23 @@ export function ConversationView({
         data-list="true"
         ref={scrollRef}
         onScroll={(e) => {
-          if (canLoadOlder && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+          const top = e.currentTarget.scrollTop;
+          if (view.canLoadOlder && asksForOlder(lastScrollTop.current, top, TOP_OF_HISTORY_PX)) loadOlder();
+          lastScrollTop.current = top;
         }}
       >
         <p className="dm-notice">
           <Icon name="lock" size={12} />
           <span>{DM_ENCRYPTION_NOTICE}</span>
         </p>
-        {canLoadOlder && (
-          <button type="button" className="btn btn-outline btn-xs load-older" disabled={fetchOlder} onClick={loadOlder}>
+        {view.canLoadOlder && (
+          <button type="button" className="btn btn-outline btn-xs load-older" disabled={view.fetchOlder} onClick={loadOlder}>
             Load older messages
           </button>
         )}
         <ul className="message-list">
-          {shown.messages.map((message, index) => {
-            const continuation = isContinuation(shown.messages[index - 1], message);
+          {view.messages.map((message, index) => {
+            const continuation = isContinuation(view.messages[index - 1], message);
             const author = displayName(profiles, message.pubkey);
             return (
               <MessageRow
