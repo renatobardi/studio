@@ -33,7 +33,7 @@ describe("parseAppearance", () => {
   });
 
   test("passes through a well-formed stored value", () => {
-    const stored = { theme: "dark", density: "compact", fontScale: "larger", threadView: "focus" };
+    const stored = { theme: "dark", density: "compact", fontScale: "larger", threadView: "focus" } as const;
     expect(parseAppearance(stored)).toEqual(stored);
   });
 

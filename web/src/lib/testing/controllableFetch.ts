@@ -9,6 +9,6 @@ export function stubControllableFetch(): { started: Promise<void>; resolve: (res
   globalThis.fetch = (async () => {
     markStarted();
     return response;
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   return { started, resolve: resolveFetch };
 }

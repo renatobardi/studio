@@ -26,6 +26,7 @@ describe("Icon", () => {
       "sun", "moon", "chevron-right", "chevron-down", "shield", "check", "pencil", "eye", "eye-off",
       "copy", "download", "message-square", "info", "triangle-alert", "image", "bot",
     ];
-    for (const name of needed) expect(ICON_PATHS[name]?.length ?? 0).toBeGreaterThan(0);
+    const paths: Record<string, readonly string[] | undefined> = ICON_PATHS;
+    for (const name of needed) expect(paths[name]?.length ?? 0).toBeGreaterThan(0);
   });
 });
