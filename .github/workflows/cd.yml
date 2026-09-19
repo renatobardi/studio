@@ -177,6 +177,11 @@ jobs:
           done
           echo "::error::studio-test never became ready after deploy" && exit 1
 
+      - name: The shell is revalidated, the hashed assets kept (issue #203)
+        env:
+          STUDIO_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
+        run: scripts/ci/cache-headers.sh
+
       - name: Ensure e2e test Accounts exist and are verified (idempotent — issue #50)
         # Runs on the host, reusing FIREBASE_CREDENTIALS_PATH and STUDIO_TEST_*
         # already in the container's own environment (studio-test's /opt/app/.env

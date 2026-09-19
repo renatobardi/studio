@@ -22,6 +22,13 @@ it. Issue #51.
    `studio-test` container at the exact validated SHA (`git checkout --force
    --detach`), rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails
    if it is not that SHA. The deployed SHA goes to the run's job summary.
+   Once it answers, `scripts/ci/cache-headers.sh` asks `studio-test` over
+   `curl -I` for the cache policy of `web/nginx.conf` (#203): `/`,
+   `index.html`, `sw.js` and `manifest.webmanifest` with `Cache-Control:
+   no-cache` — so a deploy reaches a page opened before it the next time the
+   browser checks the service worker — and one hashed `/assets/*` file with
+   `immutable`. CI's `test` job runs the same script on the stack it starts,
+   through Caddy, and Promote on `studio-prd` (`docs/production.md`).
 6. **Post-deploy Playwright smoke** (flows 1–9) runs against what was
    just deployed, from the specs of that same commit. Flow 1 (first-time
    onboarding) signs in as an Account that has no Identity on every run:
@@ -55,7 +62,7 @@ it. Issue #51.
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
-mutable branch tip.
+mutable branch tip, or if CI, CD or Promote stop checking the cache headers.
 
 ## Required checks on `main`
 
