@@ -64,6 +64,17 @@ it. Issue #51.
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
 mutable branch tip, or if CI, CD or Promote stop checking the cache headers.
 
+## The workflow token
+
+Each workflow says what its `GITHUB_TOKEN` may do, instead of inheriting the
+repository default (#202). `ci.yml` grants `contents: read` and no job raises
+it: it runs a pull request's own code, artifacts travel on the runner's own
+token, and the Sonar scan authenticates with `SONAR_TOKEN`. `cd.yml` grants
+`contents: read`, and only its `gate` adds `actions: read` to ask for CI's
+conclusion — `deploy-dev`, which holds `studio-test`'s SSH key, gets nothing
+more. `promote.yml` grants nothing at the top; its `gate` reads the Actions
+API and `deploy-prd` gets nothing. The `gates` job asserts all three.
+
 ## Required checks on `main`
 
 The ruleset requires `test`, `web`, `visual`, `gates` and `sonar`,
