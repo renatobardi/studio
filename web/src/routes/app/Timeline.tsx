@@ -279,7 +279,8 @@ export function Timeline({
                   }
                 >
                   {parseImetaTags(message.tags).map((descriptor, position) => (
-                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} />
+                    // `priority={index}`: the newest Message's photos are the ones being waited on.
+                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} priority={index} />
                   ))}
                   <ReactionBar
                     groups={groupReactions(reactionsForMessage, deletionsForMessage)}
