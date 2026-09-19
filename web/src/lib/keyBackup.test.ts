@@ -5,8 +5,8 @@ import { generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import {
   CREATE_FAILED_MESSAGE,
   KEY_BACKUP_FILENAME,
+  NOT_STORED_MESSAGE,
   NO_LOCAL_KEY_MESSAGE,
-  STORE_FAILED_MESSAGE,
   WRONG_PASSPHRASE_MESSAGE,
   confirmKeyBackup,
   createKeyBackup,
@@ -43,12 +43,16 @@ async function backupFile(passphrase: string): Promise<Uint8Array> {
  * "verified" only ever after the file proved it unlocks. */
 describe("keyBackupStep", () => {
   test("picks the passphrase card until there is a file", () => {
-    expect(keyBackupStep(null, false)).toBe("passphrase");
+    expect(keyBackupStep(null, false, false)).toBe("passphrase");
   });
 
-  test("then the verify card, and its verified state once the passphrase unlocked it", () => {
-    expect(keyBackupStep(new Uint8Array([1]), false)).toBe("verify");
-    expect(keyBackupStep(new Uint8Array([1]), true)).toBe("verified");
+  test("then the verify card, and its verified state once the file is also in the Account", () => {
+    expect(keyBackupStep(new Uint8Array([1]), false, false)).toBe("verify");
+    expect(keyBackupStep(new Uint8Array([1]), true, true)).toBe("verified");
+  });
+
+  test("a file that unlocked but never reached the Account is not the success state (#200)", () => {
+    expect(keyBackupStep(new Uint8Array([1]), true, false)).toBe("unsaved");
   });
 });
 
@@ -58,6 +62,8 @@ describe("keyBackupHeading", () => {
     expect(keyBackupHeading("passphrase").description).toContain("different from your account password");
     expect(keyBackupHeading("verify").description).toContain("prove you can unlock it");
     expect(keyBackupHeading("verified").title).toBe("Your backup is verified");
+    expect(keyBackupHeading("unsaved").title).not.toBe("Your backup is verified");
+    expect(keyBackupHeading("unsaved").description).toContain("isn't saved to your Account");
   });
 });
 
@@ -214,17 +220,20 @@ describe("confirmKeyBackup", () => {
     expect(stored).toBe(0);
   });
 
-  test("a passphrase that does not open the file is never sent either", async () => {
+  test("a passphrase that does not open the file is never sent either, and says it is the passphrase", async () => {
     const { error, unlocked } = await confirm("wrong passphrase");
-    expect(error).toBe(STORE_FAILED_MESSAGE);
+    expect(error).toBe(WRONG_PASSPHRASE_MESSAGE);
     expect(unlocked).toEqual([]);
     expect(stored).toBe(0);
   });
 
-  test("an upload that fails says so, with the file already proved", async () => {
+  test("an upload that fails says the file is right but not in the Account, and to try again (#200)", async () => {
     globalThis.fetch = (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
     const { error, unlocked } = await confirm("correct horse");
-    expect(error).toBe(STORE_FAILED_MESSAGE);
+    expect(error).toBe(NOT_STORED_MESSAGE);
+    expect(NOT_STORED_MESSAGE).not.toBe(WRONG_PASSPHRASE_MESSAGE);
+    expect(NOT_STORED_MESSAGE).toContain("wasn't saved to your Account");
+    expect(NOT_STORED_MESSAGE).toContain("try again");
     expect(unlocked).toEqual(["unlocked"]);
   });
 });

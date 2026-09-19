@@ -39,6 +39,7 @@ export function KeyBackupDialog({
   const [verifyPassphrase, setVerifyPassphrase] = useState("");
   const [blob, setBlob] = useState<Uint8Array | null>(null);
   const [verified, setVerified] = useState(false);
+  const [stored, setStored] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +47,7 @@ export function KeyBackupDialog({
     user.providerData.map((provider) => provider.providerId),
     knownPassword,
   );
-  const step = keyBackupStep(blob, verified);
+  const step = keyBackupStep(blob, verified, stored);
   const heading = keyBackupHeading(step);
 
   const report = { busy: setBusy, error: setError };
@@ -73,7 +74,10 @@ export function KeyBackupDialog({
           pubkey,
           getIdToken: () => user.getIdToken(),
           onUnlocked: () => setVerified(true),
-          onStored,
+          onStored: () => {
+            setStored(true);
+            onStored();
+          },
         }),
       report,
     );
@@ -95,7 +99,7 @@ export function KeyBackupDialog({
             </button>
           )}
           <button className="btn btn-outline" onClick={onClose}>
-            {verified ? "Done" : "Cancel"}
+            {step === "verified" ? "Done" : "Cancel"}
           </button>
         </>
       }
@@ -106,6 +110,7 @@ export function KeyBackupDialog({
       ) : blob ? (
         <BackupVerifyCard
           verified={verified}
+          unsaved={step === "unsaved"}
           passphrase={verifyPassphrase}
           onPassphrase={setVerifyPassphrase}
           busy={busy}
