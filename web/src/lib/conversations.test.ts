@@ -84,6 +84,7 @@ describe("directMessages", () => {
       members,
       selectedPeerPubkeys: null,
       readState: { since: 100, readAt: {} },
+      completeFrom: -Infinity,
       nameOf,
       ...over,
     });
@@ -104,6 +105,14 @@ describe("directMessages", () => {
 
   test("nothing is counted unread before the marks were read back", () => {
     expect(view({ readState: null }).rows.map((row) => row.unreadCount)).toEqual([null]);
+  });
+
+  test("counts unread only where the history is complete, and still lists the conversation (#185)", () => {
+    const rumors = [rumorAt(ALICE, [ME], "maybe missing siblings", 200), rumorAt(ALICE, [ME], "complete", 300)];
+    expect(view({ rumors, completeFrom: 250 }).rows.map((row) => row.unreadCount)).toEqual([1]);
+    expect(view({ rumors: rumors.slice(0, 1), completeFrom: 250 }).rows.map((row) => [row.label, row.unreadCount])).toEqual([
+      ["Ana Petrova", null],
+    ]);
   });
 
   test("the picked Members name the open conversation, even before it has any Message", () => {

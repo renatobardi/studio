@@ -89,7 +89,7 @@ async function resumeWorkspace(signer: Signer, user: User | null): Promise<Works
   const slug = await loadWorkspaceSlug();
   if (slug) {
     try {
-      const url = `${window.location.origin}/api/workspaces/${slug}`;
+      const url = api.proofUrl(api.apiPath("workspaces", slug));
       return await api.getWorkspace(slug, await api.authProof(url, "GET", signer));
     } catch {
       // Falls through: the remembered slug may be stale (membership removed).

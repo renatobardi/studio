@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { authProof, listChannels, type ChannelOut, type WorkspaceOut } from "../../lib/api";
+import { apiPath, authProof, listChannels, proofUrl, type ChannelOut, type WorkspaceOut } from "../../lib/api";
 import {
   ACCESS_PROJECTION_KINDS,
   accessLostAfterRefresh,
@@ -91,11 +91,13 @@ export function AppShell({
   /** Theme, density and font scale live here so the sidebar's theme toggle and
    * Settings › Appearance change the same thing (#68, #71). */
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
-  const { profiles, ensure: ensureProfiles } = useProfiles(client);
+  /** The one kind 0 lookup: every pane below reads it rather than opening its own (#195). */
+  const profileLookup = useProfiles(client);
+  const { profiles, ensure: ensureProfiles } = profileLookup;
   /** A choice made before the stored value came back wins over it. */
   const appearanceTouched = useRef(false);
   /** Direct messages live in the sidebar (#142), so they are read from the moment the app opens. */
-  const rumors = useDirectMessages(client, signer, ownPubkey);
+  const dmFeed = useDirectMessages(client, signer, ownPubkey);
   const { members, error: membersError } = useWorkspaceMembers(client, workspace.slug, signer);
   /** The open conversation's other participants — kept apart from the conversation itself, which
    * does not exist yet when a Member was just picked to start one. */
@@ -127,11 +129,12 @@ export function AppShell({
   }, [ownPubkey, ensureProfiles]);
 
   const dm = directMessages({
-    rumors,
+    rumors: dmFeed.rumors,
     myPubkey: ownPubkey,
     members,
     selectedPeerPubkeys,
     readState: dmRead,
+    completeFrom: dmFeed.completeFrom,
     nameOf: (peer) => displayName(profiles, peer),
   });
   const namedPubkeysKey = dm.namedPubkeys.join(",");
@@ -181,7 +184,7 @@ export function AppShell({
   }, [readAt]);
 
   const fetchChannels = useCallback(async () => {
-    const url = `${window.location.origin}/api/workspaces/${workspace.slug}/channels`;
+    const url = proofUrl(apiPath("workspaces", workspace.slug, "channels"));
     return listChannels(workspace.slug, await authProof(url, "GET", signer));
   }, [workspace.slug, signer]);
 
@@ -299,9 +302,13 @@ export function AppShell({
           selectedConversationKey: selectedKey,
         })}
         onSelect={(item) => {
-          if (item.channelId) selectChannel(item.channelId);
-          if (item.peerPubkeys) openConversation(item.peerPubkeys);
-          else navigate({ mode: item.mode });
+          if (item.peerPubkeys) {
+            openConversation(item.peerPubkeys);
+          } else {
+            // A Channel row picks the Channel and still has to switch to its mode.
+            if (item.channelId) selectChannel(item.channelId);
+            navigate({ mode: item.mode });
+          }
         }}
         onSelectMode={(next) => navigate({ mode: next })}
         onNewMessage={() => setPickingMember(true)}
@@ -345,7 +352,9 @@ export function AppShell({
                 opened={opened}
                 workspace={workspace}
                 workspaceMembers={members}
+                workspaceMembersError={membersError}
                 threadView={appearance.threadView}
+                profileLookup={profileLookup}
               />
             )}
             {channels?.length === 0 && (
@@ -366,6 +375,9 @@ export function AppShell({
             signer={signer}
             mediaUrl={workspace.media_url}
             messages={dm.selected?.messages ?? []}
+            completeFrom={dmFeed.completeFrom}
+            hasMore={dmFeed.hasMore}
+            onLoadOlder={dmFeed.loadOlder}
             profiles={profiles}
           />
         )}
@@ -378,6 +390,7 @@ export function AppShell({
               slug={workspace.slug}
               workspaceRole={workspace.role}
               initialTab={navigation.adminTab}
+              profileLookup={profileLookup}
             />
           </div>
         )}
@@ -388,6 +401,7 @@ export function AppShell({
             pubkey={ownPubkey}
             relayUrl={workspace.relay_url}
             connectionState={connectionState}
+            profileLookup={profileLookup}
             onClose={() => navigate({ mode: "channels" })}
           />
         )}
@@ -395,7 +409,7 @@ export function AppShell({
           <SettingsView
             key={navigation.settingsVisit}
             initialSection={navigation.settingsSection}
-            client={client}
+            profileLookup={profileLookup}
             pubkey={ownPubkey}
             user={user}
             appearance={appearance}

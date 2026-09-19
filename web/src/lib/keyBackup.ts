@@ -14,11 +14,12 @@ import { secretKeyFromNsec } from "./identity";
  * and the Settings row that says a backup exists (#36, #150). */
 export const KEY_BACKUP_FILENAME = "studio-key-backup.age";
 
-/** Which of the two cards the flow is on: pick a passphrase, prove it unlocks, done. */
-export type KeyBackupStep = "passphrase" | "verify" | "verified";
+/** Which of the two cards the flow is on: pick a passphrase, prove it unlocks, done — or proved
+ * but not in the Account yet, which is not done: only the local file holds it (#200). */
+export type KeyBackupStep = "passphrase" | "verify" | "unsaved" | "verified";
 
-export function keyBackupStep(blob: Uint8Array | null, verified: boolean): KeyBackupStep {
-  if (verified) return "verified";
+export function keyBackupStep(blob: Uint8Array | null, verified: boolean, stored: boolean): KeyBackupStep {
+  if (verified) return stored ? "verified" : "unsaved";
   return blob ? "verify" : "passphrase";
 }
 
@@ -26,6 +27,9 @@ export function keyBackupStep(blob: Uint8Array | null, verified: boolean): KeyBa
 export function keyBackupHeading(step: KeyBackupStep): { title: string; description: string } {
   if (step === "verified") {
     return { title: "Your backup is verified", description: "Your file and passphrase can restore your identity." };
+  }
+  if (step === "unsaved") {
+    return { title: "Your backup file works", description: "Your passphrase unlocked it, but it isn't saved to your Account yet." };
   }
   if (step === "verify") {
     return { title: "That’s your backup file", description: "Now enter your passphrase to prove you can unlock it." };
@@ -52,7 +56,8 @@ export function newBackupPassphraseProblem(
 export const NO_LOCAL_KEY_MESSAGE = "This browser doesn't hold your private key, so there is nothing to back up here.";
 export const CREATE_FAILED_MESSAGE = "Couldn't create the Key Backup. Try again.";
 export const WRONG_PASSPHRASE_MESSAGE = "That didn't decrypt to your key. Check the passphrase.";
-export const STORE_FAILED_MESSAGE = "Couldn't store your Key Backup. Check the passphrase and try again.";
+export const NOT_STORED_MESSAGE =
+  "Your backup file is correct, but it wasn't saved to your Account. Check your connection and try again.";
 
 /** The age file for the key this browser holds, or null when it holds none — under a NIP-07
  * extension there is nothing here to back up. */
@@ -96,7 +101,8 @@ export function downloadKeyBackup(blob: Uint8Array): void {
  * The verify step, end to end: the file has to unlock into this Identity before anything is
  * kept, and only then does the Account get it (#36). Answers with what to show, or null when
  * it is stored. `onUnlocked` fires the moment the file proved itself, so the card can say so
- * while the upload is still in flight.
+ * while the upload is still in flight. A file that does not open and an upload that fails are
+ * told apart: the first is the passphrase, the second is not (#200).
  */
 export async function confirmKeyBackup(input: {
   blob: Uint8Array;
@@ -108,13 +114,17 @@ export async function confirmKeyBackup(input: {
 }): Promise<string | null> {
   try {
     if (!(await verifyKeyBackup(input.blob, input.passphrase, input.pubkey))) return WRONG_PASSPHRASE_MESSAGE;
-    input.onUnlocked();
-    await storeKeyBackup(await input.getIdToken(), input.blob);
-    input.onStored();
-    return null;
   } catch {
-    return STORE_FAILED_MESSAGE;
+    return WRONG_PASSPHRASE_MESSAGE;
   }
+  input.onUnlocked();
+  try {
+    await storeKeyBackup(await input.getIdToken(), input.blob);
+  } catch {
+    return NOT_STORED_MESSAGE;
+  }
+  input.onStored();
+  return null;
 }
 
 /**
