@@ -124,7 +124,11 @@ Settings além de Appearance/Profile, popup Google simulado.
    diz Verified quando a Account guarda um Key Backup (`GET /api/account/key-backup`), que só
    chega ao servidor depois de verificado (#36); "Manage" reabre os mesmos cartões do onboarding
    (`KeyBackupSteps.tsx`) para criar e verificar um novo. Sob NIP-07 a linha diz que a extensão
-   guarda a chave e não há o que gerenciar. SIGN OUT traz o aviso do HTML e o "Delete my data"
+   guarda a chave e não há o que gerenciar. **Exceção: verificado mas não guardado (#200).** O protótipo só
+   tem os estados verify e verified. Quando o arquivo abre mas o upload para a Account falha, o
+   "Manage" não chega ao verified: título "Your backup file works", o card mantém "✓ Verified" com
+   "Not saved to your Account yet." e um "Try again" no lugar do campo, o erro diz que o arquivo
+   está certo e não foi guardado, e o rodapé fica em "Cancel" — "Done" só depois de guardado. SIGN OUT traz o aviso do HTML e o "Delete my data"
    tintado, que abre o mesmo `SignOutDialog` do menu da conta (#148); "Send feedback" abre
    https://github.com/renatobardi/studio/issues/new em outra aba. **Exceção: NIP-05.** O Studio
    não emite handle NIP-05 no MVP, então a linha some de Settings e da tela `profile`, e o nome
