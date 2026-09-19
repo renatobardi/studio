@@ -31,9 +31,11 @@ async function signOut(page: import("@playwright/test").Page): Promise<void> {
 
 test("cached media neither survives sign-out nor crosses to the next Identity", async ({ page }) => {
   test.slow(); // three restores and two photo sends — a pass on CD already took 29.4 s of the default 30 s
-  // Every blob fetch, split at the handover: what A downloaded, and what B
-  // had to go and download for itself.
+  // Every blob fetch, split at the handover: what A downloaded — in the
+  // Channel, then in Direct messages — and what B had to go and download for
+  // itself.
   const servedToA: string[] = [];
+  const servedToAInDms: string[] = [];
   const servedToB: string[] = [];
   let served = servedToA;
   page.on("response", (response) => {
@@ -76,7 +78,9 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   const channelMessage = page.getByTestId("timeline-message").filter({ hasText: channelContent });
   await expect(channelMessage.getByTestId("attachment-image")).toBeVisible({ timeout: 15_000 });
 
-  // --- And sends B a Direct Message photo.
+  // --- And sends B a Direct Message photo. Leaving the Channel cancels its
+  // photos still queued (#188), so what A fetched from here on is the DMs'.
+  served = servedToAInDms;
   await page.getByTestId("dm-new-conversation").click();
   await page.locator(`[data-testid="dm-member-option"][data-pubkey="${pubkeyB}"]`).click();
   await page.getByTestId("dm-attach-input").setInputFiles(TEST_IMAGE);
@@ -99,8 +103,10 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   // authorization check. B is entitled to both of these, so "B sees the
   // image" proves nothing on its own — where the bytes came from is the
   // whole difference between the fix and the bug.
-  const blobsAFetched = [...new Set(servedToA)];
-  expect(blobsAFetched.length).toBeGreaterThan(0);
+  const channelBlobsAFetched = [...new Set(servedToA)];
+  const dmBlobsAFetched = [...new Set(servedToAInDms)];
+  expect(channelBlobsAFetched.length).toBeGreaterThan(0);
+  expect(dmBlobsAFetched.length).toBeGreaterThan(0);
   served = servedToB;
 
   await reachAppViaRestoreWithCredentials(page, {
@@ -114,19 +120,21 @@ test("cached media neither survives sign-out nor crosses to the next Identity", 
   await expect(
     page.getByTestId("timeline-message").filter({ hasText: channelContent }).getByTestId("attachment-image"),
   ).toBeVisible({ timeout: 15_000 });
+  // Downloads go through a priority queue, newest Message first and four at a
+  // time (#142), so the newest photo being on screen does not mean the older
+  // ones have left yet — they arrive as slots free up. And leaving the Channel
+  // cancels the ones still waiting (#188), so B stays until every Channel blob
+  // A fetched has come from the server for B too. Anything still missing when
+  // the queue has drained is a blob B never asked the server for, which is the
+  // failure this is here to catch.
+  const missingFrom = (blobs: string[]) => () => blobs.filter((url) => !servedToB.includes(url));
+  await expect.poll(missingFrom(channelBlobsAFetched), { timeout: 15_000 }).toEqual([]);
 
   await page.locator(`[data-testid="conversation-list-item"][data-peers="${pubkeyA}"]`).click();
   await expect(
     page.getByTestId("dm-message").filter({ hasText: dmContent }).getByTestId("dm-attachment-image"),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Downloads go through a priority queue, newest Message first and four at a
-  // time (#142), so the newest photo being on screen does not mean the older
-  // ones have left yet — they arrive as slots free up. Wait for the whole set:
-  // anything still missing when the queue has drained is a blob B never asked
-  // the server for, which is the failure this assertion is here to catch.
-  await expect
-    .poll(() => blobsAFetched.filter((url) => !servedToB.includes(url)), { timeout: 15_000 })
-    .toEqual([]);
+  await expect.poll(missingFrom(dmBlobsAFetched), { timeout: 15_000 }).toEqual([]);
   expect(await mediaCacheNames(page)).toEqual([`studio-media-v1-${pubkeyB}`]);
 });
