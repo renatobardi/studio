@@ -43,7 +43,11 @@ class FakeRelay {
   readonly requests: Filter[][] = [];
   private open: { filters: Filter[]; onEvent: (event: VerifiedEvent) => void }[] = [];
 
-  constructor(private stored: VerifiedEvent[]) {}
+  private stored: VerifiedEvent[];
+
+  constructor(stored: VerifiedEvent[]) {
+    this.stored = stored;
+  }
 
   subscribe(filters: Filter[], handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void }) {
     this.requests.push(filters);

@@ -16,7 +16,8 @@ function render(messages: VerifiedEvent[], opened: { readAt: number; openedAt: n
     <Timeline
       client={{} as RelayClient}
       channelId="channel"
-      pubkey={ME}
+      channelName="general"
+      ownPubkey={ME}
       signer={{} as Signer}
       mediaUrl="https://media.example"
       messages={messages}
@@ -48,6 +49,15 @@ describe("Timeline", () => {
   test("draws no divider when every Message was already read", () => {
     const html = render([message("read", OTHER, 50, "already read")], { readAt: 100, openedAt: 200 });
     expect(html).not.toContain("new-divider");
+  });
+
+  test("draws no divider above a Message of this browser's own Identity", () => {
+    // #191: with the prop misnamed the Timeline never knew who "own" was, and this rule went
+    // unexercised — every other fixture here is somebody else's.
+    const mine = message("mine", ME, 150, "sent from another device");
+    expect(render([message("read", OTHER, 50, "already read"), mine], { readAt: 100, openedAt: 200 })).not.toContain(
+      "new-divider",
+    );
   });
 
   test("draws no divider before a Channel has been opened", () => {

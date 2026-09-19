@@ -29,7 +29,8 @@ function render(replies: VerifiedEvent[], profiles: Map<string, Profile> = new M
     <Timeline
       client={{} as unknown as RelayClient}
       channelId="chan1"
-      pubkey={author}
+      channelName="general"
+      ownPubkey={author}
       signer={{} as unknown as Signer}
       mediaUrl="https://media.example"
       messages={[message]}

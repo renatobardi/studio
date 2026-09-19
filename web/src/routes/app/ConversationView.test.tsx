@@ -16,7 +16,7 @@ const render = (peerPubkeys: string[], profiles: Map<string, Profile>) =>
   renderToStaticMarkup(
     <ConversationView
       client={{} as RelayClient}
-      myPubkey={ME}
+      ownPubkey={ME}
       peerPubkeys={peerPubkeys}
       signer={{} as Signer}
       mediaUrl="https://media.example"

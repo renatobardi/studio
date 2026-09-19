@@ -3,8 +3,8 @@ import type { ConversationRow } from "./conversations";
 import { initials, navigateTo, sidebarGroups, START_NAVIGATION } from "./sidebar";
 
 const channels = [
-  { id: "c1", name: "general", private: false },
-  { id: "c2", name: "release-train", private: true },
+  { id: "c1", name: "general", about: "", private: false, role: null },
+  { id: "c2", name: "release-train", about: "", private: true, role: null },
 ];
 
 const noDms = { conversations: [], selectedConversationKey: null };

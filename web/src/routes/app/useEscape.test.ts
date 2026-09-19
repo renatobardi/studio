@@ -12,11 +12,11 @@ afterEach(() => {
 });
 
 const stubWindow = () => {
-  // @ts-expect-error minimal window stub: only the two calls this hook makes
+  // A minimal window stub: only the two calls this hook makes.
   globalThis.window = {
     addEventListener: (type: string, listener: Listener) => listeners.set(listener, type),
     removeEventListener: (_type: string, listener: Listener) => listeners.delete(listener),
-  };
+  } as unknown as Window & typeof globalThis;
 };
 
 const fire = (key: string) => {
