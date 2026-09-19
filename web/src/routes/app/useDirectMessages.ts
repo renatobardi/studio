@@ -1,30 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { nowSeconds } from "../../lib/clock";
 import type { Signer } from "../../lib/custody";
-import { unwrapGiftWrap, type Rumor } from "../../lib/nip17";
+import { DmFeed, type DmSnapshot } from "../../lib/dmFeed";
+import { unwrapGiftWrap } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 
-/** Every Direct Message gift wrap addressed to `ownPubkey` (ticket #7), unwrapped as it arrives —
- * nothing until the own pubkey is known.
- * A gift wrap that fails to unwrap (foreign ciphertext, tampered seal) is silently skipped —
- * the relay already restricts delivery to the `p`-tagged recipient, so this is defense in depth,
- * not the normal case. */
+const NOTHING: DmSnapshot = { rumors: [], hasMore: false, completeFrom: -Infinity };
+const noSubscription = () => () => {};
+const nothing = () => NOTHING;
+
+/** React's view of the caller's Direct Messages (ticket #7), paged by gift wrap (#185) — the stream
+ * itself lives in `DmFeed`. Nothing until the own pubkey is known. */
 export function useDirectMessages(client: RelayClient, signer: Signer, ownPubkey: string | null) {
-  const [rumors, setRumors] = useState<Map<string, Rumor>>(new Map());
-
-  useEffect(() => {
-    if (ownPubkey === null) return;
-    const unsubscribe = client.subscribe([{ kinds: [1059], "#p": [ownPubkey] }], {
-      onEvent: (wrap) => {
-        unwrapGiftWrap(signer, wrap)
-          .then((rumor) => {
-            setRumors((prev) => (prev.has(rumor.id) ? prev : new Map(prev).set(rumor.id, rumor)));
-          })
-          .catch(() => {});
-      },
-    });
-    return unsubscribe;
+  const feed = useMemo(
+    () => (ownPubkey === null ? null : new DmFeed(client, ownPubkey, (wrap) => unwrapGiftWrap(signer, wrap), nowSeconds)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- signer identity is stable for the session
-  }, [client, ownPubkey]);
-
-  return [...rumors.values()];
+    [client, ownPubkey],
+  );
+  useEffect(() => feed?.start(), [feed]);
+  const snapshot = useSyncExternalStore(feed?.subscribe ?? noSubscription, feed?.getSnapshot ?? nothing, feed?.getSnapshot ?? nothing);
+  return { ...snapshot, loadOlder: () => feed?.loadOlder() };
 }
