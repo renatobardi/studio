@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as channelEvents from "../../lib/channelEvents";
 import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
+import * as attachmentImage from "./AttachmentImage";
 import { Timeline } from "./Timeline";
 
 const ME = "1".padEnd(64, "a");
@@ -39,6 +40,24 @@ function render(messages: VerifiedEvent[], opened: { readAt: number; openedAt: n
  * screen (#147) — the timeline renders what `messagesWithDivider` decides. */
 describe("Timeline", () => {
   const away = message("away", OTHER, 150, "while you were away");
+
+  test("gives a photo the priority of the Message carrying it, not its place in this list", () => {
+    // The download queue is the Direct Messages' too, so the scale has to be the same (#234).
+    const photo = (id: string, createdAt: number, sha: string) =>
+      ({
+        ...message(id, OTHER, createdAt, ""),
+        tags: [["imeta", `url https://media.example/${sha}`, `x ${sha}`, "m image/png"]],
+      }) as VerifiedEvent;
+    const stub = spyOn(attachmentImage, "AttachmentImage").mockImplementation(({ descriptor, priority }) => (
+      <i data-photo={descriptor.sha256} data-priority={priority} />
+    ));
+    const html = render([photo("old", 1000, "a".repeat(64)), photo("new", 2000, "b".repeat(64))], null);
+    stub.mockRestore();
+
+    const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
+    expect(priorityOf("a".repeat(64))).toBe(1000);
+    expect(priorityOf("b".repeat(64))).toBe(2000);
+  });
 
   test("draws the divider above the first Message that arrived since the Channel was read", () => {
     const html = render([message("read", OTHER, 50, "already read"), away], { readAt: 100, openedAt: 200 });

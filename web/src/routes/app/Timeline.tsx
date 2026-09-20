@@ -22,6 +22,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { channelComposerPlaceholder } from "../../lib/conversationCopy";
+import { downloadPriority } from "../../lib/mediaDownloads";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import {
@@ -277,8 +278,13 @@ export function Timeline({
                   }
                 >
                   {parseImetaTags(message.tags).map((descriptor, position) => (
-                    // `priority={index}`: the newest Message's photos are the ones being waited on.
-                    <AttachmentImage key={`${position}:${descriptor.sha256}`} descriptor={descriptor} signer={signer} priority={index} />
+                    // The Message's send time, the one scale the shared queue is ordered by (#234).
+                    <AttachmentImage
+                      key={`${position}:${descriptor.sha256}`}
+                      descriptor={descriptor}
+                      signer={signer}
+                      priority={downloadPriority(message.created_at)}
+                    />
                   ))}
                   <ReactionBar
                     groups={reactionGroups}
