@@ -108,6 +108,23 @@ export function asksForOlder(previousTop: number, top: number, threshold: number
   return top < previousTop && top <= threshold;
 }
 
+/**
+ * The position a paged timeline remembers between scroll events, so it can tell a scroll up
+ * from a scroll down. Answers each event with whether it asks for an older page.
+ *
+ * The remembering lives here rather than in a component ref because that is the half a test
+ * without a DOM cannot reach: the rule is only right if what it is measured against moves with
+ * every event, including the ones that ask for nothing (#225).
+ */
+export function createScrollWatcher(threshold: number = TOP_OF_HISTORY_PX): (top: number) => boolean {
+  let previousTop = 0;
+  return (top) => {
+    const asks = asksForOlder(previousTop, top, threshold);
+    previousTop = top;
+    return asks;
+  };
+}
+
 /** How far back the loaded history reaches — the cursor the next page pages from. */
 export function oldestCreatedAt(messages: VerifiedEvent[]): number | null {
   if (messages.length === 0) return null;

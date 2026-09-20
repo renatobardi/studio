@@ -22,7 +22,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { channelComposerPlaceholder } from "../../lib/conversationCopy";
-import { TOP_OF_HISTORY_PX, asksForOlder } from "../../lib/channelPagination";
+import { createScrollWatcher } from "../../lib/channelPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
@@ -107,7 +107,7 @@ export function Timeline({
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastScrollTop = useRef(0);
+  const asksForOlderPage = useRef(createScrollWatcher()).current;
   // "last reply 12m ago" is read against this, refreshed each minute so it does not go stale.
   const [now, setNow] = useState(nowSeconds);
   useEffect(() => {
@@ -222,14 +222,12 @@ export function Timeline({
       <div
         className="timeline-scroll"
         ref={scrollRef}
+        // Reaching the top pulls in the previous page — but only on the way up. A Channel opens
+        // at the top, so the first scroll down from there was asking for a page nobody wanted
+        // (#225). The feed ignores a request while one is already in flight, so scrolling cannot
+        // pile them up.
         onScroll={(e) => {
-          // Reaching the top of the timeline pulls in the previous page — but only on the way up.
-          // A Channel opens at the top, so the first scroll down from there was asking for a page
-          // nobody wanted (#225). The feed ignores a request while one is already in flight, so
-          // scrolling cannot pile them up.
-          const top = e.currentTarget.scrollTop;
-          if (hasMore && asksForOlder(lastScrollTop.current, top, TOP_OF_HISTORY_PX)) loadOlder();
-          lastScrollTop.current = top;
+          if (hasMore && asksForOlderPage(e.currentTarget.scrollTop)) loadOlder();
         }}
       >
         {hasMore && (
