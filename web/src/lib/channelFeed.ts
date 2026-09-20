@@ -68,8 +68,12 @@ export class ChannelFeed {
     const firstPage: VerifiedEvent[] = [];
     let eosed = false;
     const liveMessages = this.client.subscribe(liveMessageFilters(this.channelId), {
-      // A reconnect asks from the newest Message held, not for the newest page again (#226).
-      onResubscribe: () => reconnectMessageFilters(this.channelId, newestCreatedAt([...this.messages.values()])),
+      // A reconnect asks from the newest Message held, not for the newest page again (#226) —
+      // but only once the first page has landed, whose size is what says there is more behind it.
+      onResubscribe: () =>
+        eosed
+          ? reconnectMessageFilters(this.channelId, newestCreatedAt([...this.messages.values()]))
+          : liveMessageFilters(this.channelId),
       onEvent: (event) => {
         this.apply(event);
         // A Message arriving live can have no history behind it: anything targeting it is

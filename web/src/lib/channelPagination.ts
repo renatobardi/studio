@@ -1,4 +1,5 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import { MAX_LIMIT } from "./relay";
 
 /** Messages per page — the timeline's own budget, never shared with Reactions or Replies. */
 export const PAGE_SIZE = 50;
@@ -30,13 +31,18 @@ export function liveMessageFilters(channelId: string): Filter[] {
  * arriving while the client was away would leave everything but the last page in a hole the
  * cursor never revisits, since it only walks down from what the pages brought (#226).
  *
- * `since` instead of a window, from the newest Message held — less a margin for another
- * client's clock. No limit: what is asked for is everything since then, and the relay's own
- * ceiling is the only cut.
+ * `since` instead of a window, from the newest Message held — less a margin for another client's
+ * clock. The margin is an hour, not the relay's whole 30-day `PAST_TOLERANCE_SECONDS`: a Message
+ * is stamped when it is sent, and reaching a month back on every reconnect would cost more than
+ * the case it guards.
+ *
+ * `MAX_LIMIT` is asked for outright, since that is what the relay gives a filter that names no
+ * limit. It is still a cut: more than that arriving during one outage leaves the oldest of them
+ * between what is held and where the cursor reaches. Better than a page of 50, not a proof.
  */
 export function reconnectMessageFilters(channelId: string, newestHeldAt: number | null): Filter[] {
   if (newestHeldAt === null) return liveMessageFilters(channelId);
-  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CLOCK_SKEW_SECONDS }];
+  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CLOCK_SKEW_SECONDS, limit: MAX_LIMIT }];
 }
 
 /**

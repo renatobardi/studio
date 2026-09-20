@@ -1,4 +1,5 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import { MAX_LIMIT } from "../relay";
 
 function matches(event: VerifiedEvent, filter: Filter): boolean {
   if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
@@ -13,8 +14,7 @@ function matches(event: VerifiedEvent, filter: Filter): boolean {
   return true;
 }
 
-/** The relay's per-filter ceiling (MAX_LIMIT in api/src/studio_api/nostr/limits.py). */
-export const MAX_LIMIT = 500;
+export { MAX_LIMIT } from "../relay";
 
 /** Stands in for the relay: the same newest-first, id-broken order, inclusive `until` and
  * clamped `limit` that `build_query` in api/src/studio_api/nostr/store.py runs (ADR-0004), and

@@ -84,8 +84,11 @@ export class DmFeed {
     const firstPageIds = new Set<string>();
     let eosed = false;
     this.closeLive = this.client.subscribe(liveDmFilters(this.ownPubkey), {
-      // A reconnect asks from the newest wrap held, not for the newest page again (#226).
-      onResubscribe: () => reconnectDmFilters(this.ownPubkey, newestCreatedAt([...this.wraps.values()])),
+      // A reconnect asks from the newest wrap held, not for the newest page again (#226) — but
+      // only once the first page has landed: its size is what says whether there is history
+      // behind it, and a `since` window counted into that would call a long history exhausted.
+      onResubscribe: () =>
+        eosed ? reconnectDmFilters(this.ownPubkey, newestCreatedAt([...this.wraps.values()])) : liveDmFilters(this.ownPubkey),
       onEvent: (wrap) => {
         if (!eosed && !firstPageIds.has(wrap.id)) {
           firstPageIds.add(wrap.id);

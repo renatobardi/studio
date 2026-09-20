@@ -75,6 +75,10 @@ export interface RelayProblem {
   reason: string;
 }
 
+/** The ceiling the relay clamps every filter's limit to (api/src/studio_api/nostr/limits.py).
+ * A filter that names no limit is given this one. */
+export const MAX_LIMIT = 500;
+
 export interface SubscriptionHandlers {
   onEvent(event: VerifiedEvent): void;
   onEose?(): void;
@@ -278,8 +282,9 @@ export class RelayClient {
 
   private resubscribeAll(): void {
     for (const sub of this.subscriptions.values()) {
-      sub.filters = sub.handlers.onResubscribe?.() ?? sub.filters;
-      this.send(["REQ", sub.id, ...sub.filters]);
+      // Not stored back: the handler is asked again on the next reconnect, and what it answers
+      // now must not become what a later `update()` widens or narrows.
+      this.send(["REQ", sub.id, ...(sub.handlers.onResubscribe?.() ?? sub.filters)]);
     }
   }
 
