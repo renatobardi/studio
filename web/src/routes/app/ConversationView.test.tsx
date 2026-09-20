@@ -114,8 +114,9 @@ describe("ConversationView", () => {
   });
 
   test("reads the conversation's history once per render, not once per row", () => {
-    // #194's rule, for this pane: what every row draws from is computed once, and — memoised on
-    // the data — not at all when only the composer changed (#233).
+    // #194's rule, for this pane. That a keystroke in the composer does not recompute it is what
+    // the `useMemo` is for, and is not asserted here: `renderToStaticMarkup` mounts once, runs no
+    // effects and processes no state, so there is no re-render to observe (#233).
     const spy = spyOn(dmPagination, "dmHistoryView");
     try {
       render([ANA], named(ANA, "Ana Petrova"), { messages: [text("a", 1), text("b", 2), text("c", 3)] });
