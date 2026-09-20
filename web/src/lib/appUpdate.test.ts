@@ -31,6 +31,14 @@ describe("createUpdateNotice", () => {
     expect(heard).toBe(1);
   });
 
+  test("a worker found from before this page turns a claim it had shrugged off into news", () => {
+    const notice = createUpdateNotice(false);
+    notice.report("controllerchange");
+    expect(notice.getSnapshot()).toBe(false);
+    notice.foundWorkerFromBefore();
+    expect(notice.getSnapshot()).toBe(true);
+  });
+
   test("ignores a first install claiming the page", () => {
     const notice = createUpdateNotice(false);
     notice.report("controllerchange");
@@ -100,9 +108,19 @@ describe("watchForNewVersion", () => {
     // Shift+Reload loads the page uncontrolled by spec, however long a worker has been
     // installed. Going by `controller` alone, the next deploy arrived as a controllerchange on
     // a page that looked brand new, and nothing was offered (#235).
-    const { notice, listeners, options } = harness(null, {});
-    options().onRegisteredSW?.("/sw.js", { active: {} } as unknown as ServiceWorkerRegistration);
+    const { notice, listeners, options, registration } = harness(null, {});
+    options().onRegisteredSW?.("/sw.js", registration);
     listeners.get("controllerchange")!();
+    expect(notice.getSnapshot()).toBe(true);
+  });
+
+  test("a worker that claimed the page before the registration answered is not lost", () => {
+    // `registerSW` imports its own code before it registers, and a worker activating in another
+    // tab can claim this page inside that window.
+    const { notice, listeners, options, registration } = harness(null, {});
+    listeners.get("controllerchange")!();
+    expect(notice.getSnapshot()).toBe(false);
+    options().onRegisteredSW?.("/sw.js", registration);
     expect(notice.getSnapshot()).toBe(true);
   });
 
