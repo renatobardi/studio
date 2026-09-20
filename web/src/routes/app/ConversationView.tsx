@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addDraft,
   canSendWithDrafts,
@@ -97,7 +97,12 @@ export function ConversationView({
   // An opening fetches what it needs on its own: a conversation quiet for a day sits below where
   // the history is complete, and would otherwise open blank behind a button (#231).
   const [shownState, setShownState] = useState(() => openedConversation(pages));
-  const view = dmHistoryView(messages, completeFrom, shownState, hasMore, pages);
+  // Memoised on the data it reads: without it every keystroke in the composer re-filtered and
+  // re-sliced the whole conversation, the per-render cost #194 took off the Timeline (#233).
+  const view = useMemo(
+    () => dmHistoryView(messages, completeFrom, shownState, hasMore, pages),
+    [messages, completeFrom, shownState, hasMore, pages],
+  );
   const oldestShownId = view.messages[0]?.id;
   const emptyNotice = dmEmptyNotice(view);
 
@@ -106,8 +111,7 @@ export function ConversationView({
   // waiting on one from waiting forever.
   useEffect(() => {
     if (view.fetchOlder) onLoadOlder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoadOlder is the feed's own bound method
-  }, [view.fetchOlder, pages]);
+  }, [view.fetchOlder, pages, onLoadOlder]);
 
   // Older Messages prepend; giving back the height they added keeps the reader where they were.
   // A request that ends with nothing new clears too, or the next live Message would be taken for it.

@@ -11,6 +11,7 @@ import {
 } from "../../lib/channelAccess";
 import { nowSeconds } from "../../lib/clock";
 import { directMessages } from "../../lib/conversations";
+import type { Rumor } from "../../lib/nip17";
 import {
   loadChannelId,
   loadChannelReadAt,
@@ -48,6 +49,10 @@ import { Sidebar } from "./Sidebar";
 import { useDirectMessages } from "./useDirectMessages";
 import { displayName, ownDisplayName, profileName, shortNpub, useProfiles } from "./useProfiles";
 import { useWorkspaceMembers } from "./useWorkspaceMembers";
+
+/** A conversation picked before it has any Messages: one array, so the open pane's history is
+ * not recomputed every time the shell renders (#233). */
+const NO_MESSAGES: Rumor[] = [];
 
 export function AppShell({
   workspace,
@@ -380,7 +385,7 @@ export function AppShell({
             peerPubkeys={selectedPeerPubkeys}
             signer={signer}
             mediaUrl={workspace.media_url}
-            messages={dm.selected?.messages ?? []}
+            messages={dm.selected?.messages ?? NO_MESSAGES}
             completeFrom={dmFeed.completeFrom}
             hasMore={dmFeed.hasMore}
             pages={dmFeed.pages}

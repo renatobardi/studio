@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
 import { buildDmImetaTag } from "../../lib/dmMedia";
 import { DM_LOOKING_FOR_OLDER } from "../../lib/conversationCopy";
+import * as dmPagination from "../../lib/dmPagination";
 import { DM_SHOWN_STEP } from "../../lib/dmPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
@@ -115,6 +116,19 @@ describe("ConversationView", () => {
     // whose 200th Message would otherwise outrank a photo just sent here (#234).
     expect(priorityOf("o".repeat(64))).toBe(downloadPriority(1));
     expect(priorityOf("n".repeat(64))).toBe(downloadPriority(2));
+  });
+
+  test("reads the conversation's history once per render, not once per row", () => {
+    // #194's rule, for this pane. That a keystroke in the composer does not recompute it is what
+    // the `useMemo` is for, and is not asserted here: `renderToStaticMarkup` mounts once, runs no
+    // effects and processes no state, so there is no re-render to observe (#233).
+    const spy = spyOn(dmPagination, "dmHistoryView");
+    try {
+      render([ANA], named(ANA, "Ana Petrova"), { messages: [text("a", 1), text("b", 2), text("c", 3)] });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("mounts only the newest step of the conversation, so older photos are not fetched (#185)", () => {
