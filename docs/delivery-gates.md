@@ -64,8 +64,9 @@ it. Issue #51.
    Message between two fixture Identities, whose keys derive from the owner
    key. Nothing there is real data, and a studio-test re-seeded from scratch
    gets it all back on the next deploy. No other flow may write to that
-   Account: its inbox has to stay within one page of gift wraps, or the app
-   opens the Direct Message on its last day only (#231). Flow 10
+   Account, so that what flow 11 captures is the same from deploy to deploy;
+   its inbox no longer has to stay within one page of gift wraps, and the
+   seeding scans all of it rather than that page (#231). Flow 10
    (`visual.spec.ts`) compares preview.html
    against committed baselines and runs only where a dev server exists —
    locally, and in CI's `visual` job (see "The visual gate") — never in CD:

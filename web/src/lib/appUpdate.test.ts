@@ -31,6 +31,14 @@ describe("createUpdateNotice", () => {
     expect(heard).toBe(1);
   });
 
+  test("a worker found from before this page turns a claim it had shrugged off into news", () => {
+    const notice = createUpdateNotice(false);
+    notice.report("controllerchange");
+    expect(notice.getSnapshot()).toBe(false);
+    notice.foundWorkerFromBefore();
+    expect(notice.getSnapshot()).toBe(true);
+  });
+
   test("ignores a first install claiming the page", () => {
     const notice = createUpdateNotice(false);
     notice.report("controllerchange");
@@ -58,7 +66,7 @@ describe("createUpdateNotice", () => {
 });
 
 describe("watchForNewVersion", () => {
-  function harness(controller: object | null) {
+  function harness(controller: object | null, active: object | null = null) {
     const listeners = new Map<string, () => void>();
     const documentListeners = new Map<string, () => void>();
     const windowListeners = new Map<string, () => void>();
@@ -76,7 +84,7 @@ describe("watchForNewVersion", () => {
       document: doc,
       window: { addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener) },
     });
-    const registration = { update: async () => void (updates += 1) } as unknown as ServiceWorkerRegistration;
+    const registration = { active, update: async () => void (updates += 1) } as unknown as ServiceWorkerRegistration;
     return { notice, listeners, documentListeners, windowListeners, options: () => options!, doc, registration, updates: () => updates };
   }
 
@@ -92,6 +100,33 @@ describe("watchForNewVersion", () => {
 
   test("the first install on a page no worker loaded does not", () => {
     const { notice, listeners } = harness(null);
+    listeners.get("controllerchange")!();
+    expect(notice.getSnapshot()).toBe(false);
+  });
+
+  test("a forced reload leaves no controller, and the worker already installed still counts", () => {
+    // Shift+Reload loads the page uncontrolled by spec, however long a worker has been
+    // installed. Going by `controller` alone, the next deploy arrived as a controllerchange on
+    // a page that looked brand new, and nothing was offered (#235).
+    const { notice, listeners, options, registration } = harness(null, {});
+    options().onRegisteredSW?.("/sw.js", registration);
+    listeners.get("controllerchange")!();
+    expect(notice.getSnapshot()).toBe(true);
+  });
+
+  test("a worker that claimed the page before the registration answered is not lost", () => {
+    // `registerSW` imports its own code before it registers, and a worker activating in another
+    // tab can claim this page inside that window.
+    const { notice, listeners, options, registration } = harness(null, {});
+    listeners.get("controllerchange")!();
+    expect(notice.getSnapshot()).toBe(false);
+    options().onRegisteredSW?.("/sw.js", registration);
+    expect(notice.getSnapshot()).toBe(true);
+  });
+
+  test("a first install has no active worker to find, and still says nothing", () => {
+    const { notice, listeners, options, registration } = harness(null);
+    options().onRegisteredSW?.("/sw.js", registration);
     listeners.get("controllerchange")!();
     expect(notice.getSnapshot()).toBe(false);
   });
