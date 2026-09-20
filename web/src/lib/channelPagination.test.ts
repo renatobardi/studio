@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { VerifiedEvent } from "nostr-tools";
 import {
   PAGE_SIZE,
+  TOP_OF_HISTORY_PX,
   asksForOlder,
   channelCompanionFilters,
   isEndOfHistory,
@@ -160,5 +161,13 @@ describe("asksForOlder", () => {
 
   test("scrolling up far from the top does not", () => {
     expect(asksForOlder(300, 200, 48)).toBe(false);
+  });
+
+  test("the threshold itself counts as the top", () => {
+    expect(asksForOlder(100, TOP_OF_HISTORY_PX, TOP_OF_HISTORY_PX)).toBe(true);
+  });
+
+  test("a scroll event that moved nothing asks for nothing", () => {
+    expect(asksForOlder(0, 0, TOP_OF_HISTORY_PX)).toBe(false);
   });
 });

@@ -95,6 +95,9 @@ export function isEndOfHistory(knownIds: Set<string>, page: VerifiedEvent[]): bo
   return page.every((event) => knownIds.has(event.id));
 }
 
+/** How close to the top counts as asking for older Messages (story 30, #1). */
+export const TOP_OF_HISTORY_PX = 48;
+
 /**
  * Reaching the top asks for older Messages only while scrolling up: both a Channel and a
  * conversation open at the top, so the first scroll down from there would otherwise pull in a

@@ -22,7 +22,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { channelComposerPlaceholder } from "../../lib/conversationCopy";
-import { asksForOlder } from "../../lib/channelPagination";
+import { TOP_OF_HISTORY_PX, asksForOlder } from "../../lib/channelPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
@@ -57,15 +57,11 @@ function imageDimensions(url: string): Promise<string | undefined> {
   });
 }
 
-/** How close to the top counts as asking for older Messages (story 30, #1). */
-export const TOP_OF_HISTORY_PX = 48;
-
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
   if (count === 1) return "1 reply";
   return `${count} replies`;
 }
-
 
 export function Timeline({
   client,

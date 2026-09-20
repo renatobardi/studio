@@ -154,4 +154,3 @@ export function dmHistoryView<T extends { created_at: number }>(
     fetchOlder: keepFetchingOlder(state, { complete: complete.length, hasMore, pages }),
   };
 }
-
