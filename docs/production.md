@@ -11,11 +11,14 @@ backups and restore by `docs/recovery.md`.
   install, never a copy of `studio-test`. Its IP and port are in
   `lab/servers/oute-server/PORTS.md`.
 - Inside it, `/opt/app` is a git checkout running this repository's
-  `docker-compose.yml` unchanged: SurrealDB, MinIO, api, web, Caddy on `:80`.
+  `docker-compose.yml` unchanged: SurrealDB, MinIO, api, web, Caddy. Caddy
+  listens on `:80` inside the container and publishes it on the host port
+  `lab`'s inventory allocated to `studio-prd` — `3760`, from `CADDY_HOST_PORT`
+  in this container's `.env` (issue #263).
   Its own volumes and its own `.env`: no database, bucket or application
   credential is shared with `studio-test`.
 - Public at `https://studio.oute.pro`. TLS ends at the host's Nginx (Certbot
-  certificate), which proxies to `<container-ip>:80`. Caddy trusts that hop's
+  certificate), which proxies to `<container-ip>:3760`. Caddy trusts that hop's
   `X-Forwarded-Proto`, so the api sees `https`/`wss` — NIP-98 and NIP-42 compare
   signed URLs with that scheme and reject every call without it.
 
@@ -25,7 +28,7 @@ Nothing beyond the repository and these files, all mode `600`, none committed:
 
 | File in `/opt/app` | Holds | Source of truth |
 | --- | --- | --- |
-| `.env` | `SURREAL_*`, `MINIO_ROOT_*`, `WORKSPACE_KEY_SECRET`, `FIREBASE_CREDENTIALS_FILE` (see `.env.example`) | Vaultwarden, items `studio-prd <NAME>` |
+| `.env` | `SURREAL_*`, `MINIO_ROOT_*`, `WORKSPACE_KEY_SECRET`, `CADDY_HOST_PORT` (`3760`), `FIREBASE_CREDENTIALS_FILE` (see `.env.example`) | Vaultwarden, items `studio-prd <NAME>` |
 | `secrets/firebase-adminsdk.json` | Service account of the **`studio-prd`** Firebase project, owned by uid `10001` | Vaultwarden, item `studio-prd firebase-adminsdk.json` |
 | `web/.env` | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` of the same project — read at image build time | Firebase console of `studio-prd` |
 
@@ -42,7 +45,7 @@ Nothing beyond the repository and these files, all mode `600`, none committed:
 
 ## Host
 
-- Nginx vhost `studio.oute.pro` → `<container-ip>:80`, listening on
+- Nginx vhost `studio.oute.pro` → `<container-ip>:3760`, listening on
   `0.0.0.0:443` and the Tailscale IP, with HTTP→HTTPS redirect, WebSocket
   upgrade headers and a long read timeout (the relay is a WebSocket), and
   `client_max_body_size 12m` — the api accepts 10 MiB Attachments and Nginx's
@@ -107,6 +110,11 @@ replaced. The gate accepts it while its CD run is still in the Actions history
 replaces the checkout `install-app.sh` made, which never went through the
 gate — there is nothing to roll back to but the LXD `deploy-*` snapshot — and
 an SHA whose CD run has expired is refused like any unproven one.
+
+A third, for as long as the history still reaches across it: an SHA from
+before #263 publishes Caddy on `:80`, so rolling back onto one leaves the
+host's vhost asking `:3760` of a port nothing listens on. Point the vhost back
+at `:80` for the duration of that rollback.
 
 Code rolls back; data does not. A release that changed stored data in a way
 the older code cannot read needs a restore instead (`docs/recovery.md`) —

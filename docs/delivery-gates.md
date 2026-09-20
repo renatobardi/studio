@@ -280,6 +280,15 @@ every ops script is).
 Keep the emails of the first three: an Account is keyed by its Firebase uid,
 and a new email is a new Account with no Identity linked to it.
 
+## The host port `studio-test` publishes
+
+`/opt/app/.env` in the container also carries `CADDY_HOST_PORT=3740` — the port
+`lab`'s inventory allocated to `studio-test`, which `docker-compose.yml`
+publishes Caddy on (#263). It has no default: a container whose `.env` lacks it
+fails `cd.yml`'s `docker compose up -d --build`, so it is written there before
+a deploy first needs it. `STUDIO_TEST_WEB_URL` — the Environment secret every
+verification step above curls — carries that port too.
+
 ## Production
 
 `studio-prd` is never deployed by `cd.yml`. `promote.yml` is dispatched by
