@@ -133,6 +133,20 @@ describe("ChannelFeed", () => {
     expect(deadlines).toHaveLength(0);
   });
 
+  test("more than a page of Messages arriving while the socket was down all come back", () => {
+    // Same hole as the Direct Messages had (#226): the live filter is a window of the newest
+    // PAGE_SIZE, and asking for it again after a reconnect loses everything that did not fit.
+    const relay = new FakeRelay(messages(PAGE_SIZE));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    const away = Array.from({ length: PAGE_SIZE * 3 }, (_, i) => message(`away${String(i).padStart(3, "0")}`, 10_000 + i));
+    for (const event of away) relay.publish(event);
+    relay.reconnect();
+
+    expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE * 4);
+  });
+
   test("a reconnect that replays the page changes nothing", () => {
     const relay = new FakeRelay(messages(10));
     const feed = new ChannelFeed(relay, CHANNEL);

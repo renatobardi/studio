@@ -260,6 +260,21 @@ describe("RelayClient reconnection", () => {
     expect(states).toEqual(["reconnecting", "open"]);
   });
 
+  test("re-issues a subscription with the filters it says it wants now", async () => {
+    // A live window of the newest N is the right thing to open with and the wrong thing to ask
+    // again — whatever arrived while the socket was down and did not fit would be lost (#226).
+    const { client, ws } = await connectedClient();
+    client.subscribe([{ kinds: [9], limit: 50 }], { onEvent: () => {}, onResubscribe: () => [{ kinds: [9], since: 42 }] });
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 0));
+    const newWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+    await authenticate(newWs, "challenge2");
+    await Promise.resolve();
+
+    expect(newWs.lastSent("REQ")?.slice(2)).toEqual([{ kinds: [9], since: 42 }]);
+  });
+
   test("backs off exponentially on repeated failures, resetting after success", async () => {
     const delays: number[] = [];
     const originalSetTimeout = globalThis.setTimeout;

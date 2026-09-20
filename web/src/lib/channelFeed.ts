@@ -5,7 +5,9 @@ import {
   channelCompanionFilters,
   isEndOfHistory,
   liveMessageFilters,
+  newestCreatedAt,
   olderMessagesFilters,
+  reconnectMessageFilters,
   rootCompanionFilters,
 } from "./channelPagination";
 import { type Timer, timer } from "./clock";
@@ -15,7 +17,7 @@ import type { SubscriptionHandle } from "./relay";
 export interface FeedClient {
   subscribe(
     filters: Filter[],
-    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void },
+    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void; onResubscribe?(): Filter[] },
   ): SubscriptionHandle;
 }
 
@@ -66,6 +68,12 @@ export class ChannelFeed {
     const firstPage: VerifiedEvent[] = [];
     let eosed = false;
     const liveMessages = this.client.subscribe(liveMessageFilters(this.channelId), {
+      // A reconnect asks from the newest Message held, not for the newest page again (#226) —
+      // but only once the first page has landed, whose size is what says there is more behind it.
+      onResubscribe: () =>
+        eosed
+          ? reconnectMessageFilters(this.channelId, newestCreatedAt([...this.messages.values()]))
+          : liveMessageFilters(this.channelId),
       onEvent: (event) => {
         this.apply(event);
         // A Message arriving live can have no history behind it: anything targeting it is

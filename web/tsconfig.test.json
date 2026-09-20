@@ -1,11 +1,17 @@
 {
-  // The unit tests, type-checked on their own: tsconfig.app.json leaves them out of the
-  // build, so nothing else notices a test rendering a component with props it lacks (#191).
+  // Everything the build leaves out: the unit tests, the tools CD runs against studio-test, and
+  // the Playwright specs. tsconfig.app.json covers only what ships, so without this nothing
+  // notices a test rendering a component with props it lacks (#191), and nothing type-checked
+  // the seeding that runs in CD with secrets (#238).
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    // tools/compare-reference-lib.mjs is plain JavaScript with no types of its own; letting it
+    // in is what type-checks its test against what it actually exports. `checkJs` stays off:
+    // the three .mjs tools would need every parameter annotated first (#238).
+    "allowJs": true,
     "types": ["vite/client", "vite-plugin-pwa/client", "bun"]
   },
-  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/lib/testing"],
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/lib/testing", "tools", "e2e", "playwright.config.ts"],
   "exclude": []
 }

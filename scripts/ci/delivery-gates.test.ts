@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 
 // The delivery-gate contract (issue #51): nothing reaches studio-test that CI
 // has not already validated, and what is deployed is the exact commit CI
@@ -34,6 +35,19 @@ const read = async (path: string) =>
 const cd = await read('.github/workflows/cd.yml')
 const promote = await read('.github/workflows/promote.yml')
 const ci = await read('.github/workflows/ci.yml')
+
+// JSON with comments: the config it reads is the one `bun run typecheck:tests` passes to tsc.
+// Only whole-line comments are stripped, which is all this file has — a parse failure says so
+// rather than taking every test in this file down with a bare SyntaxError.
+const testTsconfig = (() => {
+  const path = `${repoRoot}web/tsconfig.test.json`
+  const source = readFileSync(path, 'utf8').replace(/^\s*\/\/.*$/gm, '')
+  try {
+    return JSON.parse(source) as { include: string[] }
+  } catch (error) {
+    throw new Error(`${path} is not JSON once whole-line comments are stripped: ${String(error)}`)
+  }
+})()
 
 // `on:` is YAML 1.1's boolean `true`; Bun.YAML follows 1.2 and keeps the
 // string key, but read both so the test does not depend on that detail.
@@ -160,6 +174,19 @@ describe('ci.yml', () => {
     // tsconfig.app.json leaves *.test.ts(x) out of the build, so a test passing a
     // prop the component does not have ran green for weeks (#191).
     expect(commandsOf(ci.jobs.web)).toContain('bun run typecheck:tests')
+  })
+
+  test('that type-check reaches the tools CD runs and the Playwright specs', () => {
+    // web/tools/ holds seed-fixtures, which CD runs against studio-test with secrets, and
+    // web/e2e/ the smoke itself — neither ships, so nothing else ever type-checks them (#238).
+    expect(testTsconfig.include).toEqual([
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+      'src/lib/testing',
+      'tools',
+      'e2e',
+      'playwright.config.ts',
+    ])
   })
 
   test('lets the token read the repository and nothing else (#202)', () => {

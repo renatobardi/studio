@@ -201,6 +201,33 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().hasMore).toBe(false);
   });
 
+  test("more than a page of wraps arriving while the socket was down all come back", async () => {
+    // A reconnect re-issues the REQ. Without a `since`, the relay answers the newest page of it
+    // and everything older falls into a hole the cursor never revisits (#226).
+    const { relay, feed } = start(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(250, NOW, 60, "n")) relay.publish(wrap_);
+    relay.reconnect();
+    await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 250);
+    // Asking since the newest held says nothing about how much history is behind it.
+    expect(feed.getSnapshot().hasMore).toBe(true);
+  });
+
+  test("a drop before the first page landed asks for a first page again, not a window", () => {
+    // The opening REQ is what says whether there is history behind the newest page, by its size.
+    // Answering a `since` window into that count would call a long history exhausted.
+    const relay = new ManualRelay();
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW);
+    feed.start();
+    const { handlers, filters } = relay.subscriptions[0]!;
+    // Some of the first page arrived, and then the socket went: enough to have a newest wrap.
+    for (const wrap_ of history(10, NOW, 60)) handlers.onEvent(wrap_);
+
+    expect(handlers.onResubscribe?.() ?? filters).toEqual([{ kinds: [1059], "#p": [ME], limit: DM_PAGE_SIZE }]);
+  });
+
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();
@@ -241,11 +268,14 @@ class FakeTimers {
 class ManualRelay {
   readonly subscriptions: {
     filters: Filter[];
-    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void };
+    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void; onResubscribe?(): Filter[] };
     open: boolean;
   }[] = [];
 
-  subscribe(filters: Filter[], handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void }) {
+  subscribe(
+    filters: Filter[],
+    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void; onResubscribe?(): Filter[] },
+  ) {
     const entry = { filters, handlers, open: true };
     this.subscriptions.push(entry);
     const unsubscribe = () => {

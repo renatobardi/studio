@@ -5,6 +5,7 @@ import { buildDmImetaTag } from "../../lib/dmMedia";
 import { DM_LOOKING_FOR_OLDER } from "../../lib/conversationCopy";
 import * as dmPagination from "../../lib/dmPagination";
 import { DM_SHOWN_STEP } from "../../lib/dmPagination";
+import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { ConversationView } from "./ConversationView";
@@ -111,6 +112,10 @@ describe("ConversationView", () => {
 
     const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
     expect(priorityOf("n".repeat(64))).toBeGreaterThan(priorityOf("o".repeat(64)));
+    // The send time, not the index in this list: the queue is shared with the Channel timeline,
+    // whose 200th Message would otherwise outrank a photo just sent here (#234).
+    expect(priorityOf("o".repeat(64))).toBe(downloadPriority(1));
+    expect(priorityOf("n".repeat(64))).toBe(downloadPriority(2));
   });
 
   test("reads the conversation's history once per render, not once per row", () => {
