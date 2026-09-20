@@ -29,7 +29,8 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { askOlder, asksForOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
+import { asksForOlder } from "../../lib/channelPagination";
+import { askOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";

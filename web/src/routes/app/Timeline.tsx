@@ -22,6 +22,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { channelComposerPlaceholder } from "../../lib/conversationCopy";
+import { asksForOlder } from "../../lib/channelPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
@@ -110,6 +111,7 @@ export function Timeline({
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastScrollTop = useRef(0);
   // "last reply 12m ago" is read against this, refreshed each minute so it does not go stale.
   const [now, setNow] = useState(nowSeconds);
   useEffect(() => {
@@ -225,9 +227,13 @@ export function Timeline({
         className="timeline-scroll"
         ref={scrollRef}
         onScroll={(e) => {
-          // Reaching the top of the timeline pulls in the previous page; the feed ignores a
-          // request while one is already in flight, so scrolling cannot pile them up.
-          if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+          // Reaching the top of the timeline pulls in the previous page — but only on the way up.
+          // A Channel opens at the top, so the first scroll down from there was asking for a page
+          // nobody wanted (#225). The feed ignores a request while one is already in flight, so
+          // scrolling cannot pile them up.
+          const top = e.currentTarget.scrollTop;
+          if (hasMore && asksForOlder(lastScrollTop.current, top, TOP_OF_HISTORY_PX)) loadOlder();
+          lastScrollTop.current = top;
         }}
       >
         {hasMore && (

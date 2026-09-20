@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { VerifiedEvent } from "nostr-tools";
 import {
   PAGE_SIZE,
+  asksForOlder,
   channelCompanionFilters,
   isEndOfHistory,
   liveMessageFilters,
@@ -145,5 +146,19 @@ describe("paging a whole history", () => {
     const all = Array.from({ length: 70 }, (_, i) => message(`m${String(i).padStart(3, "0")}`, 1000 + i));
     const { collected } = paginateAll([...all, ...all]);
     expect(collected).toHaveLength(70);
+  });
+});
+
+describe("asksForOlder", () => {
+  test("reaching the top while scrolling up asks for older Messages", () => {
+    expect(asksForOlder(100, 40, 48)).toBe(true);
+  });
+
+  test("scrolling down from the top — where a Channel and a conversation both open — does not", () => {
+    expect(asksForOlder(0, 40, 48)).toBe(false);
+  });
+
+  test("scrolling up far from the top does not", () => {
+    expect(asksForOlder(300, 200, 48)).toBe(false);
   });
 });

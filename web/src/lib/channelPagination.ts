@@ -95,6 +95,16 @@ export function isEndOfHistory(knownIds: Set<string>, page: VerifiedEvent[]): bo
   return page.every((event) => knownIds.has(event.id));
 }
 
+/**
+ * Reaching the top asks for older Messages only while scrolling up: both a Channel and a
+ * conversation open at the top, so the first scroll down from there would otherwise pull in a
+ * page nobody asked for (#185, #225). One rule for both surfaces, here because each one's
+ * paging already reads from this module.
+ */
+export function asksForOlder(previousTop: number, top: number, threshold: number): boolean {
+  return top < previousTop && top <= threshold;
+}
+
 /** How far back the loaded history reaches — the cursor the next page pages from. */
 export function oldestCreatedAt(messages: VerifiedEvent[]): number | null {
   if (messages.length === 0) return null;
