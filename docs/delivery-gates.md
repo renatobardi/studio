@@ -286,8 +286,21 @@ and a new email is a new Account with no Identity linked to it.
 `lab`'s inventory allocated to `studio-test`, which `docker-compose.yml`
 publishes Caddy on (#263). It has no default: a container whose `.env` lacks it
 fails `cd.yml`'s `docker compose up -d --build`, so it is written there before
-a deploy first needs it. `STUDIO_TEST_WEB_URL` — the Environment secret every
-verification step above curls — carries that port too.
+a deploy first needs it.
+
+CD does not reach that port directly. The LXD bridge is not routed on the
+tailnet, so nothing outside `oute-server` can address the container: what the
+runner curls is an LXD **proxy device** on the host, `studio-test-tailscale`,
+listening on the host's own tailnet address at 3740 and connecting to the
+container. `STUDIO_TEST_WEB_URL` is that listener's address — never the
+container's, which times out from anywhere else.
+
+Two consequences, both learned the hard way on #263: `ss -ltnp` **inside** the
+LXC cannot show the allocated port, because the listener lives on the host; and
+changing the port Compose publishes means changing the device's `connect` in the
+same breath (`lxc config device set studio-test studio-test-tailscale
+connect=tcp:<container-ip>:<port>`), or the tunnel keeps forwarding to a port
+nothing listens on and every deploy fails its health check.
 
 ## Production
 
