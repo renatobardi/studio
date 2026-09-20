@@ -35,6 +35,11 @@ const cd = await read('.github/workflows/cd.yml')
 const promote = await read('.github/workflows/promote.yml')
 const ci = await read('.github/workflows/ci.yml')
 
+// JSON with comments: the config it reads is the one `bun run typecheck:tests` passes to tsc.
+const testTsconfig = JSON.parse(
+  (await Bun.file(`${repoRoot}web/tsconfig.test.json`).text()).replace(/^\s*\/\/.*$/gm, ''),
+) as { include: string[] }
+
 // `on:` is YAML 1.1's boolean `true`; Bun.YAML follows 1.2 and keeps the
 // string key, but read both so the test does not depend on that detail.
 const triggers = (cd.on ?? cd[true as unknown as string]) as {
@@ -160,6 +165,18 @@ describe('ci.yml', () => {
     // tsconfig.app.json leaves *.test.ts(x) out of the build, so a test passing a
     // prop the component does not have ran green for weeks (#191).
     expect(commandsOf(ci.jobs.web)).toContain('bun run typecheck:tests')
+  })
+
+  test('that type-check reaches the tools CD runs and the Playwright specs', () => {
+    // web/tools/ holds seed-fixtures, which CD runs against studio-test with secrets, and
+    // web/e2e/ the smoke itself — neither ships, so nothing else ever type-checks them (#238).
+    expect(testTsconfig.include).toEqual([
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+      'src/lib/testing',
+      'tools',
+      'e2e',
+    ])
   })
 
   test('lets the token read the repository and nothing else (#202)', () => {

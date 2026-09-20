@@ -9,9 +9,10 @@ import {
   olderMessagesFilters,
   rootCompanionFilters,
 } from "./channelPagination";
+import { verifiedEvent } from "./testing/events";
 
 function message(id: string, createdAt: number): VerifiedEvent {
-  return { id, kind: 9, created_at: createdAt, pubkey: "author", tags: [], content: "", sig: "" } as unknown as VerifiedEvent;
+  return verifiedEvent({ id, kind: 9, created_at: createdAt, pubkey: "author", tags: [], content: "", sig: "" });
 }
 
 describe("liveMessageFilters", () => {

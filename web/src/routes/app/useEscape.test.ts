@@ -1,22 +1,24 @@
 import { afterEach, expect, test } from "bun:test";
+import { stubWindow, type KeyPress } from "../../lib/testing/window";
 import { listenForEscape } from "./useEscape";
 
-type Listener = (event: { key: string }) => void;
+type Listener = (event: KeyPress) => void;
 
 const listeners = new Map<Listener, string>();
+let restoreWindow: (() => void) | null = null;
 
 afterEach(() => {
   listeners.clear();
-  // @ts-expect-error test-only cleanup of the global stubbed below
-  delete globalThis.window;
+  restoreWindow?.();
+  restoreWindow = null;
 });
 
-const stubWindow = () => {
-  // A minimal window stub: only the two calls this hook makes.
-  globalThis.window = {
-    addEventListener: (type: string, listener: Listener) => listeners.set(listener, type),
-    removeEventListener: (_type: string, listener: Listener) => listeners.delete(listener),
-  } as unknown as Window & typeof globalThis;
+/** Only the two calls this hook makes. */
+const attachWindow = () => {
+  restoreWindow = stubWindow({
+    addEventListener: (type, listener) => void listeners.set(listener, type),
+    removeEventListener: (_type, listener) => void listeners.delete(listener),
+  });
 };
 
 const fire = (key: string) => {
@@ -24,7 +26,7 @@ const fire = (key: string) => {
 };
 
 test("listens for keydown while it is attached, and stops when it is detached", () => {
-  stubWindow();
+  attachWindow();
   const stop = listenForEscape(() => {});
   expect([...listeners.values()]).toEqual(["keydown"]);
   stop();
@@ -32,7 +34,7 @@ test("listens for keydown while it is attached, and stops when it is detached", 
 });
 
 test("only Escape dismisses — other keys go through untouched", () => {
-  stubWindow();
+  attachWindow();
   let dismissed = 0;
   const stop = listenForEscape(() => dismissed++);
 
