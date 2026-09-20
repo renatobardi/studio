@@ -1,7 +1,12 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import { MAX_LIMIT } from "./relay";
 
 /** Messages per page — the timeline's own budget, never shared with Reactions or Replies. */
 export const PAGE_SIZE = 50;
+
+/** How far another client's clock, or its rounding, may put an event behind ours. Asking again
+ * after a reconnect reaches back this far so a Message stamped a little early is not skipped. */
+export const CLOCK_SKEW_SECONDS = 60 * 60;
 
 /**
  * How long a page may stay in flight before the feed stops waiting for its EOSE and lets the
@@ -18,6 +23,26 @@ export const PAGE_DEADLINE_MS = 20_000;
  */
 export function liveMessageFilters(channelId: string): Filter[] {
   return [{ kinds: [9], "#h": [channelId], limit: PAGE_SIZE }];
+}
+
+/**
+ * The same subscription, asked for again after the socket came back. A reconnect re-issues the
+ * REQ, and the live filter is a window of the newest `PAGE_SIZE`: more Messages than that
+ * arriving while the client was away would leave everything but the last page in a hole the
+ * cursor never revisits, since it only walks down from what the pages brought (#226).
+ *
+ * `since` instead of a window, from the newest Message held — less a margin for another client's
+ * clock. The margin is an hour, not the relay's whole 30-day `PAST_TOLERANCE_SECONDS`: a Message
+ * is stamped when it is sent, and reaching a month back on every reconnect would cost more than
+ * the case it guards.
+ *
+ * `MAX_LIMIT` is asked for outright, since that is what the relay gives a filter that names no
+ * limit. It is still a cut: more than that arriving during one outage leaves the oldest of them
+ * between what is held and where the cursor reaches. Better than a page of 50, not a proof.
+ */
+export function reconnectMessageFilters(channelId: string, newestHeldAt: number | null): Filter[] {
+  if (newestHeldAt === null) return liveMessageFilters(channelId);
+  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CLOCK_SKEW_SECONDS, limit: MAX_LIMIT }];
 }
 
 /**
@@ -74,4 +99,10 @@ export function isEndOfHistory(knownIds: Set<string>, page: VerifiedEvent[]): bo
 export function oldestCreatedAt(messages: VerifiedEvent[]): number | null {
   if (messages.length === 0) return null;
   return messages.reduce((oldest, message) => Math.min(oldest, message.created_at), Infinity);
+}
+
+/** How far forward it reaches — where asking again after a reconnect starts from. */
+export function newestCreatedAt(events: VerifiedEvent[]): number | null {
+  if (events.length === 0) return null;
+  return events.reduce((newest, event) => Math.max(newest, event.created_at), -Infinity);
 }

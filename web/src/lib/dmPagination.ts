@@ -1,5 +1,6 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
-import { oldestCreatedAt } from "./channelPagination";
+import { CLOCK_SKEW_SECONDS, oldestCreatedAt } from "./channelPagination";
+import { MAX_LIMIT } from "./relay";
 import { GIFT_WRAP } from "./nip17";
 
 /** Gift wraps per page — the relay orders and cuts by the wrap's own created_at (#185). */
@@ -12,7 +13,7 @@ export const DM_SHOWN_STEP = 50;
  * How far a gift wrap's created_at may sit behind its Message's: NIP-59 backdates it by up to two
  * days (`randomPast` in ./nip17), plus an hour for another client's rounding or clock.
  */
-export const WRAP_BACKDATE_SECONDS = 2 * 24 * 60 * 60 + 60 * 60;
+export const WRAP_BACKDATE_SECONDS = 2 * 24 * 60 * 60 + CLOCK_SKEW_SECONDS;
 
 /** How much of the recent history opening the app pages in before showing it complete. */
 export const OPEN_WINDOW_SECONDS = 24 * 60 * 60;
@@ -20,6 +21,19 @@ export const OPEN_WINDOW_SECONDS = 24 * 60 * 60;
 /** The first page — and, left open, every gift wrap published to the caller from now on. */
 export function liveDmFilters(ownPubkey: string): Filter[] {
   return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], limit: DM_PAGE_SIZE }];
+}
+
+/**
+ * The same subscription, asked for again after the socket came back — `reconnectMessageFilters`
+ * for gift wraps. The margin is the whole backdating window, not just a clock's: a wrap
+ * published while the client was away is stamped up to two days before it (NIP-59), so a `since`
+ * at the newest one held would skip it (#226). The same `MAX_LIMIT` cut applies.
+ */
+export function reconnectDmFilters(ownPubkey: string, newestHeldAt: number | null): Filter[] {
+  if (newestHeldAt === null) return liveDmFilters(ownPubkey);
+  return [
+    { kinds: [GIFT_WRAP], "#p": [ownPubkey], since: newestHeldAt - WRAP_BACKDATE_SECONDS, limit: MAX_LIMIT },
+  ];
 }
 
 /**

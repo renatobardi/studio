@@ -75,6 +75,10 @@ export interface RelayProblem {
   reason: string;
 }
 
+/** The ceiling the relay clamps every filter's limit to (api/src/studio_api/nostr/limits.py).
+ * A filter that names no limit is given this one. */
+export const MAX_LIMIT = 500;
+
 export interface SubscriptionHandlers {
   onEvent(event: VerifiedEvent): void;
   onEose?(): void;
@@ -82,6 +86,10 @@ export interface SubscriptionHandlers {
    * or a store failure. Without this the refusal is invisible — the subscription simply never
    * delivers anything. */
   onClosed?(reason: string): void;
+  /** What to ask for when the socket comes back, instead of the filters the REQ went out with.
+   * A live window of the newest N is the right thing to open with and the wrong thing to ask
+   * again: whatever arrived while the client was away and did not fit would be lost (#226). */
+  onResubscribe?(): Filter[];
 }
 
 /** The unsubscribe function, plus the one thing a caller may still do with a live
@@ -274,7 +282,9 @@ export class RelayClient {
 
   private resubscribeAll(): void {
     for (const sub of this.subscriptions.values()) {
-      this.send(["REQ", sub.id, ...sub.filters]);
+      // Not stored back: the handler is asked again on the next reconnect, and what it answers
+      // now must not become what a later `update()` widens or narrows.
+      this.send(["REQ", sub.id, ...(sub.handlers.onResubscribe?.() ?? sub.filters)]);
     }
   }
 
