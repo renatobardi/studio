@@ -237,6 +237,31 @@ describe("confirmKeyBackup", () => {
     expect(unlocked).toEqual(["unlocked"]);
   });
 
+  test("work the caller does between unlocking and storing finishes before the upload (#224)", async () => {
+    // Onboarding links the Identity to the Account in `onUnlocked`, and the server only takes a
+    // Key Backup for the Account's own Identity: running the two at once would upload against
+    // an Identity that is not linked yet.
+    const order: string[] = [];
+    globalThis.fetch = (async () => {
+      order.push("stored");
+      return new Response(JSON.stringify({ status: "ok" }));
+    }) as unknown as typeof fetch;
+    const blob = await backupFile("correct horse");
+    await confirmKeyBackup({
+      blob,
+      passphrase: "correct horse",
+      pubkey,
+      getIdToken: async () => "id-token",
+      onUnlocked: async () => {
+        // A real tick, not a microtask: anything that runs the two at once gets "stored" first.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        order.push("linked");
+      },
+      onStored: () => {},
+    });
+    expect(order).toEqual(["linked", "stored"]);
+  });
+
   test("work the caller does between unlocking and storing counts as not stored (#224)", async () => {
     // Onboarding links the Identity to the Account before the upload — the server only takes a
     // Key Backup for the Account's own Identity. A link that fails leaves the file unsaved just

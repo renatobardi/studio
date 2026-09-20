@@ -13,7 +13,6 @@ import {
   needsAccountPassword,
 } from "../../lib/backup";
 import {
-  NOT_STORED_MESSAGE,
   confirmKeyBackup,
   downloadKeyBackup,
   keyBackupHeading,
@@ -394,18 +393,18 @@ export function OnboardingScreen({
       // The same rule Settings runs (#200): the file has to unlock into this Identity before
       // anything is kept, and a file that proved itself but did not reach the Account is not
       // success — it says so and offers the retry, instead of moving on (#224).
+      const token = await idToken();
       const problem = await confirmKeyBackup({
         blob,
         passphrase: verifyPassphrase,
         pubkey: publicKey,
-        getIdToken: idToken,
+        getIdToken: async () => token,
         onUnlocked: async () => {
           setBackupState("verified");
           // Link first: the server only takes a Key Backup for the Account's own Identity,
           // which is what makes a second onboarding unable to overwrite it (#36). Store the key
           // locally in the same breath, so a link that lands can never leave this browser
           // without the key it just bound.
-          const token = await idToken();
           const linked = await linkAccountIdentity(token, localSigner(secretKey, publicKey));
           setLinkedPubkey(linked.pubkey);
           await storeIdentity(nsecFromSecretKey(secretKey));
@@ -417,7 +416,7 @@ export function OnboardingScreen({
         return;
       }
       advance("download");
-    }, NOT_STORED_MESSAGE);
+    }, "Couldn't finish this step. Try again.");
   };
 
   // The same two cards Settings draws (#200): proved-but-unsaved has its own heading and its own
