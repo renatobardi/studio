@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
 import { buildDmImetaTag } from "../../lib/dmMedia";
 import { DM_LOOKING_FOR_OLDER } from "../../lib/conversationCopy";
+import * as dmPagination from "../../lib/dmPagination";
 import { DM_SHOWN_STEP } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -110,6 +111,18 @@ describe("ConversationView", () => {
 
     const priorityOf = (sha: string) => Number(new RegExp(`data-photo="${sha}" data-priority="(-?\\d+)"`).exec(html)?.[1]);
     expect(priorityOf("n".repeat(64))).toBeGreaterThan(priorityOf("o".repeat(64)));
+  });
+
+  test("reads the conversation's history once per render, not once per row", () => {
+    // #194's rule, for this pane: what every row draws from is computed once, and — memoised on
+    // the data — not at all when only the composer changed (#233).
+    const spy = spyOn(dmPagination, "dmHistoryView");
+    try {
+      render([ANA], named(ANA, "Ana Petrova"), { messages: [text("a", 1), text("b", 2), text("c", 3)] });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("mounts only the newest step of the conversation, so older photos are not fetched (#185)", () => {
