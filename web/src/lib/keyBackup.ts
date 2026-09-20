@@ -101,15 +101,18 @@ export function downloadKeyBackup(blob: Uint8Array): void {
  * The verify step, end to end: the file has to unlock into this Identity before anything is
  * kept, and only then does the Account get it (#36). Answers with what to show, or null when
  * it is stored. `onUnlocked` fires the moment the file proved itself, so the card can say so
- * while the upload is still in flight. A file that does not open and an upload that fails are
- * told apart: the first is the passphrase, the second is not (#200).
+ * while the upload is still in flight; it may be async, for work that has to happen before the
+ * upload — onboarding links the Identity to the Account there, since the server only takes a
+ * Key Backup for the Account's own Identity (#36, #224). A file that does not open and a file
+ * that did not reach the Account are told apart: the first is the passphrase, the second is
+ * not (#200), and failing on the way to the Account is the second.
  */
 export async function confirmKeyBackup(input: {
   blob: Uint8Array;
   passphrase: string;
   pubkey: string;
   getIdToken: () => Promise<string>;
-  onUnlocked: () => void;
+  onUnlocked: () => void | Promise<void>;
   onStored: () => void;
 }): Promise<string | null> {
   try {
@@ -117,8 +120,8 @@ export async function confirmKeyBackup(input: {
   } catch {
     return WRONG_PASSPHRASE_MESSAGE;
   }
-  input.onUnlocked();
   try {
+    await input.onUnlocked();
     await storeKeyBackup(await input.getIdToken(), input.blob);
   } catch {
     return NOT_STORED_MESSAGE;

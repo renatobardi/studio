@@ -201,7 +201,7 @@ describe("confirmKeyBackup", () => {
       passphrase,
       pubkey: identity,
       getIdToken: async () => "id-token",
-      onUnlocked: () => unlocked.push("unlocked"),
+      onUnlocked: () => void unlocked.push("unlocked"),
       onStored: () => unlocked.push("stored"),
     });
     return { error, unlocked };
@@ -235,6 +235,25 @@ describe("confirmKeyBackup", () => {
     expect(NOT_STORED_MESSAGE).toContain("wasn't saved to your Account");
     expect(NOT_STORED_MESSAGE).toContain("try again");
     expect(unlocked).toEqual(["unlocked"]);
+  });
+
+  test("work the caller does between unlocking and storing counts as not stored (#224)", async () => {
+    // Onboarding links the Identity to the Account before the upload — the server only takes a
+    // Key Backup for the Account's own Identity. A link that fails leaves the file unsaved just
+    // as a failed upload does, and must not read as the passphrase being wrong.
+    const blob = await backupFile("correct horse");
+    const error = await confirmKeyBackup({
+      blob,
+      passphrase: "correct horse",
+      pubkey,
+      getIdToken: async () => "id-token",
+      onUnlocked: async () => {
+        throw new Error("link failed");
+      },
+      onStored: () => {},
+    });
+    expect(error).toBe(NOT_STORED_MESSAGE);
+    expect(stored).toBe(0);
   });
 });
 
