@@ -12,7 +12,11 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { Icon } from "../../components/icons/Icon";
-import { DM_ENCRYPTION_NOTICE, dmComposerPlaceholder } from "../../lib/conversationCopy";
+import {
+  DM_ENCRYPTION_NOTICE,
+  dmComposerPlaceholder,
+  dmEmptyNotice,
+} from "../../lib/conversationCopy";
 import { isContinuation } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
 import type { Signer } from "../../lib/custody";
@@ -25,7 +29,7 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { DM_SHOWN_STEP, askOlder, asksForOlder, dmHistoryView, type ShownState } from "../../lib/dmPagination";
+import { askOlder, asksForOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -56,6 +60,7 @@ export function ConversationView({
   messages,
   completeFrom,
   hasMore,
+  pages,
   onLoadOlder,
   profiles,
 }: Readonly<{
@@ -68,6 +73,9 @@ export function ConversationView({
   /** Where the Direct Message history held is complete (#185) — nothing older is shown. */
   completeFrom: number;
   hasMore: boolean;
+  /** Older pages settled so far (`DmSnapshot.pages`): what a conversation waiting on one watches,
+   * since a page that brought nothing here moves nothing else. */
+  pages: number;
   onLoadOlder: () => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
 }>) {
@@ -86,13 +94,20 @@ export function ConversationView({
   /** The height before older Messages were asked for — set while that request is pending. */
   const heightBeforeOlder = useRef<number | null>(null);
   // Only what is mounted fetches its photos (#185): the newest step, more as the reader asks.
-  const [shownState, setShownState] = useState<ShownState>({ shown: DM_SHOWN_STEP, waitingPast: null });
-  const view = dmHistoryView(messages, completeFrom, shownState, hasMore);
+  // An opening fetches what it needs on its own: a conversation quiet for a day sits below where
+  // the history is complete, and would otherwise open blank behind a button (#231).
+  const [shownState, setShownState] = useState(() => openedConversation(pages));
+  const view = dmHistoryView(messages, completeFrom, shownState, hasMore, pages);
   const oldestShownId = view.messages[0]?.id;
+  const emptyNotice = dmEmptyNotice(view);
 
+  // Deps, not every render: one ask per page that settled. `pages` moves even when a page brought
+  // nothing for this conversation — or gave up on its deadline — which is what keeps a conversation
+  // waiting on one from waiting forever.
   useEffect(() => {
     if (view.fetchOlder) onLoadOlder();
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoadOlder is the feed's own bound method
+  }, [view.fetchOlder, pages]);
 
   // Older Messages prepend; giving back the height they added keeps the reader where they were.
   // A request that ends with nothing new clears too, or the next live Message would be taken for it.
@@ -108,7 +123,7 @@ export function ConversationView({
   const loadOlder = () => {
     if (heightBeforeOlder.current !== null) return;
     heightBeforeOlder.current = scrollRef.current?.scrollHeight ?? null;
-    setShownState((prev) => askOlder(prev, view));
+    setShownState((prev) => askOlder(prev, { ...view, pages }));
   };
 
   const upload = async (id: string, file: File, previewUrl: string) => {
@@ -232,6 +247,11 @@ export function ConversationView({
           <button type="button" className="btn btn-outline btn-xs load-older" disabled={view.fetchOlder} onClick={loadOlder}>
             Load older messages
           </button>
+        )}
+        {emptyNotice !== null && (
+          <p className="meta dm-empty-notice" data-testid="dm-empty-notice">
+            {emptyNotice}
+          </p>
         )}
         <ul className="message-list">
           {view.messages.map((message, index) => {
