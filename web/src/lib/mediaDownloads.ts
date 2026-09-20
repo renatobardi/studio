@@ -1,3 +1,4 @@
+import { nowSeconds } from "./clock";
 import { createPriorityQueue } from "./fetchQueue";
 
 /**
@@ -14,6 +15,21 @@ import { createPriorityQueue } from "./fetchQueue";
  * Identity's cache.
  */
 export const mediaDownloads = createPriorityQueue(4, 30_000);
+
+/**
+ * What a photo's place in the queue is worth, on one scale for every surface: the send time of
+ * the Message carrying it. The queue is global — Channel and Direct Message share the origin's
+ * four connections — so a position inside one list says nothing against the other's, and a
+ * Channel's two-hundredth Message used to outrank a photo just sent in a conversation (#234).
+ *
+ * `created_at` is the author's own claim, and the relay takes it up to FUTURE_TOLERANCE_SECONDS
+ * ahead (api/src/studio_api/nostr/validation.py), so it is capped at now: a Message dated in the
+ * future would otherwise hold the four slots in front of everything, for the whole session.
+ * Messages of the same second keep the order they were rendered in — the sort is stable.
+ */
+export function downloadPriority(messageCreatedAt: number, now: number = nowSeconds()): number {
+  return Math.min(messageCreatedAt, now);
+}
 
 /**
  * One attachment's download, for the effect that shows it: queued at `priority`, handed to
