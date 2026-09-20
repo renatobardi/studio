@@ -18,6 +18,18 @@ export function mediaCacheName(pubkey: string): string {
 
 let epoch = 0;
 
+/** For a cache name a prune was told to keep: the epoch before the current unbroken run of
+ * prunes that kept it, and the epoch of the last one. A prune bumps the epoch for everybody, so
+ * without these a prune that kept an Identity would read, to that Identity's own in-flight
+ * read or write, exactly like one that wiped it (#236). */
+const keptSince = new Map<string, number>();
+const keptUntil = new Map<string, number>();
+
+/** What every prune still walking the cache names was told to keep. The epoch moves before the
+ * deletes begin, so a caller that captured it mid-prune would otherwise read as protected by a
+ * wipe that has not reached its cache yet. */
+const wiping: (string | null)[] = [];
+
 /** Bumped by every `pruneMediaCaches` call. A write captured under an older
  * epoch is stale — a prune ran while its fetch was still in flight, and
  * writing it back would resurrect a cache sign-out (or the next boot's
@@ -62,9 +74,17 @@ export async function readCachedBlob(pubkey: string, url: string): Promise<Cache
  * and a `put` into the orphaned cache never brings it back. */
 async function openUnlessPruned(name: string, epochAtStart: number): Promise<Cache | undefined> {
   const cache = await caches.open(name);
-  if (epoch === epochAtStart) return cache;
+  if (!prunedSince(name, epochAtStart)) return cache;
   await caches.delete(name);
   return undefined;
+}
+
+/** Whether any prune since `epochAtStart` would have removed this cache — that is, any of them
+ * that was not told to keep it. */
+function prunedSince(name: string, epochAtStart: number): boolean {
+  if (wiping.some((keep) => keep === null || mediaCacheName(keep) !== name)) return true;
+  if (epoch === epochAtStart) return false;
+  return keptUntil.get(name) !== epoch || (keptSince.get(name) ?? Infinity) > epochAtStart;
 }
 
 /** Keeps `bytes` for this Identity, keyed by the content-hash URL they came from (#6). For a
@@ -99,17 +119,29 @@ export async function cacheBlob(
  * this device, and sign-out must not report a cleanup it did not get.
  */
 export async function pruneMediaCaches(keep: string | null): Promise<void> {
+  const before = epoch;
   epoch += 1;
+  if (keep !== null) {
+    const name = mediaCacheName(keep);
+    // A run of prunes that all kept it starts where the previous one left off.
+    if (keptUntil.get(name) !== before) keptSince.set(name, before);
+    keptUntil.set(name, epoch);
+  }
   if (typeof caches === "undefined") return;
   const kept = keep === null ? null : mediaCacheName(keep);
   const failed: string[] = [];
-  for (const name of await caches.keys()) {
-    if (!isMediaCache(name) || name === kept) continue;
-    try {
-      await caches.delete(name);
-    } catch {
-      failed.push(name);
+  wiping.push(keep);
+  try {
+    for (const name of await caches.keys()) {
+      if (!isMediaCache(name) || name === kept) continue;
+      try {
+        await caches.delete(name);
+      } catch {
+        failed.push(name);
+      }
     }
+  } finally {
+    wiping.splice(wiping.indexOf(keep), 1);
   }
   if (failed.length > 0) throw new Error(`Couldn't remove cached media from this browser (${failed.join(", ")}).`);
 }
