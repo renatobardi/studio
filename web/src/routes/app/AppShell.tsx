@@ -383,6 +383,7 @@ export function AppShell({
             messages={dm.selected?.messages ?? []}
             completeFrom={dmFeed.completeFrom}
             hasMore={dmFeed.hasMore}
+            pages={dmFeed.pages}
             onLoadOlder={dmFeed.loadOlder}
             profiles={profiles}
           />
