@@ -53,8 +53,8 @@ export const testOnboardingAccount = {
 
 /** Flow 11's Account (#157): its Identity, Key Backup and conversations are fixtures, seeded by
  * `tools/seed-fixtures.ts` before every smoke — so what flow 11 captures is the same every run.
- * No other flow signs in as it or writes to it: its inbox has to stay within one page of gift
- * wraps, or the app opens the Direct Message on its last day only (#231). */
+ * No other flow signs in as it or writes to it, so that what it captures does not drift. Its
+ * inbox may outgrow a page of gift wraps: opening a conversation pages until it shows (#231). */
 export const testFixturesAccount = {
   email: () => requiredEnv("STUDIO_TEST_FIXTURES_EMAIL"),
   password: () => requiredEnv("STUDIO_TEST_FIXTURES_PASSWORD"),

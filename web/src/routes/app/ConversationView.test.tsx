@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
 import { buildDmImetaTag } from "../../lib/dmMedia";
+import { DM_LOOKING_FOR_OLDER } from "../../lib/conversationCopy";
 import { DM_SHOWN_STEP } from "../../lib/dmPagination";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -16,7 +17,7 @@ const BRUNO = "3".padEnd(64, "c");
 const render = (
   peerPubkeys: string[],
   profiles: Map<string, Profile>,
-  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean } = {},
+  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean; pages?: number } = {},
 ) =>
   renderToStaticMarkup(
     <ConversationView
@@ -28,6 +29,7 @@ const render = (
       messages={history.messages ?? []}
       completeFrom={history.completeFrom ?? -Infinity}
       hasMore={history.hasMore ?? false}
+      pages={history.pages ?? 0}
       onLoadOlder={() => {}}
       profiles={profiles}
     />,
@@ -98,6 +100,7 @@ describe("ConversationView", () => {
         mediaUrl="https://media.example"
         messages={[photo("o".repeat(64), 1), photo("n".repeat(64), 2)]}
         completeFrom={-Infinity}
+        pages={0}
         hasMore={false}
         onLoadOlder={() => {}}
         profiles={named(ANA, "Ana Petrova")}
@@ -127,6 +130,27 @@ describe("ConversationView", () => {
     expect(html).not.toContain("text old.");
     expect(html).toContain("text new.");
     expect(html).toContain("Load older messages");
+  });
+
+  test("a conversation whose last Message is older than the history says so, instead of opening blank", () => {
+    // Its Messages are all below where the history is complete: the panel would otherwise be an
+    // empty box next to a sidebar row that says there is a conversation there (#231).
+    const html = render([ANA], named(ANA, "Ana Petrova"), {
+      messages: [text("old", 10)],
+      completeFrom: 20,
+      hasMore: true,
+    });
+    expect(html).not.toContain("text old.");
+    expect(html).toContain(DM_LOOKING_FOR_OLDER);
+  });
+
+  test("says nothing about looking once there is something to show", () => {
+    const html = render([ANA], named(ANA, "Ana Petrova"), {
+      messages: [text("old", 10), text("new", 30)],
+      completeFrom: 20,
+      hasMore: true,
+    });
+    expect(html).not.toContain(DM_LOOKING_FOR_OLDER);
   });
 
   test("offers nothing older once all of it is on screen", () => {
