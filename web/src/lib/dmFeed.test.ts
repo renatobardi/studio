@@ -201,6 +201,18 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().hasMore).toBe(false);
   });
 
+  test("more than a page of wraps arriving while the socket was down all come back", async () => {
+    // A reconnect re-issues the REQ. Without a `since`, the relay answers the newest page of it
+    // and everything older falls into a hole the cursor never revisits (#226).
+    const { relay, feed } = start(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(250, NOW, 60, "n")) relay.publish(wrap_);
+    relay.reconnect();
+    await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 250);
+  });
+
   test("a live wrap dated below the first page moves neither the cursor nor where the history is complete", async () => {
     const { relay, feed } = start(history(300, NOW, DAY));
     await flush();

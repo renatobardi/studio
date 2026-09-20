@@ -3,6 +3,7 @@ import type { Filter, VerifiedEvent } from "nostr-tools";
 function matches(event: VerifiedEvent, filter: Filter): boolean {
   if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
   if (filter.until !== undefined && event.created_at > filter.until) return false;
+  if (filter.since !== undefined && event.created_at < filter.since) return false;
   for (const [key, wanted] of Object.entries(filter)) {
     if (!key.startsWith("#")) continue;
     const name = key.slice(1);
@@ -20,7 +21,14 @@ export const MAX_LIMIT = 500;
  * subscriptions that stay open for whatever is published next. */
 export class FakeRelay {
   readonly requests: Filter[][] = [];
-  private open: { filters: Filter[]; onEvent: (event: VerifiedEvent) => void }[] = [];
+  private open: {
+    filters: Filter[];
+    onEvent: (event: VerifiedEvent) => void;
+    onEose?: () => void;
+    onResubscribe?: () => Filter[];
+  }[] = [];
+  /** While the socket is down a publish only reaches the store, as a relay's does. */
+  private connected = true;
 
   private stored: VerifiedEvent[];
 
@@ -28,9 +36,17 @@ export class FakeRelay {
     this.stored = stored;
   }
 
-  subscribe(filters: Filter[], handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void }) {
+  subscribe(
+    filters: Filter[],
+    handlers: { onEvent(event: VerifiedEvent): void; onEose?(): void; onResubscribe?(): Filter[] },
+  ) {
     this.requests.push(filters);
-    const entry = { filters, onEvent: handlers.onEvent };
+    const entry = {
+      filters,
+      onEvent: handlers.onEvent,
+      onEose: handlers.onEose,
+      onResubscribe: handlers.onResubscribe,
+    };
     this.open.push(entry);
     const deliver = (fs: Filter[]) => {
       for (const filter of fs) {
@@ -54,11 +70,36 @@ export class FakeRelay {
     });
   }
 
-  /** A live event reaching every open subscription that asked for it. */
+  /** A live event reaching every open subscription that asked for it — or only the store, while
+   * the socket is down. */
   publish(event: VerifiedEvent): void {
     this.stored.push(event);
+    if (!this.connected) return;
     for (const entry of this.open) {
       if (entry.filters.some((filter) => matches(event, filter))) entry.onEvent(event);
+    }
+  }
+
+  /** The socket drops: publishes reach the store and nobody else until `reconnect`. */
+  disconnect(): void {
+    this.connected = false;
+  }
+
+  /** What `RelayClient.resubscribeAll` does: every open subscription's REQ is issued again,
+   * under the filters it says it wants now. */
+  reconnect(): void {
+    this.connected = true;
+    for (const entry of this.open) {
+      entry.filters = entry.onResubscribe?.() ?? entry.filters;
+      this.requests.push(entry.filters);
+      for (const filter of entry.filters) {
+        const page = this.stored
+          .filter((event) => matches(event, filter))
+          .sort((a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id))
+          .slice(0, Math.min(filter.limit ?? MAX_LIMIT, MAX_LIMIT));
+        for (const event of page) entry.onEvent(event);
+      }
+      entry.onEose?.();
     }
   }
 

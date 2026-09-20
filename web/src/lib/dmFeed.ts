@@ -1,6 +1,6 @@
 import type { VerifiedEvent } from "nostr-tools";
 import type { FeedClient } from "./channelFeed";
-import { PAGE_DEADLINE_MS, oldestCreatedAt } from "./channelPagination";
+import { PAGE_DEADLINE_MS, newestCreatedAt, oldestCreatedAt } from "./channelPagination";
 import { type Timer, timer } from "./clock";
 import {
   DM_PAGE_SIZE,
@@ -9,6 +9,7 @@ import {
   liveDmFilters,
   needsOpeningBackfill,
   olderDmFilters,
+  reconnectDmFilters,
 } from "./dmPagination";
 import type { Rumor } from "./nip17";
 
@@ -83,6 +84,8 @@ export class DmFeed {
     const firstPageIds = new Set<string>();
     let eosed = false;
     this.closeLive = this.client.subscribe(liveDmFilters(this.ownPubkey), {
+      // A reconnect asks from the newest wrap held, not for the newest page again (#226).
+      onResubscribe: () => reconnectDmFilters(this.ownPubkey, newestCreatedAt([...this.wraps.values()])),
       onEvent: (wrap) => {
         if (!eosed && !firstPageIds.has(wrap.id)) {
           firstPageIds.add(wrap.id);

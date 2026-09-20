@@ -3,6 +3,10 @@ import type { Filter, VerifiedEvent } from "nostr-tools";
 /** Messages per page — the timeline's own budget, never shared with Reactions or Replies. */
 export const PAGE_SIZE = 50;
 
+/** How far another client's clock, or its rounding, may put an event behind ours. Asking again
+ * after a reconnect reaches back this far so a Message stamped a little early is not skipped. */
+export const CLOCK_SKEW_SECONDS = 60 * 60;
+
 /**
  * How long a page may stay in flight before the feed stops waiting for its EOSE and lets the
  * reader ask again. A relay that drops and reconnects does not re-emit the EOSE of a
@@ -18,6 +22,21 @@ export const PAGE_DEADLINE_MS = 20_000;
  */
 export function liveMessageFilters(channelId: string): Filter[] {
   return [{ kinds: [9], "#h": [channelId], limit: PAGE_SIZE }];
+}
+
+/**
+ * The same subscription, asked for again after the socket came back. A reconnect re-issues the
+ * REQ, and the live filter is a window of the newest `PAGE_SIZE`: more Messages than that
+ * arriving while the client was away would leave everything but the last page in a hole the
+ * cursor never revisits, since it only walks down from what the pages brought (#226).
+ *
+ * `since` instead of a window, from the newest Message held — less a margin for another
+ * client's clock. No limit: what is asked for is everything since then, and the relay's own
+ * ceiling is the only cut.
+ */
+export function reconnectMessageFilters(channelId: string, newestHeldAt: number | null): Filter[] {
+  if (newestHeldAt === null) return liveMessageFilters(channelId);
+  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CLOCK_SKEW_SECONDS }];
 }
 
 /**
@@ -74,4 +93,10 @@ export function isEndOfHistory(knownIds: Set<string>, page: VerifiedEvent[]): bo
 export function oldestCreatedAt(messages: VerifiedEvent[]): number | null {
   if (messages.length === 0) return null;
   return messages.reduce((oldest, message) => Math.min(oldest, message.created_at), Infinity);
+}
+
+/** How far forward it reaches — where asking again after a reconnect starts from. */
+export function newestCreatedAt(events: VerifiedEvent[]): number | null {
+  if (events.length === 0) return null;
+  return events.reduce((newest, event) => Math.max(newest, event.created_at), -Infinity);
 }

@@ -82,6 +82,10 @@ export interface SubscriptionHandlers {
    * or a store failure. Without this the refusal is invisible — the subscription simply never
    * delivers anything. */
   onClosed?(reason: string): void;
+  /** What to ask for when the socket comes back, instead of the filters the REQ went out with.
+   * A live window of the newest N is the right thing to open with and the wrong thing to ask
+   * again: whatever arrived while the client was away and did not fit would be lost (#226). */
+  onResubscribe?(): Filter[];
 }
 
 /** The unsubscribe function, plus the one thing a caller may still do with a live
@@ -274,6 +278,7 @@ export class RelayClient {
 
   private resubscribeAll(): void {
     for (const sub of this.subscriptions.values()) {
+      sub.filters = sub.handlers.onResubscribe?.() ?? sub.filters;
       this.send(["REQ", sub.id, ...sub.filters]);
     }
   }
