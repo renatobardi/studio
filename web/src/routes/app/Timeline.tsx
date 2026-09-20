@@ -22,6 +22,7 @@ import {
   type AttachmentDraft,
 } from "../../lib/attachmentDrafts";
 import { channelComposerPlaceholder } from "../../lib/conversationCopy";
+import { createScrollWatcher } from "../../lib/channelPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import { isContinuation, relativeTime } from "../../lib/messageRow";
 import { createSingleFlight, draftAfterSend } from "../../lib/composerSend";
@@ -56,15 +57,11 @@ function imageDimensions(url: string): Promise<string | undefined> {
   });
 }
 
-/** How close to the top counts as asking for older Messages (story 30, #1). */
-export const TOP_OF_HISTORY_PX = 48;
-
 function replyCountLabel(count: number): string {
   if (count === 0) return "Reply in thread";
   if (count === 1) return "1 reply";
   return `${count} replies`;
 }
-
 
 export function Timeline({
   client,
@@ -110,6 +107,7 @@ export function Timeline({
   const nextAttachmentId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const asksForOlderPage = useRef(createScrollWatcher()).current;
   // "last reply 12m ago" is read against this, refreshed each minute so it does not go stale.
   const [now, setNow] = useState(nowSeconds);
   useEffect(() => {
@@ -224,10 +222,12 @@ export function Timeline({
       <div
         className="timeline-scroll"
         ref={scrollRef}
+        // Reaching the top pulls in the previous page — but only on the way up. A Channel opens
+        // at the top, so the first scroll down from there was asking for a page nobody wanted
+        // (#225). The feed ignores a request while one is already in flight, so scrolling cannot
+        // pile them up.
         onScroll={(e) => {
-          // Reaching the top of the timeline pulls in the previous page; the feed ignores a
-          // request while one is already in flight, so scrolling cannot pile them up.
-          if (hasMore && e.currentTarget.scrollTop <= TOP_OF_HISTORY_PX) loadOlder();
+          if (hasMore && asksForOlderPage(e.currentTarget.scrollTop)) loadOlder();
         }}
       >
         {hasMore && (

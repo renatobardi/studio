@@ -29,7 +29,8 @@ import {
   wrapDmMessage,
   type ReadyDmPhoto,
 } from "../../lib/dmMedia";
-import { askOlder, asksForOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
+import { TOP_OF_HISTORY_PX, asksForOlder } from "../../lib/channelPagination";
+import { askOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -39,7 +40,6 @@ import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
-import { TOP_OF_HISTORY_PX } from "./Timeline";
 import { displayName, shortNpub, type useProfiles } from "./useProfiles";
 
 function imageDimensions(url: string): Promise<string | undefined> {

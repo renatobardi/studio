@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { VerifiedEvent } from "nostr-tools";
 import {
   PAGE_SIZE,
+  TOP_OF_HISTORY_PX,
+  asksForOlder,
   channelCompanionFilters,
+  createScrollWatcher,
   isEndOfHistory,
   liveMessageFilters,
   oldestCreatedAt,
@@ -145,5 +148,53 @@ describe("paging a whole history", () => {
     const all = Array.from({ length: 70 }, (_, i) => message(`m${String(i).padStart(3, "0")}`, 1000 + i));
     const { collected } = paginateAll([...all, ...all]);
     expect(collected).toHaveLength(70);
+  });
+});
+
+describe("asksForOlder", () => {
+  test("reaching the top while scrolling up asks for older Messages", () => {
+    expect(asksForOlder(100, 40, 48)).toBe(true);
+  });
+
+  test("scrolling down from the top — where a Channel and a conversation both open — does not", () => {
+    expect(asksForOlder(0, 40, 48)).toBe(false);
+  });
+
+  test("scrolling up far from the top does not", () => {
+    expect(asksForOlder(300, 200, 48)).toBe(false);
+  });
+
+  test("the threshold itself counts as the top", () => {
+    expect(asksForOlder(100, TOP_OF_HISTORY_PX, TOP_OF_HISTORY_PX)).toBe(true);
+  });
+
+  test("a scroll event that moved nothing asks for nothing", () => {
+    expect(asksForOlder(0, 0, TOP_OF_HISTORY_PX)).toBe(false);
+  });
+});
+
+describe("createScrollWatcher", () => {
+  test("a timeline that opens at the top does not ask on the way down, and does on the way back", () => {
+    const asks = createScrollWatcher();
+    expect(asks(0)).toBe(false);
+    expect(asks(400)).toBe(false);
+    expect(asks(TOP_OF_HISTORY_PX)).toBe(true);
+  });
+
+  test("it remembers every event, including the ones that asked for nothing", () => {
+    // Without that, a scroll down to the threshold would still be measured against the position
+    // before it and read as a scroll up.
+    const asks = createScrollWatcher();
+    expect(asks(400)).toBe(false);
+    expect(asks(TOP_OF_HISTORY_PX)).toBe(true);
+    expect(asks(TOP_OF_HISTORY_PX)).toBe(false);
+    expect(asks(0)).toBe(true);
+  });
+
+  test("each timeline watches its own position", () => {
+    const channel = createScrollWatcher();
+    const conversation = createScrollWatcher();
+    channel(400);
+    expect(conversation(TOP_OF_HISTORY_PX)).toBe(false);
   });
 });

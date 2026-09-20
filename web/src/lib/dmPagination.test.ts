@@ -7,7 +7,6 @@ import {
   WRAP_BACKDATE_SECONDS,
   DM_OPENING_PAGES,
   askOlder,
-  asksForOlder,
   completeFrom,
   dmHistoryView,
   isLastDmPage,
@@ -117,20 +116,6 @@ describe("dmHistoryView", () => {
   test("keeps fetching while the reader waits on a page that brought nothing here", () => {
     const view = dmHistoryView([rumor("only", 1)], -Infinity, { ...unasked, shown: 100, waitingPast: 1 }, true, 0);
     expect(view.fetchOlder).toBe(true);
-  });
-});
-
-describe("asksForOlder", () => {
-  test("reaching the top while scrolling up asks for older Messages", () => {
-    expect(asksForOlder(100, 40, 48)).toBe(true);
-  });
-
-  test("scrolling down from the top — where a conversation opens — does not", () => {
-    expect(asksForOlder(0, 40, 48)).toBe(false);
-  });
-
-  test("scrolling up far from the top does not", () => {
-    expect(asksForOlder(300, 200, 48)).toBe(false);
   });
 });
 

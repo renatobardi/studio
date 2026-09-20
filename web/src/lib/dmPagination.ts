@@ -154,9 +154,3 @@ export function dmHistoryView<T extends { created_at: number }>(
     fetchOlder: keepFetchingOlder(state, { complete: complete.length, hasMore, pages }),
   };
 }
-
-/** Reaching the top asks for older Messages only while scrolling up: a conversation opens at the
- * top, and the first scroll down from there must not pull in another step. */
-export function asksForOlder(previousTop: number, top: number, threshold: number): boolean {
-  return top < previousTop && top <= threshold;
-}

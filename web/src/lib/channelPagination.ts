@@ -95,6 +95,36 @@ export function isEndOfHistory(knownIds: Set<string>, page: VerifiedEvent[]): bo
   return page.every((event) => knownIds.has(event.id));
 }
 
+/** How close to the top counts as asking for older Messages (story 30, #1). */
+export const TOP_OF_HISTORY_PX = 48;
+
+/**
+ * Reaching the top asks for older Messages only while scrolling up: both a Channel and a
+ * conversation open at the top, so the first scroll down from there would otherwise pull in a
+ * page nobody asked for (#185, #225). One rule for both surfaces, here because each one's
+ * paging already reads from this module.
+ */
+export function asksForOlder(previousTop: number, top: number, threshold: number): boolean {
+  return top < previousTop && top <= threshold;
+}
+
+/**
+ * The position a paged timeline remembers between scroll events, so it can tell a scroll up
+ * from a scroll down. Answers each event with whether it asks for an older page.
+ *
+ * The remembering lives here rather than in a component ref because that is the half a test
+ * without a DOM cannot reach: the rule is only right if what it is measured against moves with
+ * every event, including the ones that ask for nothing (#225).
+ */
+export function createScrollWatcher(threshold: number = TOP_OF_HISTORY_PX): (top: number) => boolean {
+  let previousTop = 0;
+  return (top) => {
+    const asks = asksForOlder(previousTop, top, threshold);
+    previousTop = top;
+    return asks;
+  };
+}
+
 /** How far back the loaded history reaches — the cursor the next page pages from. */
 export function oldestCreatedAt(messages: VerifiedEvent[]): number | null {
   if (messages.length === 0) return null;
