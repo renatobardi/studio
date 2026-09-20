@@ -128,7 +128,10 @@ Settings além de Appearance/Profile, popup Google simulado.
    tem os estados verify e verified. Quando o arquivo abre mas o upload para a Account falha, o
    "Manage" não chega ao verified: título "Your backup file works", o card mantém "✓ Verified" com
    "Not saved to your Account yet." e um "Try again" no lugar do campo, o erro diz que o arquivo
-   está certo e não foi guardado, e o rodapé fica em "Cancel" — "Done" só depois de guardado. SIGN OUT traz o aviso do HTML e o "Delete my data"
+   está certo e não foi guardado, e o rodapé fica em "Cancel" — "Done" só depois de guardado.
+   **O mesmo vale no onboarding (#224)**, que roda a mesma regra e desenha os mesmos dois
+   cartões: um upload que falha mantém o passo "download" com o cartão `unsaved` e o "Try again",
+   em vez de seguir para o passo seguinte dizendo que está verificado. SIGN OUT traz o aviso do HTML e o "Delete my data"
    tintado, que abre o mesmo `SignOutDialog` do menu da conta (#148); "Send feedback" abre
    https://github.com/renatobardi/studio/issues/new em outra aba. **Exceção: NIP-05.** O Studio
    não emite handle NIP-05 no MVP, então a linha some de Settings e da tela `profile`, e o nome

@@ -12,7 +12,13 @@ import {
   encryptBackup,
   needsAccountPassword,
 } from "../../lib/backup";
-import { downloadKeyBackup, keyBackupBase64, newBackupPassphraseProblem } from "../../lib/keyBackup";
+import {
+  confirmKeyBackup,
+  downloadKeyBackup,
+  keyBackupHeading,
+  keyBackupStep,
+  newBackupPassphraseProblem,
+} from "../../lib/keyBackup";
 import {
   forgetInviteCode,
   INITIAL_INVITE_STEP,
@@ -118,6 +124,9 @@ export function OnboardingScreen({
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
   const [backupBlob, setBackupBlob] = useState<Uint8Array | null>(null);
   const [backupState, setBackupState] = useState<"idle" | "created" | "verified">("idle");
+  /** The file reached the Account. Proved-but-unsaved is not done: only the local file holds
+   * the key then, and the person has to be told and given the retry (#200, #224). */
+  const [backupStored, setBackupStored] = useState(false);
   const [verifyPassphrase, setVerifyPassphrase] = useState("");
 
   const [workspace, setWorkspace] = useState<WorkspaceOut | null>(null);
@@ -378,25 +387,42 @@ export function OnboardingScreen({
 
   const handleVerifyBackup = () => {
     if (!backupBlob || !identity) return;
+    const blob = backupBlob;
+    const { secretKey, publicKey } = identity;
     return runStep(async () => {
-      const decrypted = await decryptBackup(backupBlob, verifyPassphrase);
-      if (decrypted !== nsecFromSecretKey(identity.secretKey)) {
-        setError("That didn't decrypt to your key. Check the passphrase.");
+      // The same rule Settings runs (#200): the file has to unlock into this Identity before
+      // anything is kept, and a file that proved itself but did not reach the Account is not
+      // success — it says so and offers the retry, instead of moving on (#224).
+      const token = await idToken();
+      const problem = await confirmKeyBackup({
+        blob,
+        passphrase: verifyPassphrase,
+        pubkey: publicKey,
+        getIdToken: async () => token,
+        onUnlocked: async () => {
+          setBackupState("verified");
+          // Link first: the server only takes a Key Backup for the Account's own Identity,
+          // which is what makes a second onboarding unable to overwrite it (#36). Store the key
+          // locally in the same breath, so a link that lands can never leave this browser
+          // without the key it just bound.
+          const linked = await linkAccountIdentity(token, localSigner(secretKey, publicKey));
+          setLinkedPubkey(linked.pubkey);
+          await storeIdentity(nsecFromSecretKey(secretKey));
+        },
+        onStored: () => setBackupStored(true),
+      });
+      if (problem) {
+        setError(problem);
         return;
       }
-      setBackupState("verified");
-      const token = await idToken();
-      // Link first: the server only takes a Key Backup for the Account's own
-      // Identity, which is what makes a second onboarding unable to overwrite
-      // it (#36). Store the key locally in the same breath, so a link that
-      // lands can never leave this browser without the key it just bound.
-      const linked = await linkAccountIdentity(token, localSigner(identity.secretKey, identity.publicKey));
-      setLinkedPubkey(linked.pubkey);
-      await storeIdentity(nsecFromSecretKey(identity.secretKey));
-      await api.putKeyBackup(token, keyBackupBase64(backupBlob));
       advance("download");
-    }, "Couldn't store your Key Backup. Check the passphrase and try again.");
+    }, "Couldn't finish this step. Try again.");
   };
+
+  // The same two cards Settings draws (#200): proved-but-unsaved has its own heading and its own
+  // card, so "verified" never stands for a key only this browser holds.
+  const verifyStep = keyBackupStep(backupBlob, backupState === "verified", backupStored);
+  const verifyHeading = keyBackupHeading(verifyStep);
 
   const handleDownload = () => {
     if (backupBlob) downloadKeyBackup(backupBlob);
@@ -791,16 +817,11 @@ export function OnboardingScreen({
 
           {step === "download" && (
             <>
-              <h1 className="onboarding-title">
-                {backupState === "verified" ? "Your backup is verified" : "That’s your backup file"}
-              </h1>
-              <p className="onboarding-body">
-                {backupState === "verified"
-                  ? "Your file and passphrase can restore your identity."
-                  : "Now enter your passphrase to prove you can unlock it."}
-              </p>
+              <h1 className="onboarding-title">{verifyHeading.title}</h1>
+              <p className="onboarding-body">{verifyHeading.description}</p>
               <BackupVerifyCard
                 verified={backupState === "verified"}
+                unsaved={verifyStep === "unsaved"}
                 passphrase={verifyPassphrase}
                 onPassphrase={setVerifyPassphrase}
                 busy={busy}
