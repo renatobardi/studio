@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 
 // The delivery-gate contract (issue #51): nothing reaches studio-test that CI
 // has not already validated, and what is deployed is the exact commit CI
@@ -36,9 +37,17 @@ const promote = await read('.github/workflows/promote.yml')
 const ci = await read('.github/workflows/ci.yml')
 
 // JSON with comments: the config it reads is the one `bun run typecheck:tests` passes to tsc.
-const testTsconfig = JSON.parse(
-  (await Bun.file(`${repoRoot}web/tsconfig.test.json`).text()).replace(/^\s*\/\/.*$/gm, ''),
-) as { include: string[] }
+// Only whole-line comments are stripped, which is all this file has — a parse failure says so
+// rather than taking every test in this file down with a bare SyntaxError.
+const testTsconfig = (() => {
+  const path = `${repoRoot}web/tsconfig.test.json`
+  const source = readFileSync(path, 'utf8').replace(/^\s*\/\/.*$/gm, '')
+  try {
+    return JSON.parse(source) as { include: string[] }
+  } catch (error) {
+    throw new Error(`${path} is not JSON once whole-line comments are stripped: ${String(error)}`)
+  }
+})()
 
 // `on:` is YAML 1.1's boolean `true`; Bun.YAML follows 1.2 and keeps the
 // string key, but read both so the test does not depend on that detail.
@@ -176,6 +185,7 @@ describe('ci.yml', () => {
       'src/lib/testing',
       'tools',
       'e2e',
+      'playwright.config.ts',
     ])
   })
 

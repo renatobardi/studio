@@ -69,14 +69,15 @@ export function comparePixels(reference, baseline, { width, height, mask, thresh
  * means none tolerated) or no longer has the reference's size; everything else is reported.
  *
  * @param {{ faithful: boolean, tolerance: number | null }} screen
- * @param {{ ratio?: number, sizeMismatch?: boolean }} measured a size mismatch has no ratio to
- *   compare, and a comparison that ran has no mismatch to report.
+ * @param {{ ratio?: number, sizeMismatch?: boolean | string }} measured a size mismatch has no
+ *   ratio to compare — and says which two sizes, where a test just says that there was one — and
+ *   a comparison that ran has no mismatch to report.
  * @returns {"pass" | "fail" | "report"}
  */
 export function verdictOf({ faithful, tolerance }, { ratio, sizeMismatch }) {
   if (!faithful) return "report";
   if (sizeMismatch) return "fail";
-  return (ratio ?? 0) > (tolerance ?? 0) ? "fail" : "pass";
+  return ratio > (tolerance ?? 0) ? "fail" : "pass";
 }
 
 const percent = (value) => `${(value * 100).toFixed(2)}%`;

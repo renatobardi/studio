@@ -2,10 +2,12 @@
  * a DOM class bun has no constructor for, so a test could not make one to fire. */
 export type KeyPress = Pick<KeyboardEvent, "key">;
 
-/** The two calls a window-level listener makes, and nothing else. */
+/** The two calls a window-level listener makes, and nothing else. Function properties rather
+ * than methods, so a listener reading more of the event than `KeyPress` carries is a type error
+ * here instead of a test that passes and a page that does not. */
 export interface WindowListeners {
-  addEventListener(type: string, listener: (event: KeyPress) => void): void;
-  removeEventListener(type: string, listener: (event: KeyPress) => void): void;
+  addEventListener: (type: string, listener: (event: KeyPress) => void) => void;
+  removeEventListener: (type: string, listener: (event: KeyPress) => void) => void;
 }
 
 /**

@@ -16,8 +16,12 @@ afterEach(() => {
 /** Only the two calls this hook makes. */
 const attachWindow = () => {
   restoreWindow = stubWindow({
-    addEventListener: (type, listener) => void listeners.set(listener, type),
-    removeEventListener: (_type, listener) => void listeners.delete(listener),
+    addEventListener: (type, listener) => {
+      listeners.set(listener, type);
+    },
+    removeEventListener: (_type, listener) => {
+      listeners.delete(listener);
+    },
   });
 };
 
