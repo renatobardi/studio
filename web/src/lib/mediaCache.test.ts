@@ -113,6 +113,76 @@ describe("the media cache", () => {
     expect(Object.keys(stores)).toEqual([]);
   });
 
+  test("a read whose open lands after a prune that kept this Identity keeps its cache", async () => {
+    // #236: the prune was told to keep A, and a read of A was in flight. The epoch moved for
+    // everyone, so the check read it as "a prune ran" and deleted the very cache it kept.
+    const { stores, holdOpens } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1, 2, 3), "image/png", mediaCacheEpoch());
+    const release = holdOpens();
+
+    const read = readCachedBlob(PUBKEY_A, URL_);
+    await Promise.resolve();
+    await pruneMediaCaches(PUBKEY_A);
+    release();
+
+    expect(new Uint8Array((await read)!.bytes)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(Object.keys(stores)).toEqual([mediaCacheName(PUBKEY_A)]);
+  });
+
+  test("a write whose open lands after a prune that kept this Identity is still cached", async () => {
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(7), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(PUBKEY_A);
+    release();
+    await write;
+
+    expect(Object.keys(stores)).toEqual([mediaCacheName(PUBKEY_A)]);
+  });
+
+  test("a prune that kept someone else still takes this Identity's cache away", async () => {
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(PUBKEY_B);
+    release();
+    await write;
+
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("a run of prunes that all kept this Identity is not mistaken for one that did not", async () => {
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(PUBKEY_A);
+    await pruneMediaCaches(PUBKEY_A);
+    release();
+    await write;
+
+    expect(Object.keys(stores)).toEqual([mediaCacheName(PUBKEY_A)]);
+  });
+
+  test("an Identity pruned away before a later prune kept it does not get the older read back", async () => {
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(null);
+    await pruneMediaCaches(PUBKEY_A);
+    release();
+    await write;
+
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
   test("pruning bumps the epoch, so a write still in flight can tell a prune ran", async () => {
     // media.ts/dmMedia.ts capture the epoch before their fetch and skip caching if it moved on —
     // pruning is what invalidates them, so it must actually move the counter every time it runs.
