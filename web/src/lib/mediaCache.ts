@@ -25,6 +25,11 @@ let epoch = 0;
 const keptSince = new Map<string, number>();
 const keptUntil = new Map<string, number>();
 
+/** What every prune still walking the cache names was told to keep. The epoch moves before the
+ * deletes begin, so a caller that captured it mid-prune would otherwise read as protected by a
+ * wipe that has not reached its cache yet. */
+const wiping: (string | null)[] = [];
+
 /** Bumped by every `pruneMediaCaches` call. A write captured under an older
  * epoch is stale — a prune ran while its fetch was still in flight, and
  * writing it back would resurrect a cache sign-out (or the next boot's
@@ -77,6 +82,7 @@ async function openUnlessPruned(name: string, epochAtStart: number): Promise<Cac
 /** Whether any prune since `epochAtStart` would have removed this cache — that is, any of them
  * that was not told to keep it. */
 function prunedSince(name: string, epochAtStart: number): boolean {
+  if (wiping.some((keep) => keep === null || mediaCacheName(keep) !== name)) return true;
   if (epoch === epochAtStart) return false;
   return keptUntil.get(name) !== epoch || (keptSince.get(name) ?? Infinity) > epochAtStart;
 }
@@ -124,13 +130,18 @@ export async function pruneMediaCaches(keep: string | null): Promise<void> {
   if (typeof caches === "undefined") return;
   const kept = keep === null ? null : mediaCacheName(keep);
   const failed: string[] = [];
-  for (const name of await caches.keys()) {
-    if (!isMediaCache(name) || name === kept) continue;
-    try {
-      await caches.delete(name);
-    } catch {
-      failed.push(name);
+  wiping.push(keep);
+  try {
+    for (const name of await caches.keys()) {
+      if (!isMediaCache(name) || name === kept) continue;
+      try {
+        await caches.delete(name);
+      } catch {
+        failed.push(name);
+      }
     }
+  } finally {
+    wiping.splice(wiping.indexOf(keep), 1);
   }
   if (failed.length > 0) throw new Error(`Couldn't remove cached media from this browser (${failed.join(", ")}).`);
 }

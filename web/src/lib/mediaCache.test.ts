@@ -183,6 +183,28 @@ describe("the media cache", () => {
     expect(Object.keys(stores)).toEqual([]);
   });
 
+  test("a later prune that keeps an Identity does not excuse a wipe still in flight", async () => {
+    // Sign-out's wipe is half way down the cache names when the next boot's prune — told to
+    // keep A — finishes. Going by the epochs alone, A's own write would then read as safe and
+    // put A's cache back behind the wipe's back.
+    const { stores, holdFirstDeleteOf } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
+    await cacheBlob(PUBKEY_B, URL_, bytesOf(2), "image/png", mediaCacheEpoch());
+    const releaseB = holdFirstDeleteOf(mediaCacheName(PUBKEY_B));
+
+    const wipe = pruneMediaCaches(null);
+    await Promise.resolve();
+    const epochMidWipe = mediaCacheEpoch();
+    await pruneMediaCaches(PUBKEY_A);
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(9), "image/png", epochMidWipe);
+    await write;
+    releaseB();
+    await wipe;
+
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
   test("pruning bumps the epoch, so a write still in flight can tell a prune ran", async () => {
     // media.ts/dmMedia.ts capture the epoch before their fetch and skip caching if it moved on —
     // pruning is what invalidates them, so it must actually move the counter every time it runs.
