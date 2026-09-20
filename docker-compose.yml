@@ -81,7 +81,14 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
-      - "80:80"
+      # Caddy listens on :80 inside the container; what it publishes on the host
+      # is the port lab's inventory allocated to that container (studio-prd 3760,
+      # studio-test 3740 — issue #263), so it comes from this host's .env. No
+      # default: publishing some other port would answer nothing the host's vhost
+      # asks for. The cost of `:?` is that every Compose command on a host
+      # missing the variable fails, recovery ones included — which is why it is
+      # written into both .env files before this change is deployed.
+      - "${CADDY_HOST_PORT:?set it in .env — the host port this container publishes, see .env.example}:80"
     depends_on:
       - api
       - web

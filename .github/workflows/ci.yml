@@ -27,6 +27,9 @@ jobs:
           MINIO_ROOT_USER=studio
           MINIO_ROOT_PASSWORD=ci-password
           WORKSPACE_KEY_SECRET=ci-workspace-key-secret
+          # The runner is this stack's only client and has the port to itself,
+          # so it publishes the plain :80 the checks below curl (issue #263).
+          CADDY_HOST_PORT=80
           EOF
           # The interop smoke script signs with BIP-340's public test
           # vector 0 — equally public, not a secret — and creates the
