@@ -139,15 +139,38 @@ class _FirebaseAuthClient:
         auth.delete_user(uid, app=self._app)
 
 
+def seed(client: AuthClient, env: dict[str, str]) -> list[str]:
+    """Seeds every configured Account and returns what to log, one line each.
+    Everything the seed does to Firebase, apart from building the client —
+    which is what keeps it testable against a fake one.
+
+    Order matters: the Accounts that keep their uid are reset first, then the
+    ones that are deleted and created again, so a run interrupted halfway
+    never leaves a flow's Account merely missing."""
+    return [
+        f"{email_var}: {ensure_account(client, email, password)}"
+        for email_var, email, password in accounts_from_env(env)
+    ] + [
+        f"{email_var}: {recreate_account(client, email, password)}"
+        for email_var, email, password in recreated_accounts_from_env(env)
+    ]
+
+
+def anything_to_seed(env: dict[str, str]) -> bool:
+    """Whether this environment names any Account at all — asked before
+    Firebase is reached, so a container with no `STUDIO_TEST_*` (every
+    production one) never even opens a connection to it."""
+    return bool(accounts_from_env(env) or recreated_accounts_from_env(env))
+
+
 def main() -> None:
     credentials_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
     if not credentials_path:
         print("FIREBASE_CREDENTIALS_PATH is not set — nothing to seed", file=sys.stderr)
         sys.exit(1)
 
-    pairs = accounts_from_env(dict(os.environ))
-    recreated = recreated_accounts_from_env(dict(os.environ))
-    if not pairs and not recreated:
+    env = dict(os.environ)
+    if not anything_to_seed(env):
         print("no STUDIO_TEST_*EMAIL*/PASSWORD* pairs set in the environment — nothing to seed")
         return
 
@@ -155,11 +178,8 @@ def main() -> None:
     from firebase_admin import credentials as fb_credentials
 
     app = firebase_admin.initialize_app(fb_credentials.Certificate(credentials_path), name="e2e-seed")
-    client = _FirebaseAuthClient(app)
-    for email_var, email, password in pairs:
-        print(f"{email_var}: {ensure_account(client, email, password)}")
-    for email_var, email, password in recreated:
-        print(f"{email_var}: {recreate_account(client, email, password)}")
+    for line in seed(_FirebaseAuthClient(app), env):
+        print(line)
 
 
 if __name__ == "__main__":
