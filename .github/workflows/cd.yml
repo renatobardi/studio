@@ -8,7 +8,9 @@
 # close together. See docs/delivery-gates.md.
 #
 # studio-prd is not deployed from here: promote.yml puts a SHA on it only
-# after this workflow's deploy-dev succeeded on that SHA (issue #54).
+# after this workflow's smoke ran on that SHA, inside a successful deploy-dev
+# (issue #54). The job's own conclusion is not that proof — it is also success
+# when the deploy stood down for a superseded SHA (#253).
 #
 # studio-test lives in an LXC container ("studio-test") on oute-server,
 # provisioned by lab's install-app skill (git checkout in /opt/app, plain
@@ -99,7 +101,37 @@ jobs:
           # being deployed, not whatever main's tip carries now.
           ref: ${{ needs.gate.outputs.sha }}
 
+      - name: Stand down if main moved while this deploy queued
+        # main can move while this job waits on its concurrency group, so the
+        # gate job's verdict is not the last word: deploying this SHA now would
+        # roll studio-test back onto an older commit. Nothing failed, though —
+        # this deploy simply stopped being the deploy to make, and a red CD on
+        # main stops the merge queue (docs/delivery-gates.md, "When CD is red").
+        # So it retires: every step below is guarded on this output, and the job
+        # concludes success with none of them run. Promote does not mistake that
+        # for a deploy — it asks for the smoke step's own conclusion (#253).
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          # Standing down is now the quiet outcome, so an answer that is not a
+          # SHA must not read as one: an API blip would otherwise retire every
+          # deploy in silence, where before it turned the job visibly red.
+          if [[ ! "$tip" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::couldn't read main's tip from the API (got '$tip')"
+            exit 1
+          fi
+          if [[ "$tip" == "$DEPLOY_SHA" ]]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$DEPLOY_SHA was superseded by $tip while this deploy queued — standing down"
+            echo "Skipped \`$DEPLOY_SHA\`: superseded by \`$tip\` while the deploy queued." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Connect to Tailscale (studio-cd identity)
+        if: steps.tip.outputs.stale == 'false'
         # A static, reusable, ephemeral auth key — not an OAuth-client-
         # minted one. Every OAuth-client attempt (tag:ci, tag:cd-dev,
         # tag:studio-cd, all with correct ACL/tag config) ended up stuck
@@ -114,6 +146,7 @@ jobs:
           authkey: ${{ secrets.TS_AUTHKEY_DEV }}
 
       - name: Wait for the Tailscale backend to settle
+        if: steps.tip.outputs.stale == 'false'
         # `tailscale up` reporting success didn't mean the local daemon's
         # own state was actually "Running" yet — every deploy-dev run so
         # far hit `tailscale status` immediately after connect and got
@@ -131,6 +164,7 @@ jobs:
           echo "::error::Tailscale backend never reached Running" && exit 1
 
       - name: Load deploy SSH key
+        if: steps.tip.outputs.stale == 'false'
         env:
           SSH_KEY: ${{ secrets.STUDIO_CD_SSH_KEY }}
         run: |
@@ -139,23 +173,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Deploy the validated commit to studio-test and verify it
+        if: steps.tip.outputs.stale == 'false'
         env:
           HOST: ${{ secrets.STUDIO_TEST_SSH_HOST }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           on_host() {
             ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$HOST" \
               "lxc exec studio-test -- bash -lc '$1'"
           }
-
-          # main can move while this job waits on its concurrency group, so the
-          # gate job's check is not the last word: deploying a superseded SHA
-          # here would roll studio-test back onto an older commit.
-          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-          if [[ "$tip" != "$DEPLOY_SHA" ]]; then
-            echo "::error::$DEPLOY_SHA was superseded by $tip while this deploy queued"
-            exit 1
-          fi
 
           # Detached checkout of the exact SHA: a branch checkout would follow
           # origin/main wherever it has moved to since CI validated this one.
@@ -173,6 +198,7 @@ jobs:
           echo "Deployed \`$DEPLOY_SHA\` to studio-test." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Wait for health
+        if: steps.tip.outputs.stale == 'false'
         env:
           STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
         run: |
@@ -183,11 +209,13 @@ jobs:
           echo "::error::studio-test never became ready after deploy" && exit 1
 
       - name: The shell is revalidated, the hashed assets kept (issue #203)
+        if: steps.tip.outputs.stale == 'false'
         env:
           STUDIO_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
         run: scripts/ci/cache-headers.sh
 
       - name: Ensure e2e test Accounts exist and are verified (idempotent — issue #50)
+        if: steps.tip.outputs.stale == 'false'
         # Runs on the host, reusing FIREBASE_CREDENTIALS_PATH and STUDIO_TEST_*
         # already in the container's own environment (studio-test's /opt/app/.env
         # — see scripts/ops/add-e2e-account-env.sh) — no secret crosses this
@@ -200,12 +228,15 @@ jobs:
             "lxc exec studio-test -- bash -lc 'cd /opt/app && docker compose exec -T api python -m studio_api.ensure_e2e_accounts'"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.tip.outputs.stale == 'false'
 
       - name: Install
+        if: steps.tip.outputs.stale == 'false'
         working-directory: web
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Seed flow 11's fixtures (idempotent — issue #157)
+        if: steps.tip.outputs.stale == 'false'
         # The fixtures Account's Identity and Key Backup, the "fixtures" Channel and a Direct
         # Message — published only where missing, so this also restores them after studio-test is
         # re-seeded. Firebase's web API key is public (it ships in the bundle); it is read from the
@@ -226,10 +257,12 @@ jobs:
           bun tools/seed-fixtures.ts
 
       - name: Install Playwright browsers
+        if: steps.tip.outputs.stale == 'false'
         working-directory: web
         run: bunx playwright@1.63.0 install --with-deps chromium
 
       - name: Playwright smoke (flows 1–9) against the just-deployed studio-test
+        if: steps.tip.outputs.stale == 'false'
         working-directory: web
         env:
           STUDIO_WEB_URL: ${{ secrets.STUDIO_TEST_WEB_URL }}
@@ -268,12 +301,13 @@ jobs:
         run: bun run test:e2e
 
       - name: Upload screenshots (failures, and flow 11's visual captures)
+        if: always() && steps.tip.outputs.stale == 'false'
         # PNGs only — a screenshot is a pixel render (password fields show masked dots), never
         # the typed characters a trace.zip would record. See git history for why trace.zip
         # itself must never be uploaded from this public repo's CI. The one other file is
         # flow 11's manifest.json: which SHA, URL and Workspace the captures are of (#157).
-        # always(): flow 11 writes its captures on a green run too.
-        if: always()
+        # always(): flow 11 writes its captures on a green run too — but not when the
+        # deploy stood down, which ran nothing that could write one.
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: playwright-screenshots
