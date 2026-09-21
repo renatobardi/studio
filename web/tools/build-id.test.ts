@@ -46,6 +46,14 @@ describe("buildId", () => {
     expect(buildId(root, ["index.html", "src", "public"])).toBe(before);
   });
 
+  test("a file that only starts like the preview harness still ships", () => {
+    // `src/preview` is a directory; `src/previewCard.tsx` would be an ordinary component.
+    app();
+    const before = buildId(root, ["src"]);
+    write("src/previewCard.tsx", "card()");
+    expect(buildId(root, ["src"])).not.toBe(before);
+  });
+
   test("moving bytes from one file to another is a change, not the same concatenation", () => {
     app();
     write("src/a.ts", "xy");

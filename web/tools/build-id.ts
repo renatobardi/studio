@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
-/** What never ships: tests, the helpers only tests import, and the preview harness, which
- * `preview.html` mounts on the dev server alone. */
+/** Directories nothing shipped imports from: the helpers only tests use, and the preview harness,
+ * which `preview.html` mounts on the dev server alone. */
+const NEVER_SHIPPED_DIRS = [join("src", "lib", "testing"), join("src", "preview")];
+
+/** What never ships: tests, and whatever lives in those directories. */
 function neverShips(path: string): boolean {
-  return /\.test\.tsx?$/.test(path) || path.startsWith(join("src", "lib", "testing")) || path.startsWith(join("src", "preview"));
+  return /\.test\.tsx?$/.test(path) || NEVER_SHIPPED_DIRS.some((dir) => path.startsWith(dir + sep));
 }
 
 /**
