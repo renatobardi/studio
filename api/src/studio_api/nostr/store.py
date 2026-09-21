@@ -374,18 +374,14 @@ class LiveFanout:
         self._subs.pop(sub_id, None)
 
     async def stop(self) -> None:
+        # gather(), for the reason _restart_consumer gives: awaiting a task we
+        # just cancelled must not swallow a cancellation meant for us.
         if self._heartbeat is not None:
             self._heartbeat.cancel()
-            try:
-                await self._heartbeat
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(self._heartbeat, return_exceptions=True)
         if self._task is not None:
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(self._task, return_exceptions=True)
         try:
             await self._db.kill(self._live_id)
         # Shutting down while the database is unreachable: the live query is
