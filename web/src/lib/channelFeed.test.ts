@@ -92,6 +92,37 @@ describe("ChannelFeed", () => {
     expect(inFlight).toBe(first);
   });
 
+  test("disposing closes the page in flight, and a second start() can page again", () => {
+    // #232's leftover: the teardown cancelled the page's deadline but never the page. Its REQ
+    // stayed open and every reconnect re-issued it, and `loadingOlder` stayed true — so a
+    // second start() over the same instance (which StrictMode does) had a loadOlder that could
+    // never fire again, with no deadline left to free it. The DmFeed's teardown already closes
+    // the page and resets the flag.
+    const relay = new FakeRelay(messages(PAGE_SIZE * 3));
+    let asks = 0;
+    let closed = 0;
+    const stalling = {
+      subscribe(filters: Filter[], handlers: { onEvent(e: VerifiedEvent): void; onEose?(): void }) {
+        if (filters[0]?.until === undefined) return relay.subscribe(filters, handlers);
+        asks += 1;
+        return Object.assign(() => (closed += 1), { update: () => {} });
+      },
+    };
+    const feed = new ChannelFeed(stalling, CHANNEL, () => () => {});
+
+    const dispose = feed.start();
+    feed.loadOlder();
+    expect(asks).toBe(1);
+
+    dispose();
+    expect(closed).toBe(1);
+
+    feed.start();
+    feed.loadOlder();
+
+    expect(asks).toBe(2);
+  });
+
   test("a page that never answers frees the paging once its deadline passes", () => {
     // Same hole as the Direct Message feed had (#232): a relay that drops and comes back does
     // not re-emit the EOSE of a subscription it already answered.
