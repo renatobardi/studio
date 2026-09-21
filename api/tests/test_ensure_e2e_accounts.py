@@ -8,8 +8,8 @@ from studio_api.ensure_e2e_accounts import (
     ExistingUser,
     accounts_from_env,
     ensure_account,
-    onboarding_account_from_env,
     recreate_account,
+    recreated_accounts_from_env,
 )
 
 
@@ -84,18 +84,36 @@ class TestRecreateAccount:
         assert client.created == [("o@example.com", "pw")]
 
 
-class TestOnboardingAccountFromEnv:
+class TestRecreatedAccountsFromEnv:
+    """Issue #129: first access is a state an Account only has once, and the
+    API keys Accounts by Firebase uid — so every flow that asserts it needs a
+    new uid before the smoke. Flow 1 by Key Backup, flow 9 by NIP-07
+    extension."""
+
     def test_returns_the_pair_when_both_vars_are_set(self) -> None:
         env = {"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com", "STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}
 
-        assert onboarding_account_from_env(env) == ("o@example.com", "pw")
+        assert recreated_accounts_from_env(env) == [("o@example.com", "pw")]
 
-    def test_returns_none_when_either_var_is_missing(self) -> None:
-        assert onboarding_account_from_env({"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com"}) is None
-        assert onboarding_account_from_env({"STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}) is None
+    def test_skips_a_pair_missing_either_var(self) -> None:
+        assert recreated_accounts_from_env({"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com"}) == []
+        assert recreated_accounts_from_env({"STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}) == []
 
-    def test_is_not_one_of_the_accounts_that_keep_their_uid(self) -> None:
-        env = {"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com", "STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}
+    def test_includes_the_extension_account(self) -> None:
+        env = {
+            "STUDIO_TEST_EXTENSION_EMAIL": "c@example.com",
+            "STUDIO_TEST_EXTENSION_PASSWORD": "pw-c",
+        }
+
+        assert recreated_accounts_from_env(env) == [("c@example.com", "pw-c")]
+
+    def test_none_of_them_is_an_account_that_keeps_its_uid(self) -> None:
+        env = {
+            "STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com",
+            "STUDIO_TEST_ONBOARDING_PASSWORD": "pw",
+            "STUDIO_TEST_EXTENSION_EMAIL": "c@example.com",
+            "STUDIO_TEST_EXTENSION_PASSWORD": "pw-c",
+        }
 
         assert accounts_from_env(env) == []
 
@@ -122,8 +140,6 @@ class TestAccountsFromEnv:
             "STUDIO_TEST_PASSWORD": "pw-a",
             "STUDIO_TEST_EMAIL_2": "b@example.com",
             "STUDIO_TEST_PASSWORD_2": "pw-b",
-            "STUDIO_TEST_EXTENSION_EMAIL": "c@example.com",
-            "STUDIO_TEST_EXTENSION_PASSWORD": "pw-c",
             # Flow 11's Account (#157): signed in on every run, so its uid must stay.
             "STUDIO_TEST_FIXTURES_EMAIL": "d@example.com",
             "STUDIO_TEST_FIXTURES_PASSWORD": "pw-d",
@@ -132,6 +148,5 @@ class TestAccountsFromEnv:
         assert accounts_from_env(env) == [
             ("a@example.com", "pw-a"),
             ("b@example.com", "pw-b"),
-            ("c@example.com", "pw-c"),
             ("d@example.com", "pw-d"),
         ]

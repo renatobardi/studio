@@ -48,8 +48,11 @@ it. Issue #51.
    answer the next Identity (#39). Flow 9 drives onboarding under a NIP-07
    extension — faked in the page, signing with a fixed key in Node — including
    the two ways an extension fails to cooperate: refusing the request, and not
-   doing NIP-44 (#75). Its first-access half self-skips like flow 1, for the
-   same reason.
+   doing NIP-44 (#75). Its first-access half runs on every deploy, like flow
+   1 and for the same reason: CD recreates that Account too, so the Account
+   arrives never having linked the extension's Identity (#129). The key
+   itself stays the same every run — what is given back is the first access,
+   not a new Identity.
    Flow 11 (`visual-live.spec.ts`, #73) runs in the same smoke with
    `STUDIO_VISUAL_CAPTURE=1`: it captures the deployed app at 1440×900 and
    390×844, light and dark, into `web/test-results/visual-live/` — uploaded
@@ -263,9 +266,12 @@ lives in two places that must agree:
   `docker-compose.yml` to the `api` service. Before the smoke, `cd.yml` runs
   `python -m studio_api.ensure_e2e_accounts` there, which creates or resets
   each Account to that password with a verified email (#50). The onboarding
-  Account is deleted and created instead — a new uid is a new Account, so
-  flow 1 always meets first access; only flow 1 may sign in as it. With no pairs in
-  `.env` the step logs `nothing to seed` and does nothing — it does not fail.
+  Account and the extension Account are deleted and created instead — a new
+  uid is a new Account, so flow 1 and flow 9 both meet first access every run
+  (#127, #129). Only flow 1 may sign in as the onboarding one; the extension
+  Account is flow 9's alone, and no flow of the two may be made to depend on
+  what an earlier run left linked. With no pairs in `.env` the step logs
+  `nothing to seed` and does nothing — it does not fail.
 
 GitHub secrets are write-only, so a lost password cannot be read back — and
 does not need to be. These passwords are used by the smoke alone; they are
