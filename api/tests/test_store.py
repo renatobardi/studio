@@ -488,3 +488,79 @@ class TestFailureLogging:
         assert any(getattr(record, "reason", None) == "ConnectionError" for record in caplog.records)
         assert "hunter2" not in caplog.text
         await fanout.stop()
+
+
+class _UnreachableDatabase:
+    """A connection whose every round trip fails, and whose live query hangs
+    instead of raising — the shape `docker compose restart surrealdb` leaves
+    behind: the SDK's receive task is gone, so nothing ever reaches the live
+    stream's queue and nothing ever errors (ticket #93)."""
+
+    async def query(self, surql: str, params: dict[str, object] | None = None) -> None:
+        raise ConnectionError("socket closed")
+
+    async def subscribe_live(self, live_id: object) -> AsyncIterator[dict[str, object]]:
+        return _hanging_stream()
+
+    async def kill(self, live_id: object) -> None:
+        raise ConnectionError("socket closed")
+
+
+async def _hanging_stream() -> AsyncIterator[dict[str, object]]:
+    await asyncio.Event().wait()
+    yield {}  # pragma: no cover — never reached; makes this an async generator
+
+
+class TestLiveDeliveryRecovery:
+    """Ticket #93: when the database goes away the connection is dead for
+    good — the SDK's own `connect()` returns early while a closed socket is
+    still set, and its live stream waits on a queue nothing will ever fill.
+    Live delivery has to come back without anyone restarting the process."""
+
+    async def test_live_delivery_resumes_after_the_connection_dies(
+        self, store: EventStore, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fanout = await store.start_live_fanout(heartbeat_seconds=0.05)
+        try:
+            queue = await fanout.subscribe("sub-1", [Filter()], workspace_slug=TEST_WORKSPACE)
+            await store.publish(make_event(id="id-before"))
+            before = delivered_event(await asyncio.wait_for(queue.get(), timeout=5))
+            assert before["id"] == "id-before"
+
+            # The database went down and came back: the process keeps a socket
+            # that is closed, and every call on it fails from here on.
+            with caplog.at_level(logging.INFO):
+                await store.raw.socket.close()
+                await wait_until(
+                    lambda: "live event delivery recovered" in caplog.text, timeout=10
+                )
+
+            # Back on its feet with the subscription still in place: the client
+            # that stayed connected never had to do anything.
+            assert fanout.failure is None
+            await store.publish(make_event(id="id-after"))
+            after = delivered_event(await asyncio.wait_for(queue.get(), timeout=5))
+            assert after["id"] == "id-after"
+        finally:
+            await fanout.stop()
+
+    async def test_an_unreachable_database_is_retried_instead_of_giving_up(self) -> None:
+        attempts = 0
+
+        async def recover() -> object:
+            nonlocal attempts
+            attempts += 1
+            raise ConnectionError("still down")
+
+        fanout = LiveFanout(
+            _UnreachableDatabase(), "live-1", recover=recover, heartbeat_seconds=0.05
+        )
+        fanout.start_consuming()
+        try:
+            await wait_until(lambda: attempts >= 3, timeout=10)
+
+            # Still trying, still reporting itself unavailable — readiness keeps
+            # answering 503 rather than the process dying in a restart loop.
+            assert fanout.failure is not None
+        finally:
+            await fanout.stop()

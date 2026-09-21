@@ -78,6 +78,39 @@ this Environment's required reviewer, not the key. The reviewer is repository
 configuration, not code: confirm it under Settings → Environments before the
 first promotion.
 
+## When the database goes away
+
+The api holds one SurrealDB connection for the whole process, and live
+delivery rides on a single `LIVE SELECT` over it. A database restart kills
+that connection for good: the driver's own `connect()` returns early while a
+closed socket is still set, and its live stream waits on a queue nothing will
+ever fill — so nothing errors and events simply stop arriving, while the relay
+keeps accepting connections and answering REQs with history (issue #93).
+
+- The fan-out round-trips the database every 10s. A round trip that fails
+  records the failure — `/api/ready` answers 503 from that moment — and starts
+  reopening the connection, backing off from 10s to 30s while the database
+  stays away. `/api/health` is untouched: it is liveness, and the process is
+  alive.
+- Once the database answers again the connection is replaced in place, the
+  `LIVE SELECT` is registered again and `/api/ready` returns to 200. Relay
+  WebSocket connections are never dropped: a client that stayed connected
+  keeps its subscriptions and starts receiving live events again, with no
+  reconnection storm against the relay.
+- Events published while the database is down are refused — the publish
+  fails and the client is told, rather than the event being silently lost.
+  Recovery does not replay anything: it puts delivery back, it does not go
+  looking for what happened while it was down.
+- The process is never restarted for this, on purpose. `api` has taken ~130s
+  to come up on a loaded `oute-server`, and a restart drops every relay
+  connection at once; a container that restarts on every database blip costs
+  more than the blip. A deployment that never recovers stays visible as a
+  permanent 503 on `/api/ready`, which is what both CD and the promotion check.
+- There is no `healthcheck` on the `api` service and nothing acts on
+  `unhealthy`: Docker does not restart an unhealthy container on its own, so
+  that would have meant a supervisor sidecar — infrastructure this recovery
+  path does not need.
+
 ## Releasing
 
 1. The commit is on `main`, CI passed, and CD's `deploy-dev` deployed it to
