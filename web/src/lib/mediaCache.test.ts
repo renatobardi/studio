@@ -182,10 +182,13 @@ describe("the media cache", () => {
   test("storage that will not even open still costs only a download", async () => {
     // #258: moving the cleanup out of the catch must not take the open with it — an open that
     // throws re-created nothing, so there is nothing that survived to report.
-    const { failOpens } = stubCaches();
+    const { stores, failOpens } = stubCaches();
     failOpens();
 
     await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch()); // must not throw
+
+    // And nothing was written, nor a cache left behind for the next view to read.
+    expect(Object.keys(stores)).toEqual([]);
   });
 
   test("a read whose cleanup delete fails is reported as well", async () => {
