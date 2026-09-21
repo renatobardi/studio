@@ -73,10 +73,40 @@ export async function readCachedBlob(pubkey: string, url: string): Promise<Cache
  * while the caller still holds the returned cache, is harmless: `caches.delete` unlinks the name,
  * and a `put` into the orphaned cache never brings it back. */
 async function openUnlessPruned(name: string, epochAtStart: number): Promise<Cache | undefined> {
-  const cache = await caches.open(name);
+  let cache: Cache;
+  try {
+    cache = await caches.open(name);
+  } catch {
+    // Storage that will not even open costs the next view a download, and it re-created
+    // nothing, so there is nothing to take away (#258).
+    return undefined;
+  }
   if (!prunedSince(name, epochAtStart)) return cache;
-  await caches.delete(name);
+  await removeResurrected(name);
   return undefined;
+}
+
+/** Takes away the cache `caches.open` just re-created for an Identity that is no longer here.
+ *
+ * Throws when it survives, which is what ADR-0007 has sign-out report — the bytes are still
+ * readable on this device, and a wipe already told the person nothing of that Identity was
+ * left. Survival is what the cache names say, not what `delete` answered: `false` is also how
+ * a browser reports one that was already gone, and another write for the same Identity — or a
+ * prune running alongside — removes it first often enough for that to be the common case
+ * (#258). */
+async function removeResurrected(name: string): Promise<void> {
+  try {
+    if (await caches.delete(name)) return;
+  } catch {
+    // Not decisive on its own either: ask the cache names.
+  }
+  if (await caches.has(name)) throw survivedError(name);
+}
+
+/** What sign-out, and a cleanup after it, tell the person about media they were promised was
+ * gone. */
+function survivedError(names: string): Error {
+  return new Error(`Couldn't remove cached media from this browser (${names}).`);
 }
 
 /** Whether any prune since `epochAtStart` would have removed this cache — that is, any of them
@@ -99,12 +129,15 @@ export async function cacheBlob(
   epochAtFetchStart: number,
 ): Promise<void> {
   if (typeof caches === "undefined") return;
+  // Outside the catch on purpose (#258): this is what deletes the cache the open may have just
+  // re-created for an Identity that left, and a cleanup that failed must never be reported as
+  // one that happened. The open forgives itself; only the write below is forgiven here.
+  const cache = await openUnlessPruned(mediaCacheName(pubkey), epochAtFetchStart);
   try {
-    const cache = await openUnlessPruned(mediaCacheName(pubkey), epochAtFetchStart);
     await cache?.put(url, new Response(bytes, { headers: { "content-type": contentType } }));
   } catch {
     // A full quota costs the next view a download; it must not fail this one.
-    // Failing to *delete* is the opposite — see pruneMediaCaches.
+    // Failing to *delete* is the opposite — see removeResurrected / pruneMediaCaches.
   }
 }
 
@@ -143,5 +176,5 @@ export async function pruneMediaCaches(keep: string | null): Promise<void> {
   } finally {
     wiping.splice(wiping.indexOf(keep), 1);
   }
-  if (failed.length > 0) throw new Error(`Couldn't remove cached media from this browser (${failed.join(", ")}).`);
+  if (failed.length > 0) throw survivedError(failed.join(", "));
 }
