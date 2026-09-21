@@ -10,7 +10,10 @@ studio-test's Firebase project must not silently leave a stale one behind.
 The Accounts in RECREATED_ENV_PAIRS are the exception: they are deleted and
 created again on every run. The flows that sign in as them assert first
 access, which an Account only has once — and the API keys Accounts by Firebase
-uid, so a new uid is a never-onboarded Account.
+uid, so a new uid is a never-onboarded Account. That gives back first access;
+it revokes nothing. The control plane authorizes by pubkey and the Identity is
+untouched, so the new uid inherits the old one's Workspace and Channel
+membership, and the old uid's rows stay behind (#276).
 """
 
 from __future__ import annotations
@@ -58,43 +61,50 @@ class AuthClient(Protocol):
 
 
 def ensure_account(client: AuthClient, email: str, password: str) -> str:
-    """Returns a one-line description of what happened, for logging."""
+    """Returns a one-line description of what happened, for logging. The
+    address itself never appears in it: these emails are secrets, and what
+    this prints ends up in a public CD log."""
     existing = client.get_user_by_email(email)
     if existing is None:
         client.create_user(email, password)
-        return f"created {email} (verified)"
+        return "created (verified)"
     client.update_user(existing.uid, password)
-    return f"{email} already exists — reset password + verified"
+    return "already exists — reset password + verified"
 
 
 def recreate_account(client: AuthClient, email: str, password: str) -> str:
-    """Returns a one-line description of what happened, for logging."""
+    """Returns a one-line description of what happened, for logging — never
+    the address, for the reason above."""
     existing = client.get_user_by_email(email)
     if existing is None:
         client.create_user(email, password)
-        return f"created {email} (verified, never onboarded)"
+        return "created (verified, never onboarded)"
     client.delete_user(existing.uid)
     client.create_user(email, password)
-    return f"{email} recreated (verified, never onboarded)"
+    return "recreated (verified, never onboarded)"
 
 
-def _pairs_from_env(
-    env: dict[str, str], names: list[tuple[str, str]]
-) -> list[tuple[str, str]]:
-    """Returns [(email, password), ...] for every pair with both vars set."""
+def _pairs_from_env(env: dict[str, str], names: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
+    """Returns [(env var naming the email, email, password), ...] for every
+    pair with both vars set. The variable name travels with the pair because
+    it is what the log may say — the address is a secret."""
     pairs = []
     for email_var, password_var in names:
         email, password = env.get(email_var), env.get(password_var)
         if email and password:
-            pairs.append((email, password))
+            pairs.append((email_var, email, password))
+        elif email or password:
+            # Half a pair is a typo in `.env`, and a silently skipped Account
+            # surfaces ten minutes later as an unexplained Playwright failure.
+            print(f"{email_var}/{password_var}: only one of the two is set — skipped", file=sys.stderr)
     return pairs
 
 
-def accounts_from_env(env: dict[str, str]) -> list[tuple[str, str]]:
+def accounts_from_env(env: dict[str, str]) -> list[tuple[str, str, str]]:
     return _pairs_from_env(env, ACCOUNT_ENV_PAIRS)
 
 
-def recreated_accounts_from_env(env: dict[str, str]) -> list[tuple[str, str]]:
+def recreated_accounts_from_env(env: dict[str, str]) -> list[tuple[str, str, str]]:
     return _pairs_from_env(env, RECREATED_ENV_PAIRS)
 
 
@@ -146,10 +156,10 @@ def main() -> None:
 
     app = firebase_admin.initialize_app(fb_credentials.Certificate(credentials_path), name="e2e-seed")
     client = _FirebaseAuthClient(app)
-    for email, password in pairs:
-        print(ensure_account(client, email, password))
-    for email, password in recreated:
-        print(recreate_account(client, email, password))
+    for email_var, email, password in pairs:
+        print(f"{email_var}: {ensure_account(client, email, password)}")
+    for email_var, email, password in recreated:
+        print(f"{email_var}: {recreate_account(client, email, password)}")
 
 
 if __name__ == "__main__":

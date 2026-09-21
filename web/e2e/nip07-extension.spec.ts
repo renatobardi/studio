@@ -70,6 +70,7 @@ test("an extension without NIP-44 is turned away before anything is joined", asy
 test("first access with an extension onboards on the extension's own Identity", async ({ page }) => {
   const fake = await installFakeNip07(page, { privateKeyHex: testExtensionAccount.privateKeyHex() });
 
+  test.slow(); // the whole onboarding, against a deployment, now runs on every smoke
   // Onboarding is a one-time state for any Account, so CD deletes this one and
   // creates it again before every smoke (`studio_api.ensure_e2e_accounts`): the
   // extension's key is the same one every run, and what is new is the Account

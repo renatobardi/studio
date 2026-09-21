@@ -42,6 +42,9 @@ class TestEnsureAccount:
         assert client.created == [("a@example.com", "pw")]
         assert client.updated == []
         assert "created" in result
+        # The address is a GitHub secret and this line ends up in a public CD
+        # log: what happened, never to whom.
+        assert "a@example.com" not in result
 
     def test_resets_password_and_verified_flag_on_an_existing_account(self) -> None:
         client = _FakeAuthClient({"a@example.com": ExistingUser(uid="uid-1", email_verified=False)})
@@ -93,7 +96,9 @@ class TestRecreatedAccountsFromEnv:
     def test_returns_the_pair_when_both_vars_are_set(self) -> None:
         env = {"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com", "STUDIO_TEST_ONBOARDING_PASSWORD": "pw"}
 
-        assert recreated_accounts_from_env(env) == [("o@example.com", "pw")]
+        assert recreated_accounts_from_env(env) == [
+            ("STUDIO_TEST_ONBOARDING_EMAIL", "o@example.com", "pw")
+        ]
 
     def test_skips_a_pair_missing_either_var(self) -> None:
         assert recreated_accounts_from_env({"STUDIO_TEST_ONBOARDING_EMAIL": "o@example.com"}) == []
@@ -105,7 +110,9 @@ class TestRecreatedAccountsFromEnv:
             "STUDIO_TEST_EXTENSION_PASSWORD": "pw-c",
         }
 
-        assert recreated_accounts_from_env(env) == [("c@example.com", "pw-c")]
+        assert recreated_accounts_from_env(env) == [
+            ("STUDIO_TEST_EXTENSION_EMAIL", "c@example.com", "pw-c")
+        ]
 
     def test_none_of_them_is_an_account_that_keeps_its_uid(self) -> None:
         env = {
@@ -122,7 +129,7 @@ class TestAccountsFromEnv:
     def test_includes_a_pair_with_both_vars_set(self) -> None:
         env = {"STUDIO_TEST_EMAIL": "a@example.com", "STUDIO_TEST_PASSWORD": "pw"}
 
-        assert accounts_from_env(env) == [("a@example.com", "pw")]
+        assert accounts_from_env(env) == [("STUDIO_TEST_EMAIL", "a@example.com", "pw")]
 
     def test_skips_a_pair_missing_its_password(self) -> None:
         env = {"STUDIO_TEST_EMAIL_2": "b@example.com"}
@@ -146,7 +153,7 @@ class TestAccountsFromEnv:
         }
 
         assert accounts_from_env(env) == [
-            ("a@example.com", "pw-a"),
-            ("b@example.com", "pw-b"),
-            ("d@example.com", "pw-d"),
+            ("STUDIO_TEST_EMAIL", "a@example.com", "pw-a"),
+            ("STUDIO_TEST_EMAIL_2", "b@example.com", "pw-b"),
+            ("STUDIO_TEST_FIXTURES_EMAIL", "d@example.com", "pw-d"),
         ]

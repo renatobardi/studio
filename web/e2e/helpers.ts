@@ -270,8 +270,10 @@ export async function reachAppViaRestore(page: import("@playwright/test").Page):
 /**
  * A third, independently-seeded Account for the NIP-07 flows (#75): the only
  * one whose Identity is the fixed key below rather than a fresh one minted per
- * run. Its first run links that key, every later run presents the same one, so
- * the flow is repeatable.
+ * run. CD deletes and creates it again before every smoke
+ * (`studio_api.ensure_e2e_accounts`), so it arrives having linked no Identity
+ * and flow 9's first access is real every run — the key stays the same, only
+ * the Account is new (#129). Only flow 9 may sign in as it.
  */
 export const testExtensionAccount = {
   email: () => requiredEnv("STUDIO_TEST_EXTENSION_EMAIL"),

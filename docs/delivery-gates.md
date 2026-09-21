@@ -268,10 +268,10 @@ lives in two places that must agree:
   each Account to that password with a verified email (#50). The onboarding
   Account and the extension Account are deleted and created instead — a new
   uid is a new Account, so flow 1 and flow 9 both meet first access every run
-  (#127, #129). Only flow 1 may sign in as the onboarding one; the extension
-  Account is flow 9's alone, and no flow of the two may be made to depend on
-  what an earlier run left linked. With no pairs in `.env` the step logs
-  `nothing to seed` and does nothing — it does not fail.
+  (#127, #129). Each of those two Accounts belongs to exactly one flow — the
+  onboarding one to flow 1, the extension one to flow 9 — and neither flow may
+  depend on what an earlier run left linked. With no pairs in `.env` the step
+  logs `nothing to seed` and does nothing — it does not fail.
 
 GitHub secrets are write-only, so a lost password cannot be read back — and
 does not need to be. These passwords are used by the smoke alone; they are
@@ -283,8 +283,16 @@ places, then restart `api` so it reads the new `.env`
 owner keeps a script that does all of this in `scripts/ops/` (gitignored, as
 every ops script is).
 
-Keep the emails of the first three: an Account is keyed by its Firebase uid,
-and a new email is a new Account with no Identity linked to it.
+Keep the emails of the Accounts that are not recreated: an Account is keyed by
+its Firebase uid, and a new email is a new Account with no Identity linked to
+it. For the two that are deleted and created again every run, the email is
+what makes the seed find and replace the same Account — change it and the old
+one is left behind instead.
+
+Recreating an Account gives back first access; it revokes nothing. The
+control plane authorizes by pubkey, and the Identity is untouched, so the new
+uid inherits every Workspace and Channel membership the old one's Identity
+had — and the old uid's rows stay behind (#276).
 
 ## The host port `studio-test` publishes
 
