@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 // that skips the gate.
 
 type Step = {
+  id?: string
   name?: string
   run?: string
   uses?: string
@@ -71,6 +72,15 @@ const commandsOf = (job: Job) =>
 
 const deployCommands = commandsOf(deploy)
 
+// The tip re-check inside deploy-dev, and the guard every later step carries (#253).
+const standDown = deploy.steps.find((step) => (step.run ?? '').includes('superseded'))
+const STAND_DOWN_GUARD = "steps.tip.outputs.stale == 'false'"
+
+// Promote's proof that a SHA really reached studio-test. deploy-dev now concludes
+// success when it stands down, so the job alone no longer proves a deploy: the
+// smoke step, named here and in cd.yml, is what proves it (#253).
+const SMOKE_STEP = 'Playwright smoke (flows 1–9) against the just-deployed studio-test'
+
 describe('cd.yml', () => {
   test('deploys only after CI completes on main, never straight off a push', () => {
     expect(triggers.push).toBeUndefined()
@@ -107,6 +117,39 @@ describe('cd.yml', () => {
   test('re-checks the tip inside the deploy job, not only before it queued', () => {
     // deploy-dev queues on a concurrency group; main can move while it waits.
     expect(deployCommands).toContain('superseded')
+  })
+
+  test('that re-check retires the deploy instead of failing it (#253)', () => {
+    // Nothing failed: the deploy simply was not the deploy to make any more. A
+    // red CD on main stops the merge queue (docs/delivery-gates.md, "When CD is
+    // red"), so a stand-down that shouts failure fabricates a hand brake.
+    expect(standDown).toBeDefined()
+    expect(standDown?.id).toBe('tip')
+    const run = standDown?.run ?? ''
+    expect(run).toContain('stale=true')
+    expect(run.slice(run.indexOf('stale=true'))).not.toContain('exit 1')
+    // Retiring is the quiet outcome, so a tip that is not a SHA must still be
+    // loud: an API blip that answered '' would otherwise stand every deploy
+    // down in silence, where it used to turn the job red.
+    expect(run).toContain('[0-9a-f]{40}')
+  })
+
+  test('and it happens before anything is deployed (#253)', () => {
+    const deployAt = deploy.steps.findIndex((step) => (step.run ?? '').includes('--detach $DEPLOY_SHA'))
+    expect(deploy.steps.indexOf(standDown as Step)).toBeLessThan(deployAt)
+  })
+
+  test('and nothing after it runs — no deploy, no verification, no smoke (#253)', () => {
+    // A step cannot skip the rest of its own job, so each following step carries
+    // the guard. Positive match: an unset output must never read as "fresh" — and
+    // the guard has to bind, so an `||` beside it (which would run the step on a
+    // stand-down) fails here. Nothing executes this YAML: this test is the guard.
+    const after = deploy.steps.slice(deploy.steps.indexOf(standDown as Step) + 1)
+    expect(after.length).toBeGreaterThan(0)
+    for (const step of after) {
+      expect(step.if ?? '').toContain(STAND_DOWN_GUARD)
+      expect(step.if ?? '').not.toContain('||')
+    }
   })
 
   test("seeds flow 11's fixtures after the Accounts exist and before the smoke (#157)", () => {
@@ -309,6 +352,17 @@ describe('promote.yml', () => {
     // A CD run can succeed with deploy-dev skipped (a superseded SHA stands
     // down) — the run's conclusion alone proves nothing was deployed.
     expect(commands).toContain('deploy-dev')
+  })
+
+  test('and refuses one whose deploy-dev only stood down (#253)', () => {
+    // Since #253 a superseded deploy-dev concludes success with every step after
+    // the stand-down skipped, so "the job succeeded" stopped being proof. The
+    // smoke step's own conclusion is, and it is the same step cd.yml runs.
+    const smoke = deploy.steps.find((step) => step.run === 'bun run test:e2e')
+    expect(smoke?.name).toBe(SMOKE_STEP)
+    const named = promoteGate.steps.find((step) => step.env?.SMOKE_STEP)
+    expect(named?.env?.SMOKE_STEP).toBe(SMOKE_STEP)
+    expect(commandsOf(promoteGate)).toContain('env.SMOKE_STEP')
   })
 
   test('deploys that exact SHA to studio-prd, behind its own Environment', () => {

@@ -43,22 +43,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # Free text typed into a form: it reaches the shell through env only.
           CANDIDATE: ${{ inputs.sha }}
+          # The step cd.yml runs the smoke in. Named, not inferred: a deploy-dev
+          # that stood down also concludes success (#253), so the proof has to be
+          # the step that actually deployed and smoke-tested this SHA.
+          SMOKE_STEP: Playwright smoke (flows 1–9) against the just-deployed studio-test
         run: |
           if [[ ! "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::'$CANDIDATE' is not a full 40-character commit SHA"
             exit 1
           fi
 
-          # A CD run concludes success even when deploy-dev was skipped (a
-          # superseded SHA stands down), so the run's conclusion is not proof.
-          # The proof is a deploy-dev job that succeeded on this SHA — that job
-          # deploys it to studio-test and runs the Playwright smoke against it.
+          # A CD run concludes success even when deploy-dev never deployed — the
+          # gate skips it for a superseded SHA, and since #253 the job itself
+          # stands down the same way when main moved while it queued. So neither
+          # the run's conclusion nor deploy-dev's is proof: what proves it is the
+          # smoke step inside that job, which only runs on what was deployed.
           proven=false
           for run_id in $(gh api \
             "repos/$GITHUB_REPOSITORY/actions/workflows/cd.yml/runs?head_sha=$CANDIDATE&status=completed" \
             --jq '.workflow_runs[].id'); do
             deployed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-              --jq '[.jobs[] | select(.name == "deploy-dev" and .conclusion == "success")] | length')
+              --jq '[.jobs[]
+                     | select(.name == "deploy-dev" and .conclusion == "success")
+                     | (.steps // [])[]
+                     | select(.name == env.SMOKE_STEP and .conclusion == "success")] | length')
             if [[ "$deployed" -gt 0 ]]; then
               proven=true
               echo "studio-test deployed and smoke-tested $CANDIDATE in CD run $run_id"

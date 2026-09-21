@@ -18,10 +18,14 @@ it. Issue #51.
    then stands down when the SHA is no longer `main`'s tip, so two commits
    landing close together cannot roll `studio-test` backwards.
 5. **`cd.yml` `deploy-dev`** re-reads `main`'s tip (the job may have waited on
-   its concurrency group since the gate ran), checks out `/opt/app` on the
-   `studio-test` container at the exact validated SHA (`git checkout --force
-   --detach`), rebuilds, then re-reads `git rev-parse HEAD` over SSH and fails
-   if it is not that SHA. The deployed SHA goes to the run's job summary.
+   its concurrency group since the gate ran). If the SHA was superseded while
+   it queued, the job **stands down**: a `::notice::`, a line in the job
+   summary, and every step below skipped — concluding `success`, because
+   nothing failed. This deploy merely stopped being the deploy to make (#253).
+   An answer that is not a SHA at all is not a stand-down: it fails the job.
+   Otherwise it puts `/opt/app` on the `studio-test` container at the exact
+   validated SHA (`git checkout --force --detach`), rebuilds, then re-reads
+   `git rev-parse HEAD` over SSH and fails if it is not that SHA. The deployed SHA goes to the run's job summary.
    Once it answers, `scripts/ci/cache-headers.sh` asks `studio-test` over
    `curl -I` for the cache policy of `web/nginx.conf` (#203): `/`,
    `index.html`, `sw.js` and `manifest.webmanifest` with `Cache-Control:
@@ -75,10 +79,18 @@ it. Issue #51.
 
 `scripts/ci/delivery-gates.test.ts` (CI job `gates`) asserts steps 3–5 stay
 true — it fails if `cd.yml` ever goes back to a push trigger or to deploying a
-mutable branch tip, if CI, CD or Promote stop checking the cache headers, or
+mutable branch tip, if the tip re-check inside `deploy-dev` disappears, stops
+retiring the job or stops guarding every step after it, if CI, CD or Promote
+stop checking the cache headers, or
 if the smoke leaves `deploy-dev` or is allowed to fail.
 
 ## When CD is red
+
+A red CD on `main` now means a deploy that really failed — a SHA that did not
+reach `studio-test`, cache headers off contract, or a red smoke. It no longer
+means a deploy that was simply overtaken: until #253, two commits landing close
+together fabricated a red that protected nothing, and the rule below stopped a
+merge queue over a healthy `studio-test`.
 
 A red CD on `main` stops the queue: until it is green again, nothing merges
 but the fix for it, or the revert of what broke it (#193). CI already passed
@@ -89,9 +101,9 @@ the fix harder to prove. On 18/09/2026 CD failed four runs in a row while
 #183 landed on top of it.
 
 Production does not depend on this rule being followed: `promote.yml`
-refuses any SHA without a successful `deploy-dev` job on it (see
-"Production"), and the smoke is a step of that job, so a red smoke is a red
-`deploy-dev`. What the rule protects is `studio-test`, and the chance of
+refuses any SHA whose smoke step did not succeed inside a successful
+`deploy-dev` (see "Production"), so a red smoke is a SHA Promote will not
+take. What the rule protects is `studio-test`, and the chance of
 promoting anything at all: a SHA merged over a red CD is proven only when a
 later deploy goes green, and that deploy carries every commit before it.
 
@@ -305,9 +317,12 @@ nothing listens on and every deploy fails its health check.
 ## Production
 
 `studio-prd` is never deployed by `cd.yml`. `promote.yml` is dispatched by
-hand with a SHA, and its gate refuses any SHA without a successful
-`deploy-dev` job — the deploy and the smoke on `studio-test` — on exactly that
-commit. Nothing is built for production off `main`'s tip. The contract is
+hand with a SHA, and its gate refuses any SHA whose CD run does not carry a
+successful **smoke step inside a successful `deploy-dev`** on exactly that
+commit. The job's own conclusion is not enough: since #253 a `deploy-dev` that
+stood down also concludes `success`, with every step after the tip re-check
+skipped, so the step that deployed and smoke-tested the SHA is the proof.
+Nothing is built for production off `main`'s tip. The contract is
 asserted by the same `gates` job; the runbook, including rollback, is
 `docs/production.md`.
 
