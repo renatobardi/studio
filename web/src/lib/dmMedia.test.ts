@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { finalizeEvent, getPublicKey, nip44, type EventTemplate } from "nostr-tools";
 import type { Signer } from "./custody";
 import { generateIdentity } from "./identity";
-import { pruneMediaCaches } from "./mediaCache";
+import { mediaCacheName, pruneMediaCaches } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
 import { stubControllableFetch } from "./testing/controllableFetch";
 import { makePng } from "./testing/png";
@@ -224,6 +224,23 @@ describe("fetchDmAttachmentObjectUrl", () => {
     await pending;
 
     expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("and when that cleanup cannot remove the cache, the download says so", async () => {
+    // #258, the Direct Message half: cacheBlob no longer forgives a cleanup that failed, and
+    // downloadCiphertext lets that through rather than handing back a photo while the
+    // ciphertext of an Identity that left stays on this device.
+    const secretKey = generateIdentity().secretKey;
+    stubCaches().failDeleteOf(mediaCacheName(getPublicKey(secretKey)));
+    const signer = signerFor(secretKey);
+    const fetchControl = stubControllableFetch();
+
+    const pending = fetchDmAttachmentObjectUrl(url, hash, encrypted.key, "image/png", signer);
+    await fetchControl.started;
+    await pruneMediaCaches(null);
+    fetchControl.resolve(new Response(ciphertext.buffer as ArrayBuffer, { status: 200 }));
+
+    await expect(pending).rejects.toThrow(/cached media/i);
   });
 });
 

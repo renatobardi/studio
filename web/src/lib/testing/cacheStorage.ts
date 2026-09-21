@@ -10,6 +10,13 @@ interface StubEntry {
 export interface CacheStorageStub {
   stores: Record<string, Record<string, StubEntry>>;
   failDeleteOf: (name: string) => void;
+  /** A `delete` that answers `false` instead of throwing — the other way a browser says the
+   * cache is still there. */
+  answerDeleteFalseFor: (name: string) => void;
+  /** A `put` that throws, the way a full quota does. */
+  failWrites: () => void;
+  /** An `open` that throws — storage that will not answer at all. */
+  failOpens: () => void;
   /** Holds every `open` until the returned release is called — the window a
    * prune can run in while an open is still on its way. */
   holdOpens: () => () => void;
@@ -23,6 +30,9 @@ export interface CacheStorageStub {
 export function stubCaches(): CacheStorageStub {
   const stores: Record<string, Record<string, StubEntry>> = {};
   const failing = new Set<string>();
+  const answeringFalse = new Set<string>();
+  let writesFail = false;
+  let opensFail = false;
   let held: Promise<void> = Promise.resolve();
   let heldKeys: Promise<void> = Promise.resolve();
   const heldDeletes = new Map<string, Promise<void>>();
@@ -41,12 +51,14 @@ export function stubCaches(): CacheStorageStub {
         await holding;
       }
       if (failing.has(name)) throw new Error("quota");
+      if (answeringFalse.has(name)) return false;
       const existed = name in stores;
       delete stores[name];
       return existed;
     },
     async open(name: string) {
       await held;
+      if (opensFail) throw new Error("storage unavailable");
       stores[name] ??= {};
       const store = stores[name];
       return {
@@ -57,6 +69,7 @@ export function stubCaches(): CacheStorageStub {
             : new Response(entry.bytes, { headers: { "content-type": entry.contentType } });
         },
         async put(url: string, response: Response) {
+          if (writesFail) throw new Error("quota");
           store[url] = { bytes: await response.arrayBuffer(), contentType: response.headers.get("content-type") ?? "" };
         },
       };
@@ -67,6 +80,13 @@ export function stubCaches(): CacheStorageStub {
   return {
     stores,
     failDeleteOf: (name: string) => failing.add(name),
+    answerDeleteFalseFor: (name: string) => answeringFalse.add(name),
+    failWrites: () => {
+      writesFail = true;
+    },
+    failOpens: () => {
+      opensFail = true;
+    },
     holdOpens: () => {
       let release!: () => void;
       held = new Promise((resolve) => (release = resolve));

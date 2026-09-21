@@ -129,6 +129,93 @@ describe("the media cache", () => {
     expect(Object.keys(stores)).toEqual([mediaCacheName(PUBKEY_A)]);
   });
 
+  test("a cleanup delete that throws is reported, not swallowed by the write's catch", async () => {
+    // #258: the write's `caches.open` re-created the cache of an Identity that signed out, and
+    // the delete that takes it away again failed. A full quota is forgiven; this is the
+    // opposite — the bytes of someone who left stay readable on this device, after sign-out
+    // said they were gone (#39/#187).
+    const { failDeleteOf, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(null);
+    failDeleteOf(mediaCacheName(PUBKEY_A));
+    release();
+
+    await expect(write).rejects.toThrow(/cached media/i);
+  });
+
+  test("a cleanup delete that answers false is reported too", async () => {
+    // The other way a browser says the cache is still there: no exception, just `false`.
+    const { answerDeleteFalseFor, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const write = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(null);
+    answerDeleteFalseFor(mediaCacheName(PUBKEY_A));
+    release();
+
+    await expect(write).rejects.toThrow(/cached media/i);
+  });
+
+  test("a cleanup another one already did is not reported as a survival", async () => {
+    // Two photos were in flight for the Identity that signed out. Both opens re-create its
+    // cache, the first cleanup removes it, and `caches.delete` answers the second one `false` —
+    // about a cache that is gone. A false alarm on this boundary is as bad as silence.
+    const { stores, holdOpens } = stubCaches();
+    const epochAtFetchStart = mediaCacheEpoch();
+    const release = holdOpens();
+
+    const first = cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", epochAtFetchStart);
+    const second = cacheBlob(PUBKEY_A, `${URL_}-2`, bytesOf(2), "image/png", epochAtFetchStart);
+    await pruneMediaCaches(null);
+    release();
+
+    await first;
+    await second; // must not throw
+
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("storage that will not even open still costs only a download", async () => {
+    // #258: moving the cleanup out of the catch must not take the open with it — an open that
+    // throws re-created nothing, so there is nothing that survived to report.
+    const { stores, failOpens } = stubCaches();
+    failOpens();
+
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch()); // must not throw
+
+    // And nothing was written, nor a cache left behind for the next view to read.
+    expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("a read whose cleanup delete fails is reported as well", async () => {
+    // The same open, the same resurrection: `readCachedBlob` runs it too (#187).
+    const { failDeleteOf, holdOpens } = stubCaches();
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch());
+    const release = holdOpens();
+
+    const read = readCachedBlob(PUBKEY_A, URL_);
+    await Promise.resolve();
+    await pruneMediaCaches(null);
+    failDeleteOf(mediaCacheName(PUBKEY_A));
+    release();
+
+    await expect(read).rejects.toThrow(/cached media/i);
+  });
+
+  test("a full quota still costs only the next view a download", async () => {
+    // What the catch exists for, and it stays: the write is the forgiven half (#258).
+    const { failWrites } = stubCaches();
+    failWrites();
+
+    await cacheBlob(PUBKEY_A, URL_, bytesOf(1), "image/png", mediaCacheEpoch()); // must not throw
+
+    expect(await readCachedBlob(PUBKEY_A, URL_)).toBeUndefined();
+  });
+
   test("a write whose open lands after a prune that kept this Identity is still cached", async () => {
     const { stores, holdOpens } = stubCaches();
     const epochAtFetchStart = mediaCacheEpoch();
