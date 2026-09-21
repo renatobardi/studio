@@ -1,0 +1,5 @@
+# The DOM the component tests render into is registered once, for the whole run (#94):
+# `GlobalRegistrator` writes onto globalThis, so registering it per file would leak between
+# files in the same process anyway — and in an order that differs in CI.
+[test]
+preload = ["./src/lib/testing/dom.ts"]

@@ -137,13 +137,12 @@ describe("membersPaneList", () => {
 
 describe("addMemberToChannel", () => {
   const realFetch = globalThis.fetch;
-  const realWindow = globalThis.window;
   const signer = { signEvent: async (event: object) => ({ ...event, id: "e", sig: "s" }) } as unknown as Signer;
   const typed = { query: "an", error: null };
 
+  // No window stub: the harness serves the page from https://studio.test, which is the origin
+  // this used to put there by hand (#94).
   const stub = (respond: () => Response) => {
-    // @ts-expect-error the only part of window this call reads
-    globalThis.window = { location: { origin: "https://studio.test" } };
     const calls: { url: string; init?: RequestInit }[] = [];
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
@@ -154,7 +153,6 @@ describe("addMemberToChannel", () => {
 
   afterEach(() => {
     globalThis.fetch = realFetch;
-    globalThis.window = realWindow;
   });
 
   test("adds the Member through the admin console's route and empties the box", async () => {

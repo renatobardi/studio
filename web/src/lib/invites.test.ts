@@ -217,20 +217,28 @@ describe("invitePreviewMessage", () => {
 });
 
 describe("the pending invite", () => {
+  /** By defineProperty, not assignment: the harness registers a real `localStorage` that
+   * assigning to throws (#94). The real one is put back afterwards rather than deleted — it
+   * belongs to the DOM, and every later file in the process reads the same one. */
+  const realStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
+  function withStorage(stub: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+    Object.defineProperty(globalThis, "localStorage", { value: stub, configurable: true, writable: true });
+  }
+
   function stubStorage() {
     const entries = new Map<string, string>();
-    // @ts-expect-error minimal localStorage stub for these tests
-    globalThis.localStorage = {
+    withStorage({
       getItem: (k: string) => entries.get(k) ?? null,
       setItem: (k: string, v: string) => void entries.set(k, v),
       removeItem: (k: string) => void entries.delete(k),
-    };
+    });
     return entries;
   }
 
   afterEach(() => {
-    // @ts-expect-error test-only cleanup of a global stubbed above
-    delete globalThis.localStorage;
+    if (realStorage) Object.defineProperty(globalThis, "localStorage", realStorage);
+    else delete (globalThis as { localStorage?: Storage }).localStorage;
   });
 
   test("an invite opened as a link survives sign-in and onboarding", () => {
@@ -254,12 +262,11 @@ describe("the pending invite", () => {
   test("storage that refuses to answer is no invite, not a crash", () => {
     // Private browsing and blocked site data both throw here, and an invite
     // nobody can remember must not take the whole app down with it.
-    // @ts-expect-error deliberately hostile storage stub
-    globalThis.localStorage = {
+    withStorage({
       getItem() { throw new Error("blocked"); },
       setItem() { throw new Error("blocked"); },
       removeItem() { throw new Error("blocked"); },
-    };
+    });
     expect(() => rememberInviteCode("abc123")).not.toThrow();
     expect(pendingInviteCode()).toBeNull();
     expect(() => forgetInviteCode()).not.toThrow();
