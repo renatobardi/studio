@@ -2,8 +2,15 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Which build this is, carried by the page and by sw.ts alike (#259): a page that finds a worker
+// already active asks it this, to tell a worker from an older deploy apart from the one its own
+// visit just installed. vite-plugin-pwa builds sw.ts with this same `define`. Every deploy here
+// is a new commit and a new build, so the moment it was built is identity enough.
+const build = new Date().toISOString()
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: { __STUDIO_BUILD__: JSON.stringify(build) },
   plugins: [
     react(),
     // A hand-written service worker (src/sw.ts): app-shell precaching (issue #8).

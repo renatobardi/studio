@@ -62,20 +62,64 @@ export function createUpdateNotice(loadedUnderWorker: boolean) {
 export type UpdateNotice = ReturnType<typeof createUpdateNotice>;
 
 /**
+ * Whether a worker's answer names this very build. Anything else — another build, or no answer
+ * at all — is not this one: every worker shipped before #259 ignores the question, and those are
+ * older builds by definition, the case the notice exists for (#235).
+ */
+export function servesThisBuild(answer: unknown, thisBuild: string): boolean {
+  return typeof answer === "string" && answer === thisBuild;
+}
+
+/** The question sw.ts answers with the build it was made from (#259). */
+export const WHICH_BUILD = { type: "studio:which-build" } as const;
+
+/** How long a page waits for a worker to say which build it serves: a message inside the same
+ * browser, so long enough for one that answers, and short enough that one too old to answer
+ * does not hold the notice back. */
+export const BUILD_ANSWER_MS = 1_000;
+
+/**
+ * Asks `worker` which build it serves, on a port of its own so the answer cannot be mistaken for
+ * any other message. Gives up with `null` after `timeoutMs` — a worker from before #259 never
+ * answers, and waiting on it for good would keep the notice from ever deciding.
+ */
+export function askWorkerBuild(
+  worker: { postMessage(message: unknown, transfer: MessagePort[]): void },
+  timeoutMs: number = BUILD_ANSWER_MS,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const settle = (answer: string | null) => {
+      clearTimeout(timer);
+      channel.port1.close();
+      resolve(answer);
+    };
+    const timer = setTimeout(() => settle(null), timeoutMs);
+    channel.port1.onmessage = (event: MessageEvent) => settle(typeof event.data === "string" ? event.data : null);
+    worker.postMessage(WHICH_BUILD, [channel.port2]);
+  });
+}
+
+/**
  * Registers the service worker and follows it: a new worker taking over, or one waiting, raises
  * the notice; and coming back into view or into focus asks the server for a newer worker — an
  * installed PWA has no reload button, and without this it would only look again on the next cold
  * start. A check that fails (offline) is dropped: the next one asks again.
  *
  * Whether the page was loaded under a worker is read twice: from `controller`, and again from
- * the registration, which is the only thing that still says so after a forced reload (#235).
+ * the registration, which is the only thing that still says so after a forced reload (#235) —
+ * and then only once that worker says it serves another build than `build` (#259).
  */
 export function watchForNewVersion({
+  build,
+  askWorkerBuild: ask,
   serviceWorker,
   registerSW,
   document,
   window,
 }: {
+  build: string;
+  askWorkerBuild: (worker: ServiceWorker) => Promise<string | null>;
   serviceWorker: { controller: object | null; addEventListener(type: "controllerchange", listener: () => void): void } | undefined;
   registerSW: (options: RegisterSWOptions) => void;
   document: { visibilityState: DocumentVisibilityState; addEventListener(type: "visibilitychange", listener: () => void): void };
@@ -89,21 +133,21 @@ export function watchForNewVersion({
     // Without it, registerSW answers the takeover that follows a waiting worker with
     // window.location.reload() — the reload in the middle of a draft this notice replaces.
     onNeedReload: () => notice.report("waiting"),
-    onRegisteredSW: (_url, registration) => {
-      // A forced reload (Shift+Reload, DevTools "Bypass for network") leaves `controller` null
-      // by spec, whatever is installed — and sw.ts claims the page, so the `waiting` path never
-      // runs either. An active worker at registration time is the one that was already here.
-      //
-      // It cannot tell that worker apart from one this very visit installed, so a second tab
-      // opened moments after a first visit may be offered a version it already runs. Erring
-      // that way costs a reload nobody needed; erring the other way leaves the old shell in
-      // place against new assets, which is what #235 is.
-      if (registration?.active) notice.foundWorkerFromBefore();
+    onRegisteredSW: async (_url, registration) => {
       const check = () => void registration?.update().catch(() => {});
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") check();
       });
       window.addEventListener("focus", check);
+
+      // A forced reload (Shift+Reload, DevTools "Bypass for network") leaves `controller` null
+      // by spec, whatever is installed — and sw.ts claims the page, so the `waiting` path never
+      // runs either. An active worker at registration time may be the one that was already
+      // here (#235) — or the one this very visit installed, which a second tab opened moments
+      // after the first finds just the same. Only the worker can say which: it is asked for the
+      // build it serves, and only another build is news (#259).
+      const active = registration?.active;
+      if (active && !servesThisBuild(await ask(active), build)) notice.foundWorkerFromBefore();
     },
   });
   return notice;

@@ -2,6 +2,9 @@
 import { precacheAndRoute } from "workbox-precaching";
 
 declare const self: ServiceWorkerGlobalScope;
+/** Which build this worker was made from — `define` in vite.config.ts, the same value the page
+ * carries. */
+declare const __STUDIO_BUILD__: string;
 
 // App shell (issue #8): precache the build's own JS/CSS/HTML so the app still opens offline.
 // self.__WB_MANIFEST is injected by vite-plugin-pwa's injectManifest strategy at build time.
@@ -18,4 +21,11 @@ self.addEventListener("install", () => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+// A page that finds this worker already active asks which build it serves, to tell a worker
+// from an older deploy apart from one its own visit just installed (#259, lib/appUpdate.ts).
+// Answered on the port the page sent, so nothing else it hears can be mistaken for the answer.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "studio:which-build") event.ports[0]?.postMessage(__STUDIO_BUILD__);
 });
