@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Which build this is — `define` in vite.config.ts, the same value sw.ts carries (#259). */
+declare const __STUDIO_BUILD__: string;
