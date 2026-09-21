@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { stubWindow, type KeyPress } from "../../lib/testing/window";
+import { stubWindowListeners, type KeyPress } from "../../lib/testing/window";
 import { listenForEscape } from "./useEscape";
 
 type Listener = (event: KeyPress) => void;
@@ -15,7 +15,7 @@ afterEach(() => {
 
 /** Only the two calls this hook makes. */
 const attachWindow = () => {
-  restoreWindow = stubWindow({
+  restoreWindow = stubWindowListeners({
     addEventListener: (type, listener) => {
       listeners.set(listener, type);
     },

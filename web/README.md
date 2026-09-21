@@ -20,7 +20,8 @@ bun run build    # typecheck + production build
 bun run lint
 bun test         # unit tests over src and tools: the framework-free logic (identity, backup
                  # crypto, routing, auth error mapping, channel event builders/grouping, relay
-                 # client reconnection) plus a few components rendered with renderToStaticMarkup
+                 # client reconnection) and the component tests — one command, one runner,
+                 # see "Component tests" below
 bun run test:e2e # Playwright flows 1, 2, 3 & 5 — needs STUDIO_TEST_* env, see scripts/ops/seed-e2e-test-account.sh
 bun run test:visual      # flow 10: the MVP screens over preview.html against their baselines (docs/UI/REFERENCE.md)
 bun tools/seed-fixtures.ts # flow 11's Channel, thread and Direct Message on studio-test (#157); CD runs it
@@ -35,6 +36,36 @@ fixed, signed fixtures and a relay that answers from them (`src/preview/`): no W
 Firebase needed. `?screen=channel|channel-thread|channel-members|dm|settings|auth-signin|onboarding-backup…`,
 plus `theme`, `density` and `fontScale`. It is what flow 10 compares and what anyone checking a
 screen against `docs/UI/reference` opens.
+
+## Component tests
+
+`bun test` renders React in a DOM: **happy-dom** through `@happy-dom/global-registrator`, with
+`@testing-library/react` and `@testing-library/user-event` for the queries and the clicks. No
+second runner and no second command — `bunfig.toml` preloads `src/lib/testing/dom.ts` for the
+whole run, and a `*.test.tsx` next to the component is picked up like any other test.
+
+**Write a component test for the WIRING, never for the decision.** The decision lives in
+`src/lib/` — a pure function with its own test and no DOM. What the harness is for is what only
+exists between modules: that a component hands the right thing to the right module, that what
+comes back reaches the screen, and that a browser API failing is handled where reading the code
+was the only proof before. Two examples ship with it: an invite code surviving the trip from
+the URL (`App.tsx`) to the onboarding step that redeems it (`App.test.tsx`, #46), and the admin
+console's "Copy link" against a clipboard that refuses (`AdminPane.test.tsx`).
+
+**When to write E2E instead.** A Playwright flow costs a deploy and runs against `studio-test`,
+so it earns its place only where a real server, a real relay or a real browser is the point:
+authorization the API enforces, the service worker, custody under a NIP-07 extension, what a
+screen looks like. If a fake relay and a stubbed `api` module would prove the same thing, it is
+a component test. See `docs/delivery-gates.md` for what the smoke already covers.
+
+What the harness sets up, and why each piece is there, is written in `src/lib/testing/dom.ts`.
+Two rules that bite:
+
+- **`spyOn` patches a module namespace for the whole process.** Restore it (`mock.restore()` in
+  an `afterEach`) or it answers the next file's tests, in an order that differs in CI.
+- **Never replace a global the DOM owns.** `globalThis.window = …` used to be how a test faked
+  a NIP-07 extension; with a DOM in the process it leaves every later file without a window.
+  Put the stub *on* the window — `stubNostr` in `src/lib/testing/window.ts`.
 
 ## Layout
 

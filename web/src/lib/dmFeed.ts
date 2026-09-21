@@ -125,7 +125,16 @@ export class DmFeed {
     const page = new Map<string, VerifiedEvent>();
     const unwrapping: Promise<void>[] = [];
     this.loadingOlder = true;
+    /** The page has settled — by its EOSE and unwrapping, or by its deadline. Whichever got
+     * here first is the only one that settles it. */
     let finished = false;
+    /** The REQ answered. The page is not over yet: its wraps still have to open. */
+    let eosed = false;
+    const settle = () => {
+      this.loadingOlder = false;
+      this.pagesSettled += 1;
+      this.emit();
+    };
     const unsubscribe = this.client.subscribe(olderDmFilters(this.ownPubkey, this.paged, [...this.wraps.values()]), {
       onEvent: (wrap) => {
         if (page.has(wrap.id)) return;
@@ -134,42 +143,45 @@ export class DmFeed {
         unwrapping.push(this.apply(wrap));
       },
       onEose: () => {
-        if (finished) return;
-        finished = true;
+        if (finished || eosed) return;
+        eosed = true;
         this.closeOlder?.();
-        this.cancelDeadline?.();
-        this.closeOlder = this.cancelDeadline = null;
+        this.closeOlder = null;
         void Promise.all(unwrapping).then(() => {
+          // The deadline may have settled the page while a wrap was still open.
+          if (finished) return;
+          finished = true;
+          // Before touching anything on the feed: this settles a microtask later than the EOSE
+          // that scheduled it, and by then a stop/start may have put another page in flight.
+          // `cancelDeadline` is the feed's, not the page's — cancelling it here would leave the
+          // new page with nothing to free it, which is the freeze this deadline exists to cure.
           if (run !== this.run) return;
+          this.cancelDeadline?.();
+          this.cancelDeadline = null;
           if (isLastDmPage(knownIds, [...page.values()])) {
             this.hasMore = false;
             this.exhausted = true;
           }
-          this.loadingOlder = false;
-          this.pagesSettled += 1;
-          this.emit();
+          settle();
           this.backfill();
         });
       },
     });
-    // A relay that answers within subscribe() has already finished the page.
-    if (finished) {
-      unsubscribe();
-      return;
-    }
-    this.closeOlder = unsubscribe;
-    // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
-    // did bring stays, and how much history is left is still unknown (#232). The deadline covers
-    // the REQ, which is what a reconnect drops; unwrapping afterwards is the signer's own work,
-    // and `apply` already swallows a wrap that refuses to open.
+    // A relay that answers within subscribe() has already closed the page's REQ — but not its
+    // unwrapping, so the deadline below is still owed.
+    if (eosed) unsubscribe();
+    else this.closeOlder = unsubscribe;
+    // A page that never settles frees the paging instead of blocking it forever: what it did
+    // bring stays, and how much history is left is still unknown (#232). The deadline covers the
+    // unwrapping too, not only the REQ (#268): `apply` swallows a wrap that refuses to open, but
+    // a signer that never answers at all leaves the promise pending, and `Promise.all` with it —
+    // which is what a NIP-07 extension that stops cooperating does.
     this.cancelDeadline = this.schedule(() => {
       if (finished) return;
       finished = true;
       this.closeOlder?.();
       this.closeOlder = this.cancelDeadline = null;
-      this.loadingOlder = false;
-      this.pagesSettled += 1;
-      this.emit();
+      settle();
     }, PAGE_DEADLINE_MS);
   };
 
