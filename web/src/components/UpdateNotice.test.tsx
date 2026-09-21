@@ -7,12 +7,12 @@ import { UpdateNotice } from "./UpdateNotice";
  * status line with a Reload the person chooses to press. */
 describe("UpdateNotice", () => {
   test("renders nothing while the page is the current version", () => {
-    expect(renderToStaticMarkup(<UpdateNotice notice={createUpdateNotice(true)} />)).toBe("");
+    expect(renderToStaticMarkup(<UpdateNotice notice={createUpdateNotice()} />)).toBe("");
   });
 
   test("says a new version is available, with a Reload button", () => {
-    const notice = createUpdateNotice(true);
-    notice.report("waiting");
+    const notice = createUpdateNotice();
+    notice.report();
     const html = renderToStaticMarkup(<UpdateNotice notice={notice} />);
     expect(html).toContain('role="status"');
     expect(html).toContain("A new version of Studio is available.");
