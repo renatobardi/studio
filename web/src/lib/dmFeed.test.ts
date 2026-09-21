@@ -335,6 +335,81 @@ describe("DmFeed against a relay that answers later", () => {
     expect(relay.subscriptions[1]!.open).toBe(false);
   });
 
+  test("a page whose unwrapping never settles frees the paging once its deadline passes", async () => {
+    // Under NIP-07 custody an extension that simply does not answer leaves the unwrap pending
+    // forever — it never rejects, so `apply`'s swallow never runs. The deadline had already
+    // been cancelled by the EOSE, so `loadingOlder` and `pages` froze for the session, and
+    // both "Load older" and a conversation waiting on pages waited forever (#268).
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const { unwrapLater, release } = heldUnwrap();
+    const feed = new DmFeed(relay, ME, unwrapLater, () => NOW, timers.schedule);
+    feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    release();
+    await flush();
+
+    feed.loadOlder();
+    relay.answer(1, history(DM_PAGE_SIZE, NOW - 400 * DAY, 60, "o")); // EOSE, unwrapping held
+    await flush();
+    expect(timers.scheduled).toBe(1);
+
+    timers.fire(PAGE_DEADLINE_MS);
+    await flush();
+
+    expect(feed.getSnapshot().pages).toBe(1);
+    // An overrun says nothing about how much history is left.
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    feed.loadOlder();
+    expect(relay.subscriptions).toHaveLength(3);
+  });
+
+  test("a relay that answers inside subscribe() leaves no deadline behind either", async () => {
+    // That branch used to return before scheduling anything. Its unwrapping is still owed a
+    // deadline (#268), so the page now takes one — and has to give it back when it settles.
+    const timers = new FakeTimers();
+    const relay = new FakeRelay([
+      ...history(DM_PAGE_SIZE, NOW - 365 * DAY, 60),
+      ...history(DM_PAGE_SIZE, NOW - 400 * DAY, 60, "o"),
+    ]);
+    const feed = new DmFeed(relay, ME, unwrap, () => NOW, timers.schedule);
+    feed.start();
+    await flush();
+
+    feed.loadOlder();
+    await flush();
+
+    expect(timers.scheduled).toBe(0);
+  });
+
+  test("a page that settles after a stop leaves the next page's deadline alone", async () => {
+    // The page settles a microtask after its EOSE, and by then a stop/start may have put
+    // another page in flight. `cancelDeadline` is the feed's, not the page's: taking it here
+    // would leave the new page with nothing to free it — the very freeze this deadline cures.
+    const timers = new FakeTimers();
+    const relay = new ManualRelay();
+    const { unwrapLater, release } = heldUnwrap();
+    const feed = new DmFeed(relay, ME, unwrapLater, () => NOW, timers.schedule);
+    const stop = feed.start();
+    relay.answer(0, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    release();
+    await flush();
+
+    feed.loadOlder();
+    relay.answer(1, history(DM_PAGE_SIZE, NOW - 400 * DAY, 60, "o")); // EOSE, unwrapping held
+    stop();
+    feed.start();
+    relay.answer(2, history(DM_PAGE_SIZE, NOW - 365 * DAY, 60));
+    await flush();
+    feed.loadOlder();
+    expect(timers.scheduled).toBe(1);
+
+    release(); // the abandoned page's wraps open at last
+    await flush();
+
+    expect(timers.scheduled).toBe(1);
+  });
+
   test("stopping takes the deadline with it", async () => {
     const timers = new FakeTimers();
     const relay = new ManualRelay();
