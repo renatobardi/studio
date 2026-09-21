@@ -97,6 +97,9 @@ keeps accepting connections and answering REQs with history (issue #93).
   WebSocket connections are never dropped: a client that stayed connected
   keeps its subscriptions and starts receiving live events again, with no
   reconnection storm against the relay.
+- A live query that dies while the connection still answers is put back the
+  same way: what triggers recovery is the fan-out reporting itself down, not
+  the shape of what took it down.
 - Events published while the database is down are refused — the publish
   fails and the client is told, rather than the event being silently lost.
   Recovery does not replay anything: it puts delivery back, it does not go

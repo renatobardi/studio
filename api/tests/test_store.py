@@ -564,3 +564,104 @@ class TestLiveDeliveryRecovery:
             assert fanout.failure is not None
         finally:
             await fanout.stop()
+
+    async def test_a_connection_taken_at_startup_follows_the_replacement(
+        self, store: EventStore, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # What the control plane and media both did at startup: they hold this
+        # handle, not a connection of their own (main.py).
+        held_at_startup = store.raw
+        fanout = await store.start_live_fanout(heartbeat_seconds=0.05)
+        try:
+            with caplog.at_level(logging.INFO):
+                await store.raw.socket.close()
+                await wait_until(
+                    lambda: "live event delivery recovered" in caplog.text, timeout=10
+                )
+
+            assert await held_at_startup.query("RETURN 1") is not None
+        finally:
+            await fanout.stop()
+
+    async def test_a_live_query_that_dies_on_a_healthy_connection_is_registered_again(
+        self,
+    ) -> None:
+        db = _LiveQueryThatEndsOnce()
+
+        async def recover() -> object:
+            return "live-2"
+
+        fanout = LiveFanout(db, "live-1", recover=recover, heartbeat_seconds=0.05)
+        fanout.start_consuming()
+        try:
+            await wait_until(lambda: fanout.failure is not None, timeout=5)
+
+            # The database answers all along — only the live query died, and
+            # that leaves delivery just as dead (ticket #52's failure signal).
+            await wait_until(lambda: fanout.failure is None, timeout=10)
+        finally:
+            await fanout.stop()
+
+    async def test_stopping_while_the_consumer_is_being_replaced_still_returns(
+        self,
+    ) -> None:
+        db = _SlowToTearDown()
+
+        async def recover() -> object:
+            return "live-2"
+
+        fanout = LiveFanout(db, "live-1", recover=recover, heartbeat_seconds=0.05)
+        fanout.start_consuming()
+        await asyncio.wait_for(db.tearing_down.wait(), timeout=5)
+
+        # Cancelled mid-replacement, the heartbeat has to take the cancellation
+        # for itself instead of reading it as the old consumer's — or shutdown
+        # waits on it forever.
+        await asyncio.wait_for(fanout.stop(), timeout=5)
+
+
+class _LiveQueryThatEndsOnce:
+    """A database that keeps answering while its live query ends on its own —
+    the connection is fine, delivery is not."""
+
+    def __init__(self) -> None:
+        self._streams = 0
+
+    async def query(self, surql: str, params: dict[str, object] | None = None) -> None:
+        """Answers all along: this connection never died."""
+
+    async def subscribe_live(self, live_id: object) -> AsyncIterator[dict[str, object]]:
+        self._streams += 1
+        return _exhausted_stream() if self._streams == 1 else _hanging_stream()
+
+    async def kill(self, live_id: object) -> None:
+        """Nothing to do — the live query it names is already over."""
+
+
+class _SlowToTearDown:
+    """A database whose live stream takes a moment to unwind when cancelled —
+    the window in which `stop()` and the consumer's replacement overlap."""
+
+    def __init__(self) -> None:
+        self.tearing_down = asyncio.Event()
+        self._streams = 0
+
+    async def query(self, surql: str, params: dict[str, object] | None = None) -> None:
+        if self._streams == 1:
+            raise ConnectionError("socket closed")
+
+    async def subscribe_live(self, live_id: object) -> AsyncIterator[dict[str, object]]:
+        self._streams += 1
+        return self._stream()
+
+    async def _stream(self) -> AsyncIterator[dict[str, object]]:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.tearing_down.set()
+            await asyncio.sleep(0.2)
+            raise
+        yield {}  # pragma: no cover — never reached; makes this an async generator
+
+    async def kill(self, live_id: object) -> None:
+        """Nothing to do — this fake never registered one."""

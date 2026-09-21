@@ -187,7 +187,16 @@ class _Connection:
         self._reopen = reopen
 
     async def reopen(self) -> None:
-        self._db = await self._reopen()
+        """Swap in a new connection and let the dead one go. Closing it is
+        best effort: it is being replaced precisely because it no longer
+        answers, but a connection that is merely stale would otherwise leave
+        its socket and receive task behind on every attempt."""
+        replaced, self._db = self._db, await self._reopen()
+        try:
+            await replaced.close()
+        # broad: it is already gone, which is why it is being replaced
+        except Exception as error:  # noqa: BLE001
+            logger.debug("closing the replaced connection failed", extra={"reason": type(error).__name__})
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._db, name)
@@ -265,9 +274,14 @@ class LiveFanout:
             # broad: any failed round trip means the connection is gone
             except Exception as error:  # noqa: BLE001
                 self._record_failure(type(error).__name__)
-                await self._reopen()
+            # Either the round trip just failed, or the consumer recorded a
+            # failure of its own on a connection that still answers — the live
+            # query died without taking the socket with it. Both leave delivery
+            # dead and both are put right the same way.
+            if self._failure is not None:
+                await self._recover_loop()
 
-    async def _reopen(self) -> None:
+    async def _recover_loop(self) -> None:
         """Keep trying to get live delivery back, backing off while the
         database stays away. Readiness answers 503 for the whole of it, so a
         deployment that never recovers is still visible from the outside — and
@@ -280,7 +294,13 @@ class LiveFanout:
             except asyncio.CancelledError:
                 raise
             # broad: the database is still down, whatever the driver calls it
-            except Exception:  # noqa: BLE001
+            except Exception as error:  # noqa: BLE001
+                logger.warning(
+                    "live event delivery is still down",
+                    # The category, never the driver's message: it carries the
+                    # connection string, and with it the database password.
+                    extra={"reason": type(error).__name__, "retry_in_seconds": delay},
+                )
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, MAX_RECONNECT_BACKOFF_SECONDS)
                 continue
@@ -296,10 +316,10 @@ class LiveFanout:
         which is what lets a client that stayed connected keep receiving."""
         if self._task is not None:
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            # gather(), not a bare await: awaiting the cancelled consumer
+            # directly would also swallow a cancellation aimed at *this* task,
+            # and stop() would then wait forever on a heartbeat that carried on.
+            await asyncio.gather(self._task, return_exceptions=True)
         self._live_id = live_id
         self._task = asyncio.create_task(self._consume())
 
@@ -371,8 +391,11 @@ class LiveFanout:
         # Shutting down while the database is unreachable: the live query is
         # already gone with the connection, so there is nothing to kill and
         # nothing for shutdown to do about it (ticket #93).
-        except Exception:  # noqa: BLE001
-            logger.debug("could not kill the live query on shutdown")
+        except Exception as error:  # noqa: BLE001
+            logger.warning(
+                "could not kill the live query on shutdown",
+                extra={"reason": type(error).__name__},
+            )
 
 
 class EventStore:
@@ -500,7 +523,13 @@ class EventStore:
             """A working connection and a live query on it again. Raises while
             the database is still unreachable, for the fan-out to back off on
             (ticket #93)."""
-            await self._db.reopen()
+            try:
+                await self._db.query("RETURN 1")
+            # broad: whatever the driver calls it, this connection is done —
+            # only then is it replaced, so a live query that died on its own
+            # costs a re-registration and not a new socket.
+            except Exception:  # noqa: BLE001
+                await self._db.reopen()
             return await self._db.live("event")
 
         live_id = await self._db.live("event")
