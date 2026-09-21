@@ -47,6 +47,10 @@ export class ChannelFeed {
   private loadingOlder = false;
   /** Cancels the in-flight page's deadline — nothing is owed once it has answered. */
   private cancelDeadline: (() => void) | null = null;
+  /** Closes the page in flight — held on the feed, not in the closure, because the teardown has
+   * to reach it: a page left open is re-issued by every reconnect, and the `loadingOlder` it
+   * holds would outlive the start() that set it (#267). */
+  private closeOlder: (() => void) | null = null;
   private readonly coveredRoots = new Set<string>();
   private readonly pendingRootFetches = new Set<() => void>();
   private readonly disposers: (() => void)[] = [];
@@ -95,8 +99,10 @@ export class ChannelFeed {
     // which under StrictMode outlives a start()/dispose() pair.
     return () => {
       for (const dispose of this.disposers.splice(0)) dispose();
+      this.closeOlder?.();
       this.cancelDeadline?.();
-      this.cancelDeadline = null;
+      this.closeOlder = this.cancelDeadline = null;
+      this.loadingOlder = false;
       for (const close of this.pendingRootFetches) close();
       this.pendingRootFetches.clear();
       this.coveredRoots.clear();
@@ -113,28 +119,31 @@ export class ChannelFeed {
     const knownIds = new Set(this.messages.keys());
     const page: VerifiedEvent[] = [];
     this.loadingOlder = true;
-    let unsubscribe: (() => void) | null = null;
     let finished = false;
-    unsubscribe = this.client.subscribe(filters, {
+    const unsubscribe = this.client.subscribe(filters, {
       onEvent: (event) => {
         page.push(event);
         this.apply(event);
       },
       onEose: () => {
+        // A reconnect re-issues the REQ, and its EOSE is not a second answer to this page.
+        if (finished) return;
+        finished = true;
         if (isEndOfHistory(knownIds, page)) this.hasMore = false;
         this.coverRoots(page);
         this.loadingOlder = false;
-        finished = true;
+        this.closeOlder?.();
         this.cancelDeadline?.();
-        this.cancelDeadline = null;
-        unsubscribe?.();
+        this.closeOlder = this.cancelDeadline = null;
         this.emit();
       },
     });
+    // A relay that answers within subscribe() has already finished the page.
     if (finished) {
       unsubscribe();
       return;
     }
+    this.closeOlder = unsubscribe;
     // A page whose EOSE never arrives frees the paging instead of blocking it forever: what it
     // did bring stays, and how much history is left is still unknown (#232).
     this.cancelDeadline = this.schedule(() => {
@@ -143,7 +152,8 @@ export class ChannelFeed {
       // Whatever the page did bring stays, so its roots still need their companions.
       this.coverRoots(page);
       this.loadingOlder = false;
-      unsubscribe?.();
+      this.closeOlder?.();
+      this.closeOlder = this.cancelDeadline = null;
       this.emit();
     }, PAGE_DEADLINE_MS);
   }
