@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools";
 import { generateIdentity } from "./identity";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
-import { pruneMediaCaches } from "./mediaCache";
+import { mediaCacheName, pruneMediaCaches } from "./mediaCache";
 import { stubControllableFetch } from "./testing/controllableFetch";
 import {
   MAX_UPLOAD_BYTES,
@@ -230,5 +230,23 @@ describe("fetchBlobObjectUrl", () => {
     await pending;
 
     expect(Object.keys(stores)).toEqual([]);
+  });
+
+  test("and when that cleanup cannot remove the cache, the download says so", async () => {
+    // #258: the caller's half of the contract. cacheBlob forgives a full quota and no longer
+    // forgives a cleanup that failed, so this rejects — loadAttachment turns it into the
+    // message under the photo, instead of showing one while the Identity that left keeps its
+    // bytes on this device.
+    const secretKey = generateIdentity().secretKey;
+    stubCaches().failDeleteOf(mediaCacheName(getPublicKey(secretKey)));
+    const signer = signerFor(secretKey);
+    const fetchControl = stubControllableFetch();
+
+    const pending = fetchBlobObjectUrl(url, hash, signer);
+    await fetchControl.started;
+    await pruneMediaCaches(null);
+    fetchControl.resolve(new Response(bytes.buffer as ArrayBuffer, { status: 200, headers: { "content-type": "image/png" } }));
+
+    await expect(pending).rejects.toThrow(/cached media/i);
   });
 });

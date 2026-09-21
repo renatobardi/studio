@@ -70,10 +70,14 @@ test("an extension without NIP-44 is turned away before anything is joined", asy
 test("first access with an extension onboards on the extension's own Identity", async ({ page }) => {
   const fake = await installFakeNip07(page, { privateKeyHex: testExtensionAccount.privateKeyHex() });
 
-  test.slow(); // opensOnShell waits out the resume before it can call this onboarding
-  // Onboarding is a one-time state for any Account: once this one has linked
-  // the extension's Identity, only the resume flow below is left to assert.
-  test.skip(await opensOnShell(page), "this Account already onboarded — re-seed to exercise first access");
+  test.slow(); // the whole onboarding, against a deployment, now runs on every smoke
+  // Onboarding is a one-time state for any Account, so CD deletes this one and
+  // creates it again before every smoke (`studio_api.ensure_e2e_accounts`): the
+  // extension's key is the same one every run, and what is new is the Account
+  // that has never linked it (#129). No resume to wait out — an Account with no
+  // Identity on file has no Workspace to be resumed into.
+  await signIn(page, credentials());
+  await expect(page.getByRole("heading", { name: "Join your community" })).toBeVisible({ timeout: 15_000 });
 
   await redeemInviteOnOnboarding(page, testInviteCode());
 
