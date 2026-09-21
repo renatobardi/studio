@@ -2,26 +2,16 @@
  * a DOM class bun has no constructor for, so a test could not make one to fire. */
 export type KeyPress = Pick<KeyboardEvent, "key">;
 
-/** The two calls a window-level listener makes, and nothing else. Function properties rather
- * than methods, so a listener reading more of the event than `KeyPress` carries is a type error
- * here instead of a test that passes and a page that does not. */
-export interface WindowListeners {
-  addEventListener: (type: string, listener: (event: KeyPress) => void) => void;
-  removeEventListener: (type: string, listener: (event: KeyPress) => void) => void;
-}
-
 /**
- * Puts `listeners` in front of the global `window` for a test, and hands back the call that
- * takes it away again.
+ * Puts a NIP-07 extension — or, with `undefined`, none — on the window, and hands back the call
+ * that takes it away.
  *
- * `Window & typeof globalThis` is far more than any test stands in for, so the one cast that
- * says so lives here rather than in each test, where it would also have excused the stub's own
- * shape (#238).
+ * On `window`, never in place of it: since #94 a real `window` exists for the whole run, and a
+ * test that replaced it left every later file in the process without one.
  */
-export function stubWindow(listeners: WindowListeners): () => void {
-  globalThis.window = listeners as Window & typeof globalThis;
+export function stubNostr(nostr: unknown): () => void {
+  Object.defineProperty(window, "nostr", { value: nostr, configurable: true, writable: true });
   return () => {
-    // @ts-expect-error test-only cleanup of the global stubbed just above
-    delete globalThis.window;
+    delete (window as { nostr?: unknown }).nostr;
   };
 }

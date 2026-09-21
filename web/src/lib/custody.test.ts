@@ -26,44 +26,35 @@ import {
 import { mediaDownloads } from "./mediaDownloads";
 import { cacheBlob, mediaCacheEpoch, mediaCacheName } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
+import { stubNostr } from "./testing/window";
 
 describe("hasNip07", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of a global we stub below
-    delete globalThis.window;
-  });
+  afterEach(() => stubNostr(undefined)());
 
   test("false when window.nostr is absent", () => {
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = {};
+    stubNostr(undefined)();
     expect(hasNip07()).toBe(false);
   });
 
   test("false when window.nostr is present but null or undefined", () => {
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = { nostr: null };
+    stubNostr(null);
     expect(hasNip07()).toBe(false);
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = { nostr: undefined };
+    stubNostr(undefined);
     expect(hasNip07()).toBe(false);
   });
 
   test("true when window.nostr is present", () => {
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = { nostr: {} };
+    stubNostr({});
     expect(hasNip07()).toBe(true);
   });
 });
 
 describe("extensionSupportsNip44", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of a global we stub below
-    delete globalThis.window;
-  });
+  afterEach(() => stubNostr(undefined)());
 
   const stub = (nostr?: unknown) => {
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = nostr === undefined ? {} : { nostr };
+    if (nostr === undefined) stubNostr(undefined)();
+    else stubNostr(nostr);
   };
 
   test("false with no extension at all", () => {
@@ -116,14 +107,10 @@ describe("the Direct message read marks", () => {
 });
 
 describe("loadIdentityNsec", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of a global we stub below
-    delete globalThis.window;
-  });
+  afterEach(() => stubNostr(undefined)());
 
   test("is undefined under a NIP-07 extension, without going near local storage", async () => {
-    // @ts-expect-error minimal window stub for this check
-    globalThis.window = { nostr: {} };
+    stubNostr({});
     expect(await loadIdentityNsec()).toBeUndefined();
   });
 });

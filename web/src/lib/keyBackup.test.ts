@@ -20,6 +20,7 @@ import {
   storeKeyBackup,
   verifyKeyBackup,
 } from "./keyBackup";
+import { stubNostr } from "./testing/window";
 
 const secretKey = generateSecretKey();
 const nsec = nip19.nsecEncode(secretKey);
@@ -87,14 +88,10 @@ describe("newBackupPassphraseProblem", () => {
 });
 
 describe("createKeyBackup", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of the extension stub below
-    delete globalThis.window;
-  });
+  afterEach(() => stubNostr(undefined)());
 
   test("is null under a NIP-07 extension, which never hands the key over", async () => {
-    // @ts-expect-error minimal window stub for the custody check
-    globalThis.window = { nostr: {} };
+    stubNostr({});
     expect(await createKeyBackup("correct horse")).toBeNull();
   });
 });
@@ -284,10 +281,7 @@ describe("confirmKeyBackup", () => {
 
 /** The create step the dialog runs, and the busy/error reporting around either step. */
 describe("requestKeyBackup", () => {
-  afterEach(() => {
-    // @ts-expect-error test-only cleanup of the extension stub below
-    delete globalThis.window;
-  });
+  afterEach(() => stubNostr(undefined)());
 
   test("refuses before touching the key when the passphrase breaks a rule", async () => {
     const created: Uint8Array[] = [];
@@ -321,8 +315,7 @@ describe("requestKeyBackup", () => {
   });
 
   test("says there is nothing to back up when the key is the extension's", async () => {
-    // @ts-expect-error minimal window stub for the custody check
-    globalThis.window = { nostr: {} };
+    stubNostr({});
     const problem = await requestKeyBackup({
       passphrase: "correct horse",
       confirm: "correct horse",

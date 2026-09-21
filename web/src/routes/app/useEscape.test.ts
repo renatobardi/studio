@@ -1,28 +1,25 @@
-import { afterEach, expect, test } from "bun:test";
-import { stubWindow, type KeyPress } from "../../lib/testing/window";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import type { KeyPress } from "../../lib/testing/window";
 import { listenForEscape } from "./useEscape";
 
 type Listener = (event: KeyPress) => void;
 
 const listeners = new Map<Listener, string>();
-let restoreWindow: (() => void) | null = null;
 
 afterEach(() => {
   listeners.clear();
-  restoreWindow?.();
-  restoreWindow = null;
+  mock.restore();
 });
 
-/** Only the two calls this hook makes. */
+/** Only the two calls this hook makes, on the window the harness provides (#94) — what is
+ * asserted is that the hook attaches and detaches, not what the browser does with it. */
 const attachWindow = () => {
-  restoreWindow = stubWindow({
-    addEventListener: (type, listener) => {
-      listeners.set(listener, type);
-    },
-    removeEventListener: (_type, listener) => {
-      listeners.delete(listener);
-    },
-  });
+  spyOn(window, "addEventListener").mockImplementation(((type: string, listener: Listener) => {
+    listeners.set(listener, type);
+  }) as typeof window.addEventListener);
+  spyOn(window, "removeEventListener").mockImplementation(((_type: string, listener: Listener) => {
+    listeners.delete(listener);
+  }) as typeof window.removeEventListener);
 };
 
 const fire = (key: string) => {
