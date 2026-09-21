@@ -83,9 +83,10 @@ first promotion.
 1. The commit is on `main`, CI passed, and CD's `deploy-dev` deployed it to
    `studio-test` and its Playwright smoke passed.
 2. Actions → **Promote** → Run workflow, `sha` = that full SHA.
-3. `gate` refuses the SHA unless a `deploy-dev` job succeeded on exactly it.
-   A CD run's own conclusion is not enough: it is green when `deploy-dev`
-   stood down for a superseded SHA.
+3. `gate` refuses the SHA unless the smoke step inside a successful
+   `deploy-dev` succeeded on exactly it. Neither the CD run's conclusion nor
+   `deploy-dev`'s own is enough: both are green when the deploy stood down for
+   a superseded SHA (#253).
 4. `deploy-prd` waits for the Environment's approval, checks out the SHA
    detached in `/opt/app`, rebuilds, and fails unless `git rev-parse HEAD` is
    that SHA. The job summary records the SHA it replaced.
