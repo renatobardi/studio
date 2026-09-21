@@ -20,4 +20,7 @@ __pycache__/
 
 # Coverage reports, produced by CI for the Sonar scan (#76) — never committed.
 api/coverage/
+# pytest --cov writes this next to the package it measured, not into the
+# directory above; uncommitted either way.
+api/.coverage
 web/coverage/
