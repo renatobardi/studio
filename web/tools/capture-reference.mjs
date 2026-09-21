@@ -23,6 +23,13 @@ const VIEWPORTS = {
 };
 
 const ACCOUNT = { email: "renato@studio.app", provider: "password" };
+
+/** @typedef {Record<string, unknown>} PrototypeState the component state the prototype renders from */
+
+/**
+ * @param {string} step
+ * @param {PrototypeState} [extra]
+ */
 const onboarding = (step, extra = {}) => ({
   view: "onboarding",
   onboardingStep: step,
@@ -36,6 +43,10 @@ const onboarding = (step, extra = {}) => ({
   onboardingPolicyError: null,
   ...extra,
 });
+/**
+ * @param {string} authStep
+ * @param {PrototypeState} [extra]
+ */
 const auth = (authStep, extra = {}) => ({
   view: "auth",
   authStep,
@@ -48,6 +59,7 @@ const auth = (authStep, extra = {}) => ({
   authResent: false,
   ...extra,
 });
+/** @param {PrototypeState} [extra] */
 const channel = (extra = {}) => ({
   view: "channel",
   channelId: "eng-platform",
@@ -57,8 +69,18 @@ const channel = (extra = {}) => ({
   ...extra,
 });
 
+/**
+ * One screen of the matrix: the state that reaches it, what to do once it is up, and which
+ * captures it has — mobile, and (on desktop) dark.
+ *
+ * @typedef {{ id: string, state: PrototypeState, after?: keyof typeof AFTER, mobile?: boolean, dark?: boolean }} MatrixEntry
+ */
+
 /** The matrix. `after` runs in the page once the state is applied (a click the state alone
- * cannot express). `mobile: true` states are captured at both viewports. */
+ * cannot express). `mobile: true` states are captured at both viewports.
+ *
+ * @type {MatrixEntry[]}
+ */
 const MATRIX = [
   { id: "auth-signin", state: auth("signin"), mobile: true, dark: true },
   { id: "auth-signin-error", state: auth("signin", { authError: "That email and password don’t match an account.", authErrorCode: "auth/invalid-credential" }) },
@@ -86,12 +108,19 @@ const MATRIX = [
   { id: "settings-profile", state: { view: "settings", settingsSection: "profile" } },
 ];
 
+/** @type {Record<string, string>} */
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".json": "application/json" };
 
+/**
+ * @param {string} dir
+ * @returns {Promise<{ server: import("node:http").Server, port: number }>}
+ */
 function serve(dir) {
   return new Promise((ok) => {
     const server = createServer(async (req, res) => {
-      const path = normalize(decodeURIComponent(new URL(req.url, "https://x").pathname));
+      // Always set on a request an http.Server hands its handler; the type also covers the
+      // client side, where it is not.
+      const path = normalize(decodeURIComponent(new URL(req.url ?? "/", "https://x").pathname));
       const file = join(dir, path);
       if (!file.startsWith(dir)) { res.writeHead(403); return res.end(); }
       try {
@@ -103,18 +132,26 @@ function serve(dir) {
         res.end();
       }
     });
-    server.listen(0, "127.0.0.1", () => ok({ server, port: server.address().port }));
+    server.listen(0, "127.0.0.1", () => {
+      // A string is a pipe's address and null a server not listening — neither can happen after
+      // listening on a TCP port, but saying so is what lets the port be read without a cast.
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error(`expected a TCP address, got ${address}`);
+      ok({ server, port: address.port });
+    });
   });
 }
 
 // The runtime keeps no handle to the mounted logic instance; the React fiber tree does. Runs
 // inside the page: it walks the fibers and patches the state in one go.
+/** @param {[PrototypeState, string]} args the state to set, and the theme */
 function applyState([state, theme]) {
   for (const n of [document.body, ...document.body.querySelectorAll("*")]) {
     const k = Object.keys(n).find((k) => k.startsWith("__reactFiber$") || k.startsWith("__reactContainer$"));
     if (!k) continue;
     const seen = new Set();
-    const stack = [n[k]];
+    // React's own expando, under a key it randomises per load: nothing to type it against.
+    const stack = [Reflect.get(n, k)];
     while (stack.length) {
       const f = stack.pop();
       if (!f || seen.has(f)) continue;
@@ -129,17 +166,27 @@ function applyState([state, theme]) {
   throw new Error("prototype logic instance not found");
 }
 
+/** What to do once a state is up, by name, for the states that need more than being set. */
 const AFTER = {
+  /** @param {import("@playwright/test").Page} page */
   openThread: async (page) => {
     await page.getByRole("button", { name: /repl(y|ies)/ }).first().click();
   },
 };
 
-/** One state of one screen, light and (on desktop, where the reference has both) dark. */
+/**
+ * One state of one screen, light and (on desktop, where the reference has both) dark.
+ *
+ * @param {import("@playwright/test").Page} page
+ * @param {MatrixEntry} entry
+ * @param {{ name: string, out: string }} target the viewport's name, and where captures go
+ */
 async function captureEntry(page, entry, { name, out }) {
   const written = [];
   for (const dark of entry.dark && name === "desktop" ? [false, true] : [false]) {
-    await page.evaluate(applyState, [entry.state, dark ? "dark" : "light"]);
+    /** @type {[PrototypeState, string]} */
+    const args = [entry.state, dark ? "dark" : "light"];
+    await page.evaluate(applyState, args);
     await page.waitForTimeout(250);
     if (entry.after) await AFTER[entry.after](page);
     await page.waitForTimeout(250);
@@ -150,7 +197,13 @@ async function captureEntry(page, entry, { name, out }) {
   return written;
 }
 
-/** Every state the matrix asks of one viewport, in one browser context. */
+/**
+ * Every state the matrix asks of one viewport, in one browser context.
+ *
+ * @param {import("@playwright/test").Browser} browser
+ * @param {number} port the loopback server's
+ * @param {{ name: string, viewport: { width: number, height: number }, out: string, matrix: MatrixEntry[] }} target
+ */
 async function captureViewport(browser, port, { name, viewport, out, matrix }) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1, reducedMotion: "reduce" });
   try {

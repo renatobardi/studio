@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { VerifiedEvent } from "nostr-tools";
 import {
   DM_PAGE_SIZE,
   DM_SHOWN_STEP,
@@ -17,10 +16,12 @@ import {
   openedConversation,
   type ShownState,
 } from "./dmPagination";
+import { verifiedEvent } from "./testing/events";
 
 const ME = "me";
 
-const wrap = (id: string, createdAt: number) => ({ id, created_at: createdAt }) as VerifiedEvent;
+const wrap = (id: string, createdAt: number) =>
+  verifiedEvent({ id, created_at: createdAt, kind: 1059, pubkey: "one-time", tags: [], content: "", sig: "" });
 const rumor = (id: string, createdAt: number) => ({ id, created_at: createdAt });
 
 describe("DM paging filters", () => {

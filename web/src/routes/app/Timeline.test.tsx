@@ -6,12 +6,13 @@ import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import * as attachmentImage from "./AttachmentImage";
 import { Timeline } from "./Timeline";
+import { verifiedEvent } from "../../lib/testing/events";
 
 const ME = "1".padEnd(64, "a");
 const OTHER = "2".padEnd(64, "b");
 
 const message = (id: string, pubkey: string, createdAt: number, content: string) =>
-  ({ id, pubkey, created_at: createdAt, content, kind: 9, tags: [], sig: "" }) as unknown as VerifiedEvent;
+  verifiedEvent({ id, pubkey, created_at: createdAt, content, kind: 9, tags: [], sig: "" });
 
 function render(messages: VerifiedEvent[], opened: { readAt: number; openedAt: number } | null) {
   return renderToStaticMarkup(
@@ -44,10 +45,10 @@ describe("Timeline", () => {
   test("gives a photo the priority of the Message carrying it, not its place in this list", () => {
     // The download queue is the Direct Messages' too, so the scale has to be the same (#234).
     const photo = (id: string, createdAt: number, sha: string) =>
-      ({
+      verifiedEvent({
         ...message(id, OTHER, createdAt, ""),
         tags: [["imeta", `url https://media.example/${sha}`, `x ${sha}`, "m image/png"]],
-      }) as VerifiedEvent;
+      });
     const stub = spyOn(attachmentImage, "AttachmentImage").mockImplementation(({ descriptor, priority }) => (
       <i data-photo={descriptor.sha256} data-priority={priority} />
     ));

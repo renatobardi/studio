@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { ProfileStore, type ProfileClient } from "./profileStore";
 import type { ConnectionState, SubscriptionHandlers } from "./relay";
+import { verifiedEvent } from "./testing/events";
 
 interface FakeSubscription {
   filters: Filter[];
@@ -45,7 +46,7 @@ function fakeClient(initial: ConnectionState = "open") {
 }
 
 function profileEvent(pubkey: string, content: string): VerifiedEvent {
-  return { id: `e-${pubkey}`, kind: 0, pubkey, content } as VerifiedEvent;
+  return verifiedEvent({ id: `e-${pubkey}`, kind: 0, pubkey, created_at: 0, tags: [], content, sig: "" });
 }
 
 describe("ProfileStore.ensure", () => {

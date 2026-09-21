@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Filter, VerifiedEvent } from "nostr-tools";
+import type { Filter } from "nostr-tools";
 import type { ChannelOut } from "./api";
 import type { SubscriptionHandlers } from "./relay";
 import {
@@ -11,6 +11,7 @@ import {
   rosterPubkeys,
   subscribeRoster,
 } from "./channelAccess";
+import { verifiedEvent } from "./testing/events";
 
 function channel(id: string, role: string | null = null): ChannelOut {
   return { id, name: id, about: "", private: false, role };
@@ -119,7 +120,15 @@ describe("subscribeRoster", () => {
     };
   };
   const projection = (kind: number, pubkeys: string[], createdAt = 100, id = `${kind}-${createdAt}`) =>
-    ({ id, kind, created_at: createdAt, tags: [["d", "c1"], ...pubkeys.map((p) => ["p", p])] }) as VerifiedEvent;
+    verifiedEvent({
+      id,
+      kind,
+      created_at: createdAt,
+      pubkey: "workspace",
+      tags: [["d", "c1"], ...pubkeys.map((p) => ["p", p])],
+      content: "",
+      sig: "",
+    });
 
   test("asks one subscription for both of the Channel's projections", () => {
     const { client, subscriptions } = rosterClient();

@@ -3,11 +3,12 @@ import type { Filter, VerifiedEvent } from "nostr-tools";
 import { ChannelFeed } from "./channelFeed";
 import { PAGE_DEADLINE_MS, PAGE_SIZE } from "./channelPagination";
 import { FakeRelay, MAX_LIMIT } from "./testing/fakeRelay";
+import { verifiedEvent } from "./testing/events";
 
 const CHANNEL = "chan";
 
 function event(id: string, kind: number, createdAt: number, tags: string[][]): VerifiedEvent {
-  return { id, kind, created_at: createdAt, pubkey: "author", tags, content: "", sig: "" } as VerifiedEvent;
+  return verifiedEvent({ id, kind, created_at: createdAt, pubkey: "author", tags, content: "", sig: "" });
 }
 
 function message(id: string, createdAt: number): VerifiedEvent {
