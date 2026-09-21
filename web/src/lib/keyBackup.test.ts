@@ -20,7 +20,7 @@ import {
   storeKeyBackup,
   verifyKeyBackup,
 } from "./keyBackup";
-import { stubNostr } from "./testing/window";
+import { clearNostr, stubNostr } from "./testing/window";
 
 const secretKey = generateSecretKey();
 const nsec = nip19.nsecEncode(secretKey);
@@ -88,7 +88,7 @@ describe("newBackupPassphraseProblem", () => {
 });
 
 describe("createKeyBackup", () => {
-  afterEach(() => stubNostr(undefined)());
+  afterEach(clearNostr);
 
   test("is null under a NIP-07 extension, which never hands the key over", async () => {
     stubNostr({});
@@ -281,7 +281,7 @@ describe("confirmKeyBackup", () => {
 
 /** The create step the dialog runs, and the busy/error reporting around either step. */
 describe("requestKeyBackup", () => {
-  afterEach(() => stubNostr(undefined)());
+  afterEach(clearNostr);
 
   test("refuses before touching the key when the passphrase breaks a rule", async () => {
     const created: Uint8Array[] = [];

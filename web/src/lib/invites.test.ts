@@ -217,8 +217,11 @@ describe("invitePreviewMessage", () => {
 });
 
 describe("the pending invite", () => {
-  /** By defineProperty, not assignment: the component harness registers a real `localStorage`
-   * that assigning to throws (#94). */
+  /** By defineProperty, not assignment: the harness registers a real `localStorage` that
+   * assigning to throws (#94). The real one is put back afterwards rather than deleted — it
+   * belongs to the DOM, and every later file in the process reads the same one. */
+  const realStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
   function withStorage(stub: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
     Object.defineProperty(globalThis, "localStorage", { value: stub, configurable: true, writable: true });
   }
@@ -234,8 +237,8 @@ describe("the pending invite", () => {
   }
 
   afterEach(() => {
-    // @ts-expect-error test-only cleanup of a global stubbed above
-    delete globalThis.localStorage;
+    if (realStorage) Object.defineProperty(globalThis, "localStorage", realStorage);
+    else delete (globalThis as { localStorage?: Storage }).localStorage;
   });
 
   test("an invite opened as a link survives sign-in and onboarding", () => {

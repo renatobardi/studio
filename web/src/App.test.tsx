@@ -42,9 +42,6 @@ describe("an invite opened as a link", () => {
 
     // The Workspace it names is the invite's, which is only knowable from the remembered code.
     await waitFor(() => expect(previewInvite).toHaveBeenCalledWith("abc123"));
-    expect((await screen.findByPlaceholderText(/paste a code/i)) as HTMLInputElement).toHaveProperty(
-      "value",
-      "abc123",
-    );
+    expect(await screen.findByPlaceholderText(/paste a code/i)).toHaveProperty("value", "abc123");
   });
 });

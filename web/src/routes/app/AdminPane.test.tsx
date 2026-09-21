@@ -23,9 +23,16 @@ const signer: Signer = {
 const client = {} as RelayClient;
 
 describe("the admin console's Copy link", () => {
-  // `spyOn` patches the module namespace for the whole process, so a spy left standing answers
-  // the next file's tests — in an order that differs in CI.
-  afterEach(() => mock.restore());
+  // `spyOn` patches the module namespace for the whole process, and a stubbed browser API is
+  // the window's own — either left standing answers the next file's tests, in an order that
+  // differs in CI.
+  const realClipboard = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
+
+  afterEach(() => {
+    mock.restore();
+    if (realClipboard) Object.defineProperty(globalThis.navigator, "clipboard", realClipboard);
+    else delete (globalThis.navigator as { clipboard?: Clipboard }).clipboard;
+  });
 
   test("a clipboard that refuses says so, and does not claim the link was copied", async () => {
     // An insecure context and a denied permission both reject here, and until now only reading

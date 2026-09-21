@@ -26,13 +26,13 @@ import {
 import { mediaDownloads } from "./mediaDownloads";
 import { cacheBlob, mediaCacheEpoch, mediaCacheName } from "./mediaCache";
 import { restoreCaches, stubCaches } from "./testing/cacheStorage";
-import { stubNostr } from "./testing/window";
+import { clearNostr, stubNostr } from "./testing/window";
 
 describe("hasNip07", () => {
-  afterEach(() => stubNostr(undefined)());
+  afterEach(clearNostr);
 
   test("false when window.nostr is absent", () => {
-    stubNostr(undefined)();
+    clearNostr();
     expect(hasNip07()).toBe(false);
   });
 
@@ -50,10 +50,10 @@ describe("hasNip07", () => {
 });
 
 describe("extensionSupportsNip44", () => {
-  afterEach(() => stubNostr(undefined)());
+  afterEach(clearNostr);
 
   const stub = (nostr?: unknown) => {
-    if (nostr === undefined) stubNostr(undefined)();
+    if (nostr === undefined) clearNostr();
     else stubNostr(nostr);
   };
 
@@ -107,7 +107,7 @@ describe("the Direct message read marks", () => {
 });
 
 describe("loadIdentityNsec", () => {
-  afterEach(() => stubNostr(undefined)());
+  afterEach(clearNostr);
 
   test("is undefined under a NIP-07 extension, without going near local storage", async () => {
     stubNostr({});
