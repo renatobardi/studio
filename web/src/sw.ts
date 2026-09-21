@@ -23,9 +23,10 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// A page that finds this worker already active asks which build it serves, to tell a worker
-// from an older deploy apart from one its own visit just installed (#259, lib/appUpdate.ts).
-// Answered on the port the page sent, so nothing else it hears can be mistaken for the answer.
+// A page this worker has just taken over asks which build it serves, to tell a deploy apart
+// from its own visit's worker (#259). Answered on the port the page sent, so nothing else it
+// hears can be mistaken for the answer. The question is `WHICH_BUILD` in lib/appUpdate.ts,
+// which this file cannot import: it type-checks against the worker's lib, not the DOM's.
 self.addEventListener("message", (event) => {
   if (event.data?.type === "studio:which-build") event.ports[0]?.postMessage(__STUDIO_BUILD__);
 });

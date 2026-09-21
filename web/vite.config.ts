@@ -1,12 +1,14 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'node:url'
+import { buildId } from './tools/build-id.ts'
 
-// Which build this is, carried by the page and by sw.ts alike (#259): a page that finds a worker
-// already active asks it this, to tell a worker from an older deploy apart from the one its own
-// visit just installed. vite-plugin-pwa builds sw.ts with this same `define`. Every deploy here
-// is a new commit and a new build, so the moment it was built is identity enough.
-const build = new Date().toISOString()
+// Which build this is, carried by the page and by sw.ts alike (#259): a page taken over by a
+// worker asks it this, to tell a deploy apart from its own visit's worker. vite-plugin-pwa builds
+// sw.ts with this same `define`. A digest of what ships, so a rebuild with nothing new in it is
+// not "a new version" — see tools/build-id.ts.
+const build = buildId(fileURLToPath(new URL('.', import.meta.url)), ['index.html', 'src', 'public', 'package.json', 'bun.lock'])
 
 // https://vite.dev/config/
 export default defineConfig({

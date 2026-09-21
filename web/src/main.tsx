@@ -6,14 +6,7 @@ import { App } from "./App";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { askWorkerBuild, watchForNewVersion } from "./lib/appUpdate";
 
-const updates = watchForNewVersion({
-  build: __STUDIO_BUILD__,
-  askWorkerBuild,
-  serviceWorker: navigator.serviceWorker,
-  registerSW,
-  document,
-  window,
-});
+const updates = watchForNewVersion({ build: __STUDIO_BUILD__, askBuild: askWorkerBuild, serviceWorker: navigator.serviceWorker, registerSW, document, window });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
