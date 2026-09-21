@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 _SCHEMA = "DEFINE TABLE IF NOT EXISTS event SCHEMALESS"
 
+# The cheapest question that still proves the connection answers: readiness
+# asks it, and so does the fan-out's heartbeat (ticket #93).
+_ROUND_TRIP = "RETURN 1"
+
 # Ticket #52: how far behind one subscription may fall before the fan-out
 # stops keeping its events. A client that stops reading otherwise grows this
 # queue until the process runs out of memory.
@@ -268,7 +272,7 @@ class LiveFanout:
         while True:
             await asyncio.sleep(self._heartbeat_seconds)
             try:
-                await self._db.query("RETURN 1")
+                await self._db.query(_ROUND_TRIP)
             except asyncio.CancelledError:
                 raise  # stop() — an orderly shutdown
             # broad: any failed round trip means the connection is gone
@@ -473,7 +477,7 @@ class EventStore:
 
     async def ping(self) -> None:
         """Round-trip the database. Raises if it is unreachable."""
-        await self._db.query("RETURN 1")
+        await self._db.query(_ROUND_TRIP)
 
     async def publish(self, event: NostrEvent) -> PublishResult:
         kind_cls = kind_class(event["kind"])
@@ -520,7 +524,7 @@ class EventStore:
             the database is still unreachable, for the fan-out to back off on
             (ticket #93)."""
             try:
-                await self._db.query("RETURN 1")
+                await self._db.query(_ROUND_TRIP)
             # broad: whatever the driver calls it, this connection is done —
             # only then is it replaced, so a live query that died on its own
             # costs a re-registration and not a new socket.
