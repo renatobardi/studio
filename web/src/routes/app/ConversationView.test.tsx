@@ -8,6 +8,7 @@ import { DM_LOOKING_FOR_OLDER } from "../../lib/conversationCopy";
 import * as dmPagination from "../../lib/dmPagination";
 import { DM_SHOWN_STEP } from "../../lib/dmPagination";
 import { downloadPriority } from "../../lib/mediaDownloads";
+import type { GapState } from "../../lib/feedGap";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 import { ConversationView } from "./ConversationView";
@@ -21,7 +22,7 @@ const BRUNO = "3".padEnd(64, "c");
 const render = (
   peerPubkeys: string[],
   profiles: Map<string, Profile>,
-  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean; pages?: number } = {},
+  history: { messages?: Rumor[]; completeFrom?: number; hasMore?: boolean; pages?: number; gap?: GapState } = {},
 ) =>
   renderToStaticMarkup(
     <ConversationView
@@ -35,6 +36,8 @@ const render = (
       hasMore={history.hasMore ?? false}
       pages={history.pages ?? 0}
       onLoadOlder={() => {}}
+      gap={history.gap ?? "none"}
+      onRetryGap={() => {}}
       profiles={profiles}
     />,
   );
@@ -107,6 +110,8 @@ describe("ConversationView", () => {
         pages={0}
         hasMore={false}
         onLoadOlder={() => {}}
+        gap="none"
+        onRetryGap={() => {}}
         profiles={named(ANA, "Ana Petrova")}
       />,
     );
@@ -153,6 +158,8 @@ describe("ConversationView", () => {
           hasMore={false}
           pages={0}
           onLoadOlder={() => {}}
+          gap="none"
+          onRetryGap={() => {}}
           profiles={named(ANA, "Ana Petrova")}
         />,
       );
@@ -214,5 +221,38 @@ describe("ConversationView", () => {
     expect(render([ANA], named(ANA, "Ana Petrova"), { messages: [text("only", 1)] })).not.toContain(
       "Load older messages",
     );
+  });
+});
+
+/** The wiring of #254 for Direct Messages: what the feed owes after a reconnect reaches the open
+ * conversation, and nothing it already shows is taken off it meanwhile. */
+describe("ConversationView while wraps a reconnect could not bring are owed", () => {
+  test("says so above the history, beside the Messages it already shows", () => {
+    const html = render([ANA], named(ANA, "Ana Petrova"), { messages: [text("held", 100)], gap: "filling" });
+    expect(html).toContain('data-testid="gap-notice"');
+    expect(html).toContain("text held.");
+  });
+
+  test("once asking gave up, its Try again is the feed's", async () => {
+    let retried = 0;
+    mount(
+      <ConversationView
+        client={{} as RelayClient}
+        ownPubkey={ME}
+        peerPubkeys={[ANA]}
+        signer={{} as Signer}
+        mediaUrl="https://media.example"
+        messages={[text("held", 100)]}
+        completeFrom={-Infinity}
+        hasMore={false}
+        pages={0}
+        onLoadOlder={() => {}}
+        gap="stalled"
+        onRetryGap={() => (retried += 1)}
+        profiles={named(ANA, "Ana Petrova")}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retried).toBe(1);
   });
 });

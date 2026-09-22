@@ -258,6 +258,120 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().rumors.map((r) => r.id)).toContain("r-late");
   });
 
+  test("more wraps arriving while the socket was down than the relay answers at once all come back", async () => {
+    // The reconnect asks `since` the newest held, cut at MAX_LIMIT newest first: 700 away left the
+    // feed with 600 of 800, the rest above the cursor where no page looks (#254).
+    const { relay, feed } = start(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(700, NOW, 60, "n")) relay.publish(wrap_);
+    relay.reconnect();
+    await flush();
+    await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 700);
+    expect(feed.getSnapshot().gap).toBe("none");
+  });
+
+  test("a short outage costs the reconnect nothing but its own REQ", async () => {
+    const { relay, feed } = start(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(20, NOW, 60, "n")) relay.publish(wrap_);
+    const before = relay.requests.length;
+    relay.reconnect();
+    await flush();
+    expect(relay.requests.length - before).toBe(1);
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 20);
+  });
+
+  test("a gap whose filling stalls stays known, and asking again closes it", async () => {
+    const relay = new FakeRelay(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    let stall = true;
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        const fills = filters[0]?.since !== undefined && filters[0]?.until !== undefined;
+        if (!fills || !stall) return relay.subscribe(filters, handlers);
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const deadlines: (() => void)[] = [];
+    const feed = new DmFeed(client, ME, unwrap, () => NOW, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(700, NOW, 60, "n")) relay.publish(wrap_);
+    relay.reconnect();
+    await flush();
+    expect(feed.getSnapshot().gap).toBe("filling");
+
+    deadlines.shift()!();
+    expect(feed.getSnapshot().gap).toBe("stalled");
+
+    stall = false;
+    feed.getSnapshot().retryGap();
+    await flush();
+    await flush();
+    expect(feed.getSnapshot().gap).toBe("none");
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 700);
+  });
+
+  test("a page of the gap whose wraps never open frees it once its deadline passes", async () => {
+    // The deadline covers the unwrapping as well as the REQ, as an older page's does (#268).
+    const relay = new FakeRelay(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    const deadlines: (() => void)[] = [];
+    let hang = false;
+    const unwrapOrHang = (event: { content: string }) => (hang ? new Promise<Rumor>(() => {}) : unwrap(event));
+    const feed = new DmFeed(relay, ME, unwrapOrHang, () => NOW, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(700, NOW, 60, "n")) relay.publish(wrap_);
+    hang = true;
+    relay.reconnect();
+    await flush();
+    expect(feed.getSnapshot().gap).toBe("filling");
+    deadlines.shift()!();
+    expect(feed.getSnapshot().gap).toBe("stalled");
+  });
+
+  test("a second outage while a gap is still owed recovers both", async () => {
+    const relay = new FakeRelay(history(DM_PAGE_SIZE, NOW - 400 * DAY, 60));
+    let stall = true;
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        const fills = filters[0]?.since !== undefined && filters[0]?.until !== undefined;
+        if (!fills || !stall) return relay.subscribe(filters, handlers);
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const deadlines: (() => void)[] = [];
+    const feed = new DmFeed(client, ME, unwrap, () => NOW, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    await flush();
+    relay.disconnect();
+    for (const wrap_ of history(700, NOW - 100 * DAY, 60, "n")) relay.publish(wrap_);
+    relay.reconnect();
+    await flush();
+    deadlines.shift()!();
+
+    stall = false;
+    relay.disconnect();
+    for (const wrap_ of history(700, NOW, 60, "again")) relay.publish(wrap_);
+    relay.reconnect();
+    for (let i = 0; i < 6; i++) await flush();
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 1400);
+    expect(feed.getSnapshot().gap).toBe("none");
+  });
+
   test("a drop before the first page landed asks for a first page again, not a window", () => {
     // The opening REQ is what says whether there is history behind the newest page, by its size.
     // Answering a `since` window into that count would call a long history exhausted.
