@@ -1,4 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { render as mount, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Signer } from "../../lib/custody";
 import { buildDmImetaTag } from "../../lib/dmMedia";
@@ -119,13 +121,49 @@ describe("ConversationView", () => {
   });
 
   test("reads the conversation's history once per render, not once per row", () => {
-    // #194's rule, for this pane. That a keystroke in the composer does not recompute it is what
-    // the `useMemo` is for, and is not asserted here: `renderToStaticMarkup` mounts once, runs no
-    // effects and processes no state, so there is no re-render to observe (#233).
+    // #194's rule, for this pane. That a keystroke in the composer does not recompute it is the
+    // test below: `renderToStaticMarkup` mounts once and processes no state, so there is no
+    // re-render to observe here.
     const spy = spyOn(dmPagination, "dmHistoryView");
     try {
       render([ANA], named(ANA, "Ana Petrova"), { messages: [text("a", 1), text("b", 2), text("c", 3)] });
       expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("typing in the composer does not read the history again (#233)", async () => {
+    // Every keystroke is a render of this pane, and the history is the same one: re-filtering and
+    // re-slicing the whole conversation per key is the cost #194 took off the Timeline. What keeps
+    // it off here is the `useMemo` on the data the view reads — a new object in its deps would
+    // bring it back with nothing going red but this.
+    const messages = [text("a", 1), text("b", 2), text("c", 3)];
+    const spy = spyOn(dmPagination, "dmHistoryView");
+    try {
+      mount(
+        <ConversationView
+          client={{} as RelayClient}
+          ownPubkey={ME}
+          peerPubkeys={[ANA]}
+          signer={{} as Signer}
+          mediaUrl="https://media.example"
+          messages={messages}
+          completeFrom={-Infinity}
+          hasMore={false}
+          pages={0}
+          onLoadOlder={() => {}}
+          profiles={named(ANA, "Ana Petrova")}
+        />,
+      );
+      const readsOnMount = spy.mock.calls.length;
+      // Or the spy is not what the pane calls, and nothing below could fail.
+      expect(readsOnMount).toBeGreaterThan(0);
+
+      await userEvent.type(screen.getByRole("textbox"), "hello");
+
+      expect(screen.getByRole("textbox")).toHaveProperty("value", "hello");
+      expect(spy.mock.calls.length).toBe(readsOnMount);
     } finally {
       spy.mockRestore();
     }
