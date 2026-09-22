@@ -3,16 +3,17 @@ import {
   PAGE_DEADLINE_MS,
   PAGE_SIZE,
   channelCompanionFilters,
-  gapMessageFilters,
+  channelGapFilters,
   isEndOfHistory,
   liveMessageFilters,
   newestCreatedAt,
   olderMessagesFilters,
+  reconnectCompanionFilters,
   reconnectMessageFilters,
   rootCompanionFilters,
 } from "./channelPagination";
 import { type Timer, timer } from "./clock";
-import { GapFiller, type GapState, type ReconnectAnswer, heard, owedBy, watchAnswer } from "./feedGap";
+import { GapFiller, type GapState, type ReconnectAnswer, combinedGapState, heard, owedBy, watchAnswer } from "./feedGap";
 import type { SubscriptionHandle } from "./relay";
 
 /** All `ChannelFeed` needs of a `RelayClient` — and all a test has to stand in for. */
@@ -29,7 +30,7 @@ export interface FeedSnapshot {
   reactions: VerifiedEvent[];
   deletions: VerifiedEvent[];
   hasMore: boolean;
-  /** Whether Messages a reconnect could not bring in one answer are still owed (#254). */
+  /** Whether events a reconnect could not bring in one answer are still owed (#254, #255). */
   gap: GapState;
   /** Asks for them again after a page of them overran its deadline. */
   retryGap: () => void;
@@ -62,6 +63,9 @@ export class ChannelFeed {
    * Message accepted during the outage can only be answered after it, so its Replies and
    * Reactions are the Channel-wide subscription's to bring. */
   private readonly messageGap: GapFiller;
+  /** The same for the companion subscription's two filters, each cut on its own (#255). */
+  private readonly companionGap: GapFiller;
+  private readonly deletionGap: GapFiller;
   private readonly coveredRoots = new Set<string>();
   private readonly pendingRootFetches = new Set<() => void>();
   private readonly disposers: (() => void)[] = [];
@@ -76,13 +80,17 @@ export class ChannelFeed {
     this.client = client;
     this.channelId = channelId;
     this.schedule = schedule;
-    this.messageGap = new GapFiller(
-      client,
-      schedule,
-      (gap) => gapMessageFilters(channelId, gap),
-      (event) => this.apply(event),
-      () => this.emit(),
-    );
+    const filler = (kinds: number[]) =>
+      new GapFiller(
+        client,
+        schedule,
+        (gap) => channelGapFilters(channelId, kinds, gap),
+        (event) => this.apply(event),
+        () => this.emit(),
+      );
+    this.messageGap = filler([9]);
+    this.companionGap = filler([1111, 7]);
+    this.deletionGap = filler([5]);
   }
 
   /** Opens the Channel's subscriptions; the returned function closes every one of them. */
@@ -121,8 +129,29 @@ export class ChannelFeed {
         this.messageGap.fill();
       },
     });
+    /** A reconnect's answers to the companion filters: Replies and Reactions, and deletions. */
+    let companionAnswers: [ReconnectAnswer | null, ReconnectAnswer | null] = [null, null];
     const companions = this.client.subscribe(channelCompanionFilters(this.channelId), {
-      onEvent: (event) => this.apply(event),
+      onResubscribe: () => {
+        this.companionGap.owe(owedBy(companionAnswers[0], { dropped: true }));
+        this.deletionGap.owe(owedBy(companionAnswers[1], { dropped: true }));
+        const held = [...this.messages.values(), ...this.replies.values(), ...this.reactions.values(), ...this.deletions.values()];
+        const filters = reconnectCompanionFilters(this.channelId, newestCreatedAt(held));
+        companionAnswers = [watchAnswer(filters[0]!), watchAnswer(filters[1]!)];
+        return filters;
+      },
+      onEvent: (event) => {
+        for (const answer of companionAnswers) heard(answer, event);
+        this.apply(event);
+      },
+      onEose: () => {
+        this.companionGap.owe(owedBy(companionAnswers[0], { dropped: false }));
+        this.deletionGap.owe(owedBy(companionAnswers[1], { dropped: false }));
+        companionAnswers = [null, null];
+        this.emit();
+        this.companionGap.fill();
+        this.deletionGap.fill();
+      },
     });
     this.disposers.push(liveMessages, companions);
     // Only the relay subscriptions: the listeners belong to whoever is rendering the feed,
@@ -134,6 +163,8 @@ export class ChannelFeed {
       this.closeOlder = this.cancelDeadline = null;
       this.loadingOlder = false;
       this.messageGap.stop();
+      this.companionGap.stop();
+      this.deletionGap.stop();
       for (const close of this.pendingRootFetches) close();
       this.pendingRootFetches.clear();
       this.coveredRoots.clear();
@@ -189,10 +220,12 @@ export class ChannelFeed {
     }, PAGE_DEADLINE_MS);
   }
 
-  /** Asks for the Messages still owed, once a page of them overran its deadline. Nothing does on
+  /** Asks for what is still owed, once a page of it overran its deadline. Nothing does on
    * its own until the next reconnect: a relay sitting on the REQ would be asked again and again. */
   retryGap = (): void => {
     this.messageGap.fill();
+    this.companionGap.fill();
+    this.deletionGap.fill();
   };
 
   getSnapshot = (): FeedSnapshot => {
@@ -202,7 +235,7 @@ export class ChannelFeed {
       reactions: [...this.reactions.values()],
       deletions: [...this.deletions.values()],
       hasMore: this.hasMore,
-      gap: this.messageGap.state,
+      gap: combinedGapState([this.messageGap.state, this.companionGap.state, this.deletionGap.state]),
       retryGap: this.retryGap,
     };
     return this.snapshot;

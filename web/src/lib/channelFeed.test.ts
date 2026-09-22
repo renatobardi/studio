@@ -23,6 +23,10 @@ function reply(id: string, rootId: string, createdAt: number): VerifiedEvent {
   return event(id, 1111, createdAt, [["h", CHANNEL], ["E", rootId]]);
 }
 
+function deletion(id: string, targetId: string, createdAt: number): VerifiedEvent {
+  return event(id, 5, createdAt, [["h", CHANNEL], ["e", targetId]]);
+}
+
 function messages(count: number, from = 1000): VerifiedEvent[] {
   return Array.from({ length: count }, (_, i) => message(`m${String(i).padStart(3, "0")}`, from + i));
 }
@@ -323,6 +327,79 @@ describe("ChannelFeed", () => {
     feed.start();
     for (const stored of messages(10)) relay.publish(stored);
     expect(feed.getSnapshot().messages).toHaveLength(10);
+  });
+
+  test("Replies and Reactions published while the socket was down all come back", () => {
+    // The Channel-wide companion subscription is a window of the newest 50: asked again after a
+    // reconnect, it lost the rest of what was published meanwhile, and no page asks for it (#255).
+    const relay = new FakeRelay(messages(10, 100_000));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    for (let i = 0; i < 60; i++) relay.publish(reaction(`r${i}`, "m000", 100_100 + i));
+    for (let i = 0; i < 60; i++) relay.publish(reply(`t${i}`, "m001", 100_200 + i));
+    relay.reconnect();
+
+    expect(feed.getSnapshot().reactions).toHaveLength(60);
+    expect(feed.getSnapshot().replies).toHaveLength(60);
+  });
+
+  test("more companions and deletions than the relay answers at once all come back", () => {
+    const relay = new FakeRelay(messages(10, 100_000));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    for (let i = 0; i < 700; i++) relay.publish(reaction(`r${i}`, "m000", 200_000 + i));
+    for (let i = 0; i < 600; i++) relay.publish(deletion(`d${i}`, `r${i}`, 200_000 + i));
+    relay.reconnect();
+
+    expect(feed.getSnapshot().reactions).toHaveLength(700);
+    expect(feed.getSnapshot().deletions).toHaveLength(600);
+    expect(feed.getSnapshot().gap).toBe("none");
+  });
+
+  test("a Reaction stamped an hour and more below the newest event held still comes back", () => {
+    // The anchor is the newest of everything the feed holds, Replies and Reactions included:
+    // each arrived before the drop, so none is stamped later than 15 minutes past it (ADR-0008).
+    const relay = new FakeRelay([...messages(10, 100_000), reaction("seen", "m000", 100_500)]);
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    relay.publish(reaction("late", "m000", 100_500 - 70 * 60));
+    // More than the live window's worth after it, so only a `since` reaching that far finds it.
+    for (let i = 0; i < 60; i++) relay.publish(reaction(`r${i}`, "m000", 100_600 + i));
+    relay.reconnect();
+
+    expect(feed.getSnapshot().reactions.map((r) => r.id)).toContain("late");
+  });
+
+  test("a stalled companion gap is the Channel's too, and asking again closes it", () => {
+    const relay = new FakeRelay(messages(10, 100_000));
+    let stall = true;
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        const fills = filters[0]?.since !== undefined && filters[0]?.until !== undefined;
+        if (!fills || !stall) return relay.subscribe(filters, handlers);
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const deadlines: (() => void)[] = [];
+    const feed = new ChannelFeed(client, CHANNEL, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    relay.disconnect();
+    for (let i = 0; i < 700; i++) relay.publish(reaction(`r${i}`, "m000", 200_000 + i));
+    relay.reconnect();
+    expect(feed.getSnapshot().gap).toBe("filling");
+    deadlines.shift()!();
+    expect(feed.getSnapshot().gap).toBe("stalled");
+
+    stall = false;
+    feed.getSnapshot().retryGap();
+    expect(feed.getSnapshot().gap).toBe("none");
+    expect(feed.getSnapshot().reactions).toHaveLength(700);
   });
 
   test("Thread Replies stay out of the timeline and are counted for their root", () => {

@@ -191,3 +191,9 @@ export class GapFiller {
     this.filling = false;
   }
 }
+
+/** One state for a feed that owes more than one gap: asking while any is being asked for. */
+export function combinedGapState(states: readonly GapState[]): GapState {
+  if (states.includes("filling")) return "filling";
+  return states.includes("stalled") ? "stalled" : "none";
+}
