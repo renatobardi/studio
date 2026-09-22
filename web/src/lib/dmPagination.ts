@@ -1,6 +1,6 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { CLOCK_SKEW_SECONDS, oldestCreatedAt } from "./channelPagination";
-import { MAX_LIMIT } from "./relay";
+import { FUTURE_TOLERANCE_SECONDS, GIFT_WRAP_PAST_TOLERANCE_SECONDS, MAX_LIMIT } from "./relay";
 import { GIFT_WRAP } from "./nip17";
 
 /** Gift wraps per page — the relay orders and cuts by the wrap's own created_at (#185). */
@@ -23,16 +23,22 @@ export function liveDmFilters(ownPubkey: string): Filter[] {
   return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], limit: DM_PAGE_SIZE }];
 }
 
+/** How far below the newest gift wrap held asking again after a reconnect has to reach: what the
+ * relay accepts for a wrap, plus how far ahead the newest held may be stamped (ADR-0008). */
+export const DM_RECONNECT_MARGIN_SECONDS = GIFT_WRAP_PAST_TOLERANCE_SECONDS + FUTURE_TOLERANCE_SECONDS;
+
 /**
  * The same subscription, asked for again after the socket came back — `reconnectMessageFilters`
  * for gift wraps. The margin is the whole backdating window, not just a clock's: a wrap
  * published while the client was away is stamped up to two days before it (NIP-59), so a `since`
- * at the newest one held would skip it (#226). The same `MAX_LIMIT` cut applies.
+ * at the newest one held would skip it (#226) — and it is the relay that refuses one stamped
+ * further back, so the window is a bound rather than a hope (`DM_RECONNECT_MARGIN_SECONDS`).
+ * The same `MAX_LIMIT` cut applies.
  */
 export function reconnectDmFilters(ownPubkey: string, newestHeldAt: number | null): Filter[] {
   if (newestHeldAt === null) return liveDmFilters(ownPubkey);
   return [
-    { kinds: [GIFT_WRAP], "#p": [ownPubkey], since: newestHeldAt - WRAP_BACKDATE_SECONDS, limit: MAX_LIMIT },
+    { kinds: [GIFT_WRAP], "#p": [ownPubkey], since: newestHeldAt - DM_RECONNECT_MARGIN_SECONDS, limit: MAX_LIMIT },
   ];
 }
 
