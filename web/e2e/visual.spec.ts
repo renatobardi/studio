@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,6 +59,25 @@ const MASK_SECRETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "ma
 
 test.use({ timezoneId: "UTC", locale: "en-GB", colorScheme: "light" });
 
+// Every failure of this flow so far came from a machine under pressure, not from a screen that
+// changed — the macOS run included, while the amd64 container competed for the same laptop — and
+// a starved run reads as a timeout like any other. The load it ran under is attached to the
+// failure itself, so the next one arrives with its cause named instead of a rerun that happens to
+// pass (#227).
+test.afterEach(async () => {
+  const info = test.info();
+  if (info.status === info.expectedStatus) return;
+  const [one, five] = os.loadavg();
+  const lines = [`load ${one.toFixed(1)} (1 min) / ${five.toFixed(1)} (5 min) on ${os.cpus().length} CPUs`];
+  // Linux reports memory a process could still get; macOS only pages nobody holds, which reads as
+  // nearly none on a healthy machine — a number that would point the wrong way.
+  if (process.platform === "linux") {
+    const gb = (bytes: number) => (bytes / 2 ** 30).toFixed(1);
+    lines.push(`${gb(os.freemem())} of ${gb(os.totalmem())} GB available`);
+  }
+  await info.attach("machine at failure", { body: lines.join(", "), contentType: "text/plain" });
+});
+
 for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
   test.describe(viewportName, () => {
     test.use({ viewport });
@@ -73,7 +93,11 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
           // stand, 10:00 on the fixtures' day (src/preview/fixtures.ts), so the text never drifts.
           await page.clock.setFixedTime(new Date("2026-09-11T10:00:00Z"));
           await page.goto(`${previewUrl}/preview.html?${params}`);
-          await page.waitForSelector("html[data-preview-ready]");
+          // Ready, or given up — the preview says which, and why (src/preview/Steps.tsx). Waiting
+          // for ready alone spent the whole test timeout on a step that had long since failed.
+          await page.waitForSelector("html[data-preview-ready], html[data-preview-failed]");
+          const failed = await page.evaluate(() => document.documentElement.dataset.previewFailed);
+          expect(failed, "the preview gave up on one of its own steps").toBeUndefined();
           await page.evaluate(() => document.fonts.ready);
           expect(await page.evaluate(() => document.fonts.check('12px "Inter Variable"'))).toBe(true);
           // Only secrets are masked (#190): the private key the onboarding generates at runtime
