@@ -202,6 +202,36 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().hasMore).toBe(false);
   });
 
+  test("more wraps held below the cursor than the relay's ceiling leaves room for do not end the history", async () => {
+    // `DM_PAGE_SIZE + K` is clamped at MAX_LIMIT by the relay: with K = 451 (the cursor's own wrap
+    // and 450 live ones) the page comes back with 500, of which 49 unseen, and counting unseen
+    // ones alone called that the end (#257).
+    const { relay, feed } = start(history(300, NOW, DAY));
+    await flush();
+    for (let i = 0; i < 450; i++) relay.publish(wrap(`L${String(i).padStart(3, "0")}`, NOW - 99 * DAY - 1 - i, NOW));
+    await flush();
+    feed.loadOlder();
+    await flush();
+    expect(feed.getSnapshot().hasMore).toBe(true);
+    expect(feed.getSnapshot().rumors).toHaveLength(DM_PAGE_SIZE + 450 + 49);
+  });
+
+  test("a page that brings only wraps already held still moves the cursor past them", async () => {
+    // With K at or over the ceiling a page can be nothing but held wraps. It still proves the
+    // span it covers — what a page brought, not what arrived live — so the cursor walks down it
+    // instead of asking for the same page forever (#257).
+    const { relay, feed } = start(history(300, NOW, DAY));
+    await flush();
+    for (let i = 0; i < 520; i++) relay.publish(wrap(`L${String(i).padStart(3, "0")}`, NOW - 99 * DAY - 1 - i, NOW));
+    await flush();
+    for (let asked = 0; asked < 10 && feed.getSnapshot().hasMore; asked++) {
+      feed.loadOlder();
+      await flush();
+    }
+    expect(feed.getSnapshot().hasMore).toBe(false);
+    expect(feed.getSnapshot().rumors).toHaveLength(300 + 520);
+  });
+
   test("more than a page of wraps arriving while the socket was down all come back", async () => {
     // A reconnect re-issues the REQ. Without a `since`, the relay answers the newest page of it
     // and everything older falls into a hole the cursor never revisits (#226).

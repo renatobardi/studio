@@ -45,9 +45,9 @@ export function reconnectDmFilters(ownPubkey: string, newestHeldAt: number | nul
  * full page from reading short (#230). `olderMessagesFilters` does the same for a Channel, where
  * nothing is backdated and the cursor second is all there can be.
  *
- * The relay clamps every limit at MAX_LIMIT=500 (api/src/studio_api/nostr/limits.py), so this
- * holds while fewer than 400 held wraps sit at or below the cursor — a live wrap is backdated by
- * at most two days, and a cursor that recent is still being paged past by the opening backfill.
+ * Never past MAX_LIMIT=500, where the relay clamps every limit silently
+ * (api/src/studio_api/nostr/limits.py): the page's length is what says whether it was cut, and
+ * only an asked-for limit the relay honours keeps that true (#257).
  */
 export function olderDmFilters(
   ownPubkey: string,
@@ -57,16 +57,20 @@ export function olderDmFilters(
   const oldest = oldestCreatedAt([...paged]);
   if (oldest === null) return [];
   const knownBelowCursor = held.filter((wrap) => wrap.created_at <= oldest).length;
-  return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], until: oldest, limit: DM_PAGE_SIZE + knownBelowCursor }];
+  const limit = Math.min(DM_PAGE_SIZE + knownBelowCursor, MAX_LIMIT);
+  return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], until: oldest, limit }];
 }
 
 /**
- * Whether an older page proves nothing older is left. It asked for a page's worth past every
- * wrap already held at or below the cursor, so fewer unseen ones than that means the relay ran
- * out.
+ * Whether an older page proves nothing older is left. It asked for a page's worth past every wrap
+ * already held at or below the cursor, so fewer unseen ones than that means the relay ran out —
+ * unless the relay cut the page at its ceiling, where most of it can be wraps already held and
+ * history still behind it (#257). A cut page is as long as it asked for, so a page only ends the
+ * history when it is shorter than that too. Both have to agree: reading a page as the last when it
+ * is not hides the rest of the history (#230), the other way round costs one more page.
  */
-export function isLastDmPage(knownIds: ReadonlySet<string>, page: readonly VerifiedEvent[]): boolean {
-  return page.filter((wrap) => !knownIds.has(wrap.id)).length < DM_PAGE_SIZE;
+export function isLastDmPage(knownIds: ReadonlySet<string>, page: readonly VerifiedEvent[], limit: number): boolean {
+  return page.length < limit && page.filter((wrap) => !knownIds.has(wrap.id)).length < DM_PAGE_SIZE;
 }
 
 /**

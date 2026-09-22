@@ -16,6 +16,7 @@ import {
   openedConversation,
   type ShownState,
 } from "./dmPagination";
+import { MAX_LIMIT } from "./relay";
 import { verifiedEvent } from "./testing/events";
 
 const ME = "me";
@@ -40,6 +41,14 @@ describe("DM paging filters", () => {
     ]);
   });
 
+  test("never asks past the relay's ceiling, whatever is held below the cursor", () => {
+    // The relay clamps at MAX_LIMIT silently; asking for more would make the page's own length
+    // lie about whether it was cut (#257).
+    const paged = [wrap("a", 500)];
+    const held = [...paged, ...Array.from({ length: 450 }, (_, i) => wrap(`live${i}`, 400 - i))];
+    expect(olderDmFilters(ME, paged, held)[0]?.limit).toBe(MAX_LIMIT);
+  });
+
   test("a wrap that arrived live never moves the cursor, however far back it is dated", () => {
     // NIP-59 backdates it by up to two days: paging from it would skip every wrap in between.
     const paged = [wrap("a", 500)];
@@ -48,15 +57,22 @@ describe("DM paging filters", () => {
 });
 
 describe("isLastDmPage", () => {
-  test("a page with fewer unseen wraps than a page's worth proves the history is exhausted", () => {
+  test("a page with fewer unseen wraps than a page's worth, and shorter than it asked, proves the history is exhausted", () => {
     const known = new Set(["a"]);
     const page = [wrap("a", 300), ...Array.from({ length: DM_PAGE_SIZE - 1 }, (_, i) => wrap(`n${i}`, 200))];
-    expect(isLastDmPage(known, page)).toBe(true);
+    expect(isLastDmPage(known, page, DM_PAGE_SIZE + 1)).toBe(true);
   });
 
   test("a full page of unseen wraps may have more behind it", () => {
     const page = Array.from({ length: DM_PAGE_SIZE }, (_, i) => wrap(`n${i}`, 200));
-    expect(isLastDmPage(new Set(["a"]), [wrap("a", 300), ...page])).toBe(false);
+    expect(isLastDmPage(new Set(["a"]), [wrap("a", 300), ...page], DM_PAGE_SIZE + 1)).toBe(false);
+  });
+
+  test("a page cut at the ceiling may have more behind it, however few of its wraps are new", () => {
+    // The relay clamps at MAX_LIMIT: 450 held below the cursor leave room for 50 new ones (#257).
+    const held = Array.from({ length: 450 }, (_, i) => wrap(`h${i}`, 300));
+    const page = [...held, ...Array.from({ length: 50 }, (_, i) => wrap(`n${i}`, 200))];
+    expect(isLastDmPage(new Set(held.map((w) => w.id)), page, MAX_LIMIT)).toBe(false);
   });
 });
 
