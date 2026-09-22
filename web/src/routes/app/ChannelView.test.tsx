@@ -94,7 +94,7 @@ describe("ChannelView after a reconnect the relay could not answer at once", () 
       for (let i = 0; i < 700; i++) relay.publish(message(`away${i}`, 200_000 + i));
       relay.reconnect();
     });
-    expect(view.getByTestId("gap-notice").textContent).toContain("Recovering messages");
+    expect(view.getByTestId("gap-notice").textContent).toContain("Catching up");
     expect(view.container.textContent).toContain("held");
 
     act(() => jest.advanceTimersByTime(PAGE_DEADLINE_MS));

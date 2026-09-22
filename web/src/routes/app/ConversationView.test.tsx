@@ -227,10 +227,11 @@ describe("ConversationView", () => {
 /** The wiring of #254 for Direct Messages: what the feed owes after a reconnect reaches the open
  * conversation, and nothing it already shows is taken off it meanwhile. */
 describe("ConversationView while wraps a reconnect could not bring are owed", () => {
-  test("says so above the history, beside the Messages it already shows", () => {
+  test("says so above the history, beside the Messages it already shows — and nothing once none is owed", () => {
     const html = render([ANA], named(ANA, "Ana Petrova"), { messages: [text("held", 100)], gap: "filling" });
     expect(html).toContain('data-testid="gap-notice"');
     expect(html).toContain("text held.");
+    expect(render([ANA], named(ANA, "Ana Petrova"), { messages: [text("held", 100)] })).not.toContain("gap-notice");
   });
 
   test("once asking gave up, its Try again is the feed's", async () => {
