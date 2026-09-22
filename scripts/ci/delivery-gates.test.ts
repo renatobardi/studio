@@ -37,18 +37,23 @@ const cd = await read('.github/workflows/cd.yml')
 const promote = await read('.github/workflows/promote.yml')
 const ci = await read('.github/workflows/ci.yml')
 
-// JSON with comments: the config it reads is the one `bun run typecheck:tests` passes to tsc.
-// Only whole-line comments are stripped, which is all this file has — a parse failure says so
-// rather than taking every test in this file down with a bare SyntaxError.
-const testTsconfig = (() => {
-  const path = `${repoRoot}web/tsconfig.test.json`
-  const source = readFileSync(path, 'utf8').replace(/^\s*\/\/.*$/gm, '')
+// JSON with comments: the configs tsc reads. Only whole-line comments are stripped, `//` and
+// `/* */` alike — which is all these files have, and never touches a glob like "src/**/*.ts"
+// inside a string. A parse failure says so rather than taking every test in this file down with
+// a bare SyntaxError.
+type Tsconfig = { include: string[]; compilerOptions?: Record<string, unknown> }
+const tsconfig = (name: string): Tsconfig => {
+  const path = `${repoRoot}web/${name}`
+  const source = readFileSync(path, 'utf8')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/^\s*\/\*.*\*\/\s*$/gm, '')
   try {
-    return JSON.parse(source) as { include: string[] }
+    return JSON.parse(source) as Tsconfig
   } catch (error) {
     throw new Error(`${path} is not JSON once whole-line comments are stripped: ${String(error)}`)
   }
-})()
+}
+const testTsconfig = tsconfig('tsconfig.test.json')
 
 // `on:` is YAML 1.1's boolean `true`; Bun.YAML follows 1.2 and keeps the
 // string key, but read both so the test does not depend on that detail.
@@ -230,6 +235,20 @@ describe('ci.yml', () => {
       'e2e',
       'playwright.config.ts',
     ])
+  })
+
+  test('checks the JavaScript tools too, not only lets them in (#260)', () => {
+    // `allowJs` alone admits the .mjs tools to the program and checks nothing in them: "the
+    // tools are type-checked" was true of 4 files out of 7.
+    expect(testTsconfig.compilerOptions?.checkJs).toBe(true)
+  })
+
+  test('says strict itself, rather than leaning on the compiler default (#260)', () => {
+    // TypeScript 6 turned strict on by default, which is the only reason it has been on here.
+    // Written down, a compiler whose default moves again cannot quietly take it away.
+    for (const name of ['tsconfig.app.json', 'tsconfig.sw.json', 'tsconfig.node.json']) {
+      expect({ name, strict: tsconfig(name).compilerOptions?.strict }).toEqual({ name, strict: true })
+    }
   })
 
   test('lets the token read the repository and nothing else (#202)', () => {

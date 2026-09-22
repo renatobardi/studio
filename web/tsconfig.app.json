@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // TypeScript 6 turned this on by default; written here so a default that moves again
+    // cannot quietly take it away (#260).
+    "strict": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023", "DOM"],

@@ -5,6 +5,7 @@ import { PAGE_DEADLINE_MS } from "./channelPagination";
 import { DM_PAGE_SIZE, OPEN_WINDOW_SECONDS, WRAP_BACKDATE_SECONDS } from "./dmPagination";
 import type { Rumor } from "./nip17";
 import { FakeRelay } from "./testing/fakeRelay";
+import { verifiedEvent } from "./testing/events";
 
 const ME = "me";
 const NOW = 100_000_000;
@@ -13,7 +14,7 @@ const DAY = 24 * 60 * 60;
 /** A gift wrap whose rumor rides in the clear — the test's `unwrap` just reads it back. */
 function wrap(id: string, wrapAt: number, sentAt = wrapAt): VerifiedEvent {
   const rumor: Rumor = { id: `r-${id}`, pubkey: "peer", created_at: sentAt, kind: 14, tags: [], content: id };
-  return { id, kind: 1059, created_at: wrapAt, pubkey: "one-time", tags: [["p", ME]], content: JSON.stringify(rumor), sig: "" } as VerifiedEvent;
+  return verifiedEvent({ id, kind: 1059, created_at: wrapAt, pubkey: "one-time", tags: [["p", ME]], content: JSON.stringify(rumor), sig: "" });
 }
 
 const unwrap = async (event: { content: string }): Promise<Rumor> => {

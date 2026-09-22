@@ -5,6 +5,7 @@ import type { Signer } from "../../lib/custody";
 import type { RelayClient } from "../../lib/relay";
 import type { Profile } from "./useProfiles";
 import { Timeline } from "./Timeline";
+import { verifiedEvent } from "../../lib/testing/events";
 
 const authorKey = generateSecretKey();
 const author = getPublicKey(authorKey);
@@ -47,10 +48,10 @@ function render(replies: VerifiedEvent[], profiles: Map<string, Profile> = new M
   );
 }
 
-/** A reply only carries the two fields `render` reuses — its own signature is rebuilt there
- * against the Message it answers. */
+/** A reply: only its content and time matter to `render`, which rebuilds its signature against
+ * the Message it answers — the rest is filled in so the fixture is a whole event, not a cast. */
 const reply = (content: string, agoSeconds: number) =>
-  ({ content, created_at: nowSeconds() - agoSeconds }) as VerifiedEvent;
+  verifiedEvent({ id: "", pubkey: "", kind: 1111, tags: [], content, created_at: nowSeconds() - agoSeconds, sig: "" });
 
 /** The prototype's thread pill says who is in the conversation and how fresh it is
  * ("4 replies · last reply 12m ago"), not just the count (#146). */
