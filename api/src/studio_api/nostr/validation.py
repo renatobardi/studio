@@ -14,14 +14,33 @@ PAST_TOLERANCE_SECONDS = 30 * 24 * 60 * 60
 MESSAGE = 9
 REACTION = 7
 THREAD_REPLY = 1111
+DELETION = 5
 GIFT_WRAP = 1059
+
+# How far back a kind may be stamped when it reaches the relay, where it is narrower than
+# PAST_TOLERANCE_SECONDS (ADR-0008). A client asks again after a reconnect with `since` = the
+# newest event it holds less this and FUTURE_TOLERANCE_SECONDS (web/src/lib/channelPagination.ts,
+# dmPagination.ts): what was accepted while it was away can be stamped no earlier than that, so
+# nothing is skipped. A Channel's content is stamped when it is sent; a gift wrap is backdated by
+# up to two days (NIP-59), plus the hour for another client's clock. The hour binds every deletion
+# (kind 5), not only a Channel's: the kind is what the relay can see, and nothing in Studio deletes
+# anything long after deciding to.
+PAST_TOLERANCE_BY_KIND = {
+    MESSAGE: 60 * 60,
+    REACTION: 60 * 60,
+    THREAD_REPLY: 60 * 60,
+    DELETION: 60 * 60,
+    GIFT_WRAP: 2 * 24 * 60 * 60 + 60 * 60,
+}
 
 # The tag naming a Thread Reply's root / a Reaction's target event — the single source of truth
 # for which tag `relay.py` must look up to check that root/target is in the same Channel.
 ROOT_TAG_BY_KIND = {THREAD_REPLY: "E", REACTION: "e"}
 
 # Published verbatim in the NIP-11 `limitation` object so clients know what
-# a submission may not exceed.
+# a submission may not exceed. NIP-11 cannot state a limit per kind, so
+# `created_at_lower_limit` is the 30 days most kinds get; a kind in
+# PAST_TOLERANCE_BY_KIND is told its own, narrower one in the OK that refuses it.
 LIMITATION = {
     "max_content_length": 8_196,
     "max_event_tags": 2_000,
@@ -72,8 +91,12 @@ def validate_event(event: NostrEvent, *, now: int) -> EventRejection | None:
         return EventRejection("invalid", "id/signature is invalid")
     if event["created_at"] > now + FUTURE_TOLERANCE_SECONDS:
         return EventRejection("invalid", "created_at is too far in the future")
-    if event["created_at"] < now - PAST_TOLERANCE_SECONDS:
-        return EventRejection("invalid", "created_at is too far in the past")
+    past_tolerance = PAST_TOLERANCE_BY_KIND.get(event["kind"], PAST_TOLERANCE_SECONDS)
+    if event["created_at"] < now - past_tolerance:
+        return EventRejection(
+            "invalid",
+            f"created_at is too far in the past for kind {event['kind']} (max {past_tolerance}s)",
+        )
     if len(event["content"]) > LIMITATION["max_content_length"]:
         return EventRejection(
             "invalid", f"content exceeds the {LIMITATION['max_content_length']}-character limit"
