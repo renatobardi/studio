@@ -5,16 +5,15 @@ import { type Timer, timer } from "./clock";
 import {
   DM_PAGE_SIZE,
   completeFrom,
-  gapDmFilters,
+  dmGapFilters,
   isLastDmPage,
   liveDmFilters,
   needsOpeningBackfill,
   olderDmFilters,
   reconnectDmFilters,
 } from "./dmPagination";
-import { type Gap, type GapState, gapLeftBy, gapState, mergeGaps } from "./feedGap";
+import { GapFiller, type GapState } from "./feedGap";
 import type { Rumor } from "./nip17";
-import { MAX_LIMIT } from "./relay";
 
 export interface DmSnapshot {
   /** Every Message unwrapped so far, complete or not. */
@@ -59,12 +58,11 @@ export class DmFeed {
   private closeOlder: (() => void) | null = null;
   /** Cancels the in-flight page's deadline — nothing is owed once it has answered. */
   private cancelDeadline: (() => void) | null = null;
-  /** What a reconnect's answer was too long to bring (#254), kept across a stop and start like
-   * the wraps it is missing from; filled on its own REQ and deadline, apart from the paging. */
-  private gap: Gap | null = null;
-  private fillingGap = false;
-  private closeFill: (() => void) | null = null;
-  private cancelFillDeadline: (() => void) | null = null;
+  /** The wraps a reconnect's answer was too long to bring (#254), kept across a stop and start
+   * like the wraps they are missing from; filled on their own REQ and deadline, apart from the
+   * paging. What its pages bring is not `paged`: like a reconnect's, those wraps sit above the
+   * cursor and say nothing about what lies below it. */
+  private readonly wrapGap: GapFiller;
   /** Bumped by every start/stop: a page that finishes unwrapping for an earlier run is dropped. */
   private run = 0;
   private readonly listeners = new Set<() => void>();
@@ -88,6 +86,13 @@ export class DmFeed {
     this.unwrap = unwrap;
     this.now = now;
     this.schedule = schedule;
+    this.wrapGap = new GapFiller({
+      client,
+      schedule,
+      filtersFor: (gap) => dmGapFilters(ownPubkey, gap),
+      take: (wrap) => this.apply(wrap),
+      changed: () => this.emit(),
+    });
   }
 
   /** Opens the subscription; the returned function closes it and any page in flight. */
@@ -97,27 +102,18 @@ export class DmFeed {
     // first one already held would otherwise read an empty page and call the history exhausted.
     const firstPageIds = new Set<string>();
     let eosed = false;
-    /** A reconnect's answer, until its EOSE says whether the relay cut it. */
-    let reconnectAnswer: { since: number; limit: number; wraps: Map<string, VerifiedEvent> } | null = null;
     this.closeLive = this.client.subscribe(liveDmFilters(this.ownPubkey), {
       // A reconnect asks from the newest wrap held, not for the newest page again (#226) — but
       // only once the first page has landed: its size is what says whether there is history
       // behind it, and a `since` window counted into that would call a long history exhausted.
       onResubscribe: () => {
         if (!eosed) return liveDmFilters(this.ownPubkey);
-        // Dropped in the middle of an answer: cut as surely as by the limit (`ChannelFeed`).
-        if (reconnectAnswer !== null) {
-          const cutAt = oldestCreatedAt([...reconnectAnswer.wraps.values()]);
-          if (cutAt !== null) this.gap = mergeGaps(this.gap, { since: reconnectAnswer.since, until: cutAt });
-        }
         const filters = reconnectDmFilters(this.ownPubkey, newestCreatedAt([...this.wraps.values()]));
-        const [filter] = filters;
-        reconnectAnswer =
-          filter?.since === undefined ? null : { since: filter.since, limit: filter.limit ?? MAX_LIMIT, wraps: new Map() };
+        this.wrapGap.asking(filters[0]!);
         return filters;
       },
       onEvent: (wrap) => {
-        reconnectAnswer?.wraps.set(wrap.id, wrap);
+        this.wrapGap.heard(wrap);
         if (!eosed && !firstPageIds.has(wrap.id)) {
           firstPageIds.add(wrap.id);
           if (!this.wraps.has(wrap.id)) this.paged.set(wrap.id, wrap);
@@ -128,11 +124,8 @@ export class DmFeed {
         // A reconnect re-issues the REQ: its EOSE is not a second first page, only the end of an
         // answer the relay may have cut.
         if (eosed) {
-          if (reconnectAnswer === null) return;
-          this.gap = mergeGaps(this.gap, gapLeftBy(reconnectAnswer.since, [...reconnectAnswer.wraps.values()], reconnectAnswer.limit));
-          reconnectAnswer = null;
           this.emit();
-          this.fillGap();
+          this.wrapGap.answered();
           return;
         }
         eosed = true;
@@ -140,8 +133,7 @@ export class DmFeed {
         this.emit();
         if (run !== this.run) return;
         this.backfill();
-        // A start over a gap an earlier run left owed.
-        this.fillGap();
+        this.wrapGap.answered();
       },
     });
     return () => {
@@ -151,10 +143,7 @@ export class DmFeed {
       this.cancelDeadline?.();
       this.closeLive = this.closeOlder = this.cancelDeadline = null;
       this.loadingOlder = false;
-      this.closeFill?.();
-      this.cancelFillDeadline?.();
-      this.closeFill = this.cancelFillDeadline = null;
-      this.fillingGap = false;
+      this.wrapGap.stop();
     };
   }
 
@@ -232,7 +221,7 @@ export class DmFeed {
   /** Asks for the wraps still owed, once a page of them overran its deadline — never on its own
    * before the next reconnect, since a relay sitting on the REQ would be asked again and again. */
   retryGap = (): void => {
-    this.fillGap();
+    this.wrapGap.fill();
   };
 
   getSnapshot = (): DmSnapshot => {
@@ -242,7 +231,7 @@ export class DmFeed {
       completeFrom: completeFrom(oldestCreatedAt([...this.paged.values()]), this.hasMore),
       pages: this.pagesSettled,
       loadOlder: this.loadOlder,
-      gap: gapState(this.gap, this.fillingGap),
+      gap: this.wrapGap.state,
       retryGap: this.retryGap,
     };
     return this.snapshot;
@@ -257,61 +246,6 @@ export class DmFeed {
    * sit two days down the wrap order. */
   private backfill(): void {
     if (needsOpeningBackfill(completeFrom(oldestCreatedAt([...this.paged.values()]), this.hasMore), this.now())) this.loadOlder();
-  }
-
-  /**
-   * Asks for the gap's wraps, newest first from its top, page after page until one comes back
-   * shorter than it asked — `ChannelFeed.fillGap`, with a page over only once its wraps are
-   * unwrapped, and a deadline that covers that too (#268). The wraps it brings are not `paged`:
-   * like a reconnect's, they sit above the cursor and say nothing about what lies below it.
-   */
-  private fillGap(): void {
-    if (this.gap === null || this.fillingGap) return;
-    const run = this.run;
-    const gap = this.gap;
-    const filters = gapDmFilters(this.ownPubkey, gap);
-    const page = new Map<string, VerifiedEvent>();
-    const unwrapping: Promise<void>[] = [];
-    this.fillingGap = true;
-    this.emit();
-    let finished = false;
-    let eosed = false;
-    const unsubscribe = this.client.subscribe(filters, {
-      onEvent: (wrap) => {
-        if (page.has(wrap.id)) return;
-        page.set(wrap.id, wrap);
-        unwrapping.push(this.apply(wrap));
-      },
-      onEose: () => {
-        if (finished || eosed) return;
-        eosed = true;
-        this.closeFill?.();
-        this.closeFill = null;
-        void Promise.all(unwrapping).then(() => {
-          if (finished) return;
-          finished = true;
-          // A stop/start since: the deadline and the flag are the next run's now (`loadOlder`).
-          if (run !== this.run) return;
-          this.cancelFillDeadline?.();
-          this.cancelFillDeadline = null;
-          this.fillingGap = false;
-          // A reconnect that widened the gap meanwhile makes this page only part of it.
-          if (this.gap === gap) this.gap = gapLeftBy(gap.since, [...page.values()], filters[0]?.limit ?? MAX_LIMIT);
-          this.emit();
-          this.fillGap();
-        });
-      },
-    });
-    if (eosed) unsubscribe();
-    else this.closeFill = unsubscribe;
-    this.cancelFillDeadline = this.schedule(() => {
-      if (finished) return;
-      finished = true;
-      this.closeFill?.();
-      this.closeFill = this.cancelFillDeadline = null;
-      this.fillingGap = false;
-      this.emit();
-    }, PAGE_DEADLINE_MS);
   }
 
   /** Settles once the wrap is unwrapped — or found not to be the caller's: a gift wrap that fails

@@ -53,10 +53,11 @@ export function reconnectMessageFilters(channelId: string, newestHeldAt: number 
   return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CHANNEL_RECONNECT_MARGIN_SECONDS, limit: MAX_LIMIT }];
 }
 
-/** The Messages a reconnect's cut answer left unasked (`Gap`), newest first from the top of the
- * gap — the same `MAX_LIMIT` a reconnect asks for, so the answer's length says whether it was cut. */
-export function gapMessageFilters(channelId: string, gap: Gap): Filter[] {
-  return [{ kinds: [9], "#h": [channelId], since: gap.since, until: gap.until, limit: MAX_LIMIT }];
+/** What a reconnect's cut answer left unasked (`Gap`) of a Channel's `kinds`, newest first from
+ * the top of the gap — the same `MAX_LIMIT` a reconnect asks for, so the answer's length says
+ * whether it was cut. */
+export function channelGapFilters(channelId: string, kinds: number[], gap: Gap): Filter[] {
+  return [{ kinds, "#h": [channelId], since: gap.since, until: gap.until, limit: MAX_LIMIT }];
 }
 
 /**
@@ -81,6 +82,26 @@ export function channelCompanionFilters(channelId: string): Filter[] {
   return [
     { kinds: [1111, 7], "#h": [channelId], limit: PAGE_SIZE },
     { kinds: [5], "#h": [channelId] },
+  ];
+}
+
+/**
+ * The companion subscription, asked for again after the socket came back — the same hole as the
+ * Messages' (#226): a window of the newest 50 lost everything else published meanwhile, and no
+ * page of roots ever asks again for a root it has covered (#255).
+ *
+ * `since` the newest event held of any kind, less `CHANNEL_RECONNECT_MARGIN_SECONDS`. That is not
+ * the time window `rootCompanionFilters` refuses: a Reaction aimed at an old root can be stamped
+ * long before the page that loaded it, but not long before the relay accepted it (ADR-0008), and
+ * this asks only for what was accepted while the client was away. Each filter asks for
+ * `MAX_LIMIT`, and `ChannelFeed` reads an answer that long as a gap of its own.
+ */
+export function reconnectCompanionFilters(channelId: string, newestHeldAt: number | null): Filter[] {
+  if (newestHeldAt === null) return channelCompanionFilters(channelId);
+  const since = newestHeldAt - CHANNEL_RECONNECT_MARGIN_SECONDS;
+  return [
+    { kinds: [1111, 7], "#h": [channelId], since, limit: MAX_LIMIT },
+    { kinds: [5], "#h": [channelId], since, limit: MAX_LIMIT },
   ];
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { VerifiedEvent } from "nostr-tools";
 import {
+  CHANNEL_RECONNECT_MARGIN_SECONDS,
   PAGE_SIZE,
   TOP_OF_HISTORY_PX,
   asksForOlder,
@@ -10,8 +11,10 @@ import {
   liveMessageFilters,
   oldestCreatedAt,
   olderMessagesFilters,
+  reconnectCompanionFilters,
   rootCompanionFilters,
 } from "./channelPagination";
+import { MAX_LIMIT } from "./relay";
 import { verifiedEvent } from "./testing/events";
 
 function message(id: string, createdAt: number): VerifiedEvent {
@@ -41,6 +44,23 @@ describe("channelCompanionFilters", () => {
       { kinds: [1111, 7], "#h": ["chan"], limit: PAGE_SIZE },
       { kinds: [5], "#h": ["chan"] },
     ]);
+  });
+});
+
+describe("reconnectCompanionFilters", () => {
+  test("asks for whatever the relay accepted while the client was away, not the newest window again", () => {
+    // A companion accepted during the outage is stamped no earlier than the relay's tolerance for a
+    // Channel's content allows (ADR-0008), so a `since` window misses none — the backdated
+    // Reaction `rootCompanionFilters` guards against is one aimed at an old root, not one sent late.
+    const since = 10_000 - CHANNEL_RECONNECT_MARGIN_SECONDS;
+    expect(reconnectCompanionFilters("chan", 10_000)).toEqual([
+      { kinds: [1111, 7], "#h": ["chan"], since, limit: MAX_LIMIT },
+      { kinds: [5], "#h": ["chan"], since, limit: MAX_LIMIT },
+    ]);
+  });
+
+  test("with nothing held, is the live subscription asked for again", () => {
+    expect(reconnectCompanionFilters("chan", null)).toEqual(channelCompanionFilters("chan"));
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { gapLeftBy, mergeGaps } from "./feedGap";
+import { combinedGapState, gapLeftBy, mergeGaps } from "./feedGap";
 
 const at = (...createdAts: number[]) => createdAts.map((created_at) => ({ created_at }));
 
@@ -24,5 +24,13 @@ describe("mergeGaps", () => {
   test("two gaps become the one span that covers both", () => {
     // One gap, not a list: asking again for what lies between costs a page, dropped by id.
     expect(mergeGaps({ since: 100, until: 200 }, { since: 500, until: 900 })).toEqual({ since: 100, until: 900 });
+  });
+});
+
+describe("combinedGapState", () => {
+  test("is asking while any gap is being asked for, stalled while any is left, and none otherwise", () => {
+    expect(combinedGapState(["none", "stalled", "filling"])).toBe("filling");
+    expect(combinedGapState(["none", "stalled"])).toBe("stalled");
+    expect(combinedGapState(["none", "none"])).toBe("none");
   });
 });

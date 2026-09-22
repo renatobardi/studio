@@ -10,16 +10,16 @@ describe("GapNotice", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  test("says Messages are being recovered while they are asked for, with nothing to press", () => {
+  test("says what was missed is being recovered while it is asked for, with nothing to press", () => {
     const { getByRole, queryByRole } = render(<GapNotice gap="filling" onRetry={() => {}} />);
-    expect(getByRole("status").textContent).toContain("Recovering messages");
+    expect(getByRole("status").textContent).toContain("Catching up");
     expect(queryByRole("button")).toBeNull();
   });
 
   test("once asking gave up, offers to try again — and only on request", () => {
     let retried = 0;
     const { getByRole } = render(<GapNotice gap="stalled" onRetry={() => (retried += 1)} />);
-    expect(getByRole("status").textContent).toContain("Some messages");
+    expect(getByRole("status").textContent).toContain("could not be loaded");
     fireEvent.click(getByRole("button", { name: "Try again" }));
     expect(retried).toBe(1);
   });
