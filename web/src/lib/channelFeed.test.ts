@@ -27,6 +27,11 @@ function messages(count: number, from = 1000): VerifiedEvent[] {
   return Array.from({ length: count }, (_, i) => message(`m${String(i).padStart(3, "0")}`, from + i));
 }
 
+/** `count` Messages published while the client was away, one a second from `from`. */
+function away(count: number, from = 200_000, prefix = "away"): VerifiedEvent[] {
+  return Array.from({ length: count }, (_, i) => message(`${prefix}${String(i).padStart(4, "0")}`, from + i));
+}
+
 describe("ChannelFeed", () => {
   test("an empty Channel has no Messages and no history to offer", () => {
     const relay = new FakeRelay([]);
@@ -177,6 +182,125 @@ describe("ChannelFeed", () => {
     relay.reconnect();
 
     expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE * 4);
+  });
+
+  test("more Messages arriving while the socket was down than the relay answers at once all come back", () => {
+    // The reconnect asks `since` the newest held, and the relay cuts at MAX_LIMIT newest first:
+    // what did not fit sat between what was held and where the cursor reaches, for good (#254).
+    const relay = new FakeRelay(messages(PAGE_SIZE, 100_000));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    for (const event of away(700)) relay.publish(event);
+    relay.reconnect();
+
+    expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE + 700);
+    expect(feed.getSnapshot().gap).toBe("none");
+  });
+
+  test("a short outage costs the reconnect nothing but its own REQ", () => {
+    const relay = new FakeRelay(messages(PAGE_SIZE, 100_000));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    for (const event of away(20)) relay.publish(event);
+    const before = relay.requests.length;
+    relay.reconnect();
+
+    // One per subscription the socket had open: the Messages' and the companions'.
+    expect(relay.requests.length - before).toBe(2);
+    expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE + 20);
+  });
+
+  test("a gap whose filling stalls stays known, and asking again closes it", () => {
+    const relay = new FakeRelay(messages(PAGE_SIZE, 100_000));
+    let stall = true;
+    let asks = 0;
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        const fills = filters[0]?.since !== undefined && filters[0]?.until !== undefined;
+        if (fills) asks += 1;
+        if (!fills || !stall) return relay.subscribe(filters, handlers);
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const deadlines: (() => void)[] = [];
+    const feed = new ChannelFeed(client, CHANNEL, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    relay.disconnect();
+    for (const event of away(700)) relay.publish(event);
+    relay.reconnect();
+    expect(feed.getSnapshot().gap).toBe("filling");
+
+    deadlines.shift()!();
+    // Nothing retries on its own: a relay that sits on a REQ would be asked again and again.
+    expect(feed.getSnapshot().gap).toBe("stalled");
+    expect(asks).toBe(1);
+
+    stall = false;
+    feed.getSnapshot().retryGap();
+    expect(feed.getSnapshot().gap).toBe("none");
+    expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE + 700);
+  });
+
+  test("a second outage while a gap is still owed recovers both", () => {
+    const relay = new FakeRelay(messages(PAGE_SIZE, 100_000));
+    let stall = true;
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        const fills = filters[0]?.since !== undefined && filters[0]?.until !== undefined;
+        if (!fills || !stall) return relay.subscribe(filters, handlers);
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const deadlines: (() => void)[] = [];
+    const feed = new ChannelFeed(client, CHANNEL, (fn) => {
+      deadlines.push(fn);
+      return () => deadlines.splice(deadlines.indexOf(fn), 1);
+    });
+    feed.start();
+    relay.disconnect();
+    for (const event of away(700)) relay.publish(event);
+    relay.reconnect();
+    deadlines.shift()!();
+
+    stall = false;
+    relay.disconnect();
+    for (const event of away(700, 300_000, "again")) relay.publish(event);
+    relay.reconnect();
+
+    expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE + 1400);
+    expect(feed.getSnapshot().gap).toBe("none");
+  });
+
+  test("a drop in the middle of a reconnect's answer leaves the rest of its window owed", () => {
+    // What it brought is the newest of its window, and the next `since` starts from those — so
+    // everything below them would otherwise be skipped.
+    const subscriptions: { filters: Filter[]; handlers: Parameters<FakeRelay["subscribe"]>[1] }[] = [];
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        subscriptions.push({ filters, handlers });
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const feed = new ChannelFeed(client, CHANNEL, () => () => {});
+    feed.start();
+    const live = subscriptions[0]!.handlers;
+    for (const event of messages(PAGE_SIZE, 100_000)) live.onEvent(event);
+    live.onEose?.();
+
+    const [first] = live.onResubscribe!();
+    for (const event of away(10)) live.onEvent(event);
+    live.onResubscribe!();
+    live.onEose?.();
+
+    expect(subscriptions.at(-1)!.filters).toEqual([
+      { kinds: [9], "#h": [CHANNEL], since: first!.since, until: 200_000, limit: MAX_LIMIT },
+    ]);
+    expect(feed.getSnapshot().gap).toBe("filling");
   });
 
   test("a Message stamped further back than an hour below the newest held still comes back", () => {
