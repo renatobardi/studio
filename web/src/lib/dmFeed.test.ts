@@ -246,6 +246,18 @@ describe("DmFeed", () => {
     expect(feed.getSnapshot().hasMore).toBe(true);
   });
 
+  test("a gift wrap stamped further back than the backdating window below the newest held still comes back", async () => {
+    // The relay accepts a wrap stamped up to two days and an hour before it arrives, and the
+    // newest one held may be stamped up to 15 minutes ahead of the relay's clock (ADR-0008) (#256).
+    const { relay, feed } = start(history(10, NOW, 60));
+    await flush();
+    relay.disconnect();
+    relay.publish(wrap("late", NOW - WRAP_BACKDATE_SECONDS - 10 * 60, NOW));
+    relay.reconnect();
+    await flush();
+    expect(feed.getSnapshot().rumors.map((r) => r.id)).toContain("r-late");
+  });
+
   test("a drop before the first page landed asks for a first page again, not a window", () => {
     // The opening REQ is what says whether there is history behind the newest page, by its size.
     // Answering a `since` window into that count would call a long history exhausted.

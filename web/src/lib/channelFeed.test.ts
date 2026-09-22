@@ -179,6 +179,20 @@ describe("ChannelFeed", () => {
     expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE * 4);
   });
 
+  test("a Message stamped further back than an hour below the newest held still comes back", () => {
+    // The relay accepts a Message stamped up to an hour before it arrives, and the newest one held
+    // may be stamped up to 15 minutes ahead of the relay's clock (ADR-0008): 1h10 below it is
+    // within what a Message accepted during the outage can carry (#256).
+    const relay = new FakeRelay(messages(10, 100_000));
+    const feed = new ChannelFeed(relay, CHANNEL);
+    feed.start();
+    relay.disconnect();
+    relay.publish(message("late", 100_009 - 70 * 60));
+    relay.reconnect();
+
+    expect(feed.getSnapshot().messages.map((m) => m.id)).toContain("late");
+  });
+
   test("a reconnect that replays the page changes nothing", () => {
     const relay = new FakeRelay(messages(10));
     const feed = new ChannelFeed(relay, CHANNEL);

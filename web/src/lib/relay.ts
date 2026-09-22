@@ -79,6 +79,17 @@ export interface RelayProblem {
  * A filter that names no limit is given this one. */
 export const MAX_LIMIT = 500;
 
+/** How far ahead of its own clock the relay accepts a `created_at` (FUTURE_TOLERANCE_SECONDS in
+ * api/src/studio_api/nostr/validation.py). */
+export const FUTURE_TOLERANCE_SECONDS = 15 * 60;
+
+/** How far behind its own clock the relay accepts a `created_at` for a Channel's content —
+ * Messages, Reactions, Thread Replies and deletions — and for a gift wrap (PAST_TOLERANCE_BY_KIND,
+ * ADR-0008). Narrower than the 30 days every other kind gets, so that asking again after a
+ * reconnect can reach back a bounded span and miss nothing. */
+export const CHANNEL_PAST_TOLERANCE_SECONDS = 60 * 60;
+export const GIFT_WRAP_PAST_TOLERANCE_SECONDS = 2 * 24 * 60 * 60 + 60 * 60;
+
 export interface SubscriptionHandlers {
   onEvent(event: VerifiedEvent): void;
   onEose?(): void;

@@ -1,12 +1,19 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
-import { MAX_LIMIT } from "./relay";
+import { CHANNEL_PAST_TOLERANCE_SECONDS, FUTURE_TOLERANCE_SECONDS, MAX_LIMIT } from "./relay";
 
 /** Messages per page — the timeline's own budget, never shared with Reactions or Replies. */
 export const PAGE_SIZE = 50;
 
-/** How far another client's clock, or its rounding, may put an event behind ours. Asking again
- * after a reconnect reaches back this far so a Message stamped a little early is not skipped. */
+/** How far another client's clock, or its rounding, may put an event behind ours. */
 export const CLOCK_SKEW_SECONDS = 60 * 60;
+
+/**
+ * How far below the newest Message held asking again after a reconnect has to reach (ADR-0008).
+ * A Message accepted while the client was away is stamped no earlier than an hour before it
+ * arrived — the relay refuses anything older for a Channel's content — and the newest one held
+ * no later than 15 minutes after the drop, the most the relay lets a `created_at` run ahead.
+ */
+export const CHANNEL_RECONNECT_MARGIN_SECONDS = CHANNEL_PAST_TOLERANCE_SECONDS + FUTURE_TOLERANCE_SECONDS;
 
 /**
  * How long a page may stay in flight before the feed stops waiting for its EOSE and lets the
@@ -31,10 +38,9 @@ export function liveMessageFilters(channelId: string): Filter[] {
  * arriving while the client was away would leave everything but the last page in a hole the
  * cursor never revisits, since it only walks down from what the pages brought (#226).
  *
- * `since` instead of a window, from the newest Message held — less a margin for another client's
- * clock. The margin is an hour, not the relay's whole 30-day `PAST_TOLERANCE_SECONDS`: a Message
- * is stamped when it is sent, and reaching a month back on every reconnect would cost more than
- * the case it guards.
+ * `since` instead of a window, from the newest Message held — less the margin the relay's own
+ * tolerance for a Channel's content guarantees is enough (`CHANNEL_RECONNECT_MARGIN_SECONDS`).
+ * What that costs is every Message already held in the last hour and a quarter, asked for again.
  *
  * `MAX_LIMIT` is asked for outright, since that is what the relay gives a filter that names no
  * limit. It is still a cut: more than that arriving during one outage leaves the oldest of them
@@ -42,7 +48,7 @@ export function liveMessageFilters(channelId: string): Filter[] {
  */
 export function reconnectMessageFilters(channelId: string, newestHeldAt: number | null): Filter[] {
   if (newestHeldAt === null) return liveMessageFilters(channelId);
-  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CLOCK_SKEW_SECONDS, limit: MAX_LIMIT }];
+  return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CHANNEL_RECONNECT_MARGIN_SECONDS, limit: MAX_LIMIT }];
 }
 
 /**
