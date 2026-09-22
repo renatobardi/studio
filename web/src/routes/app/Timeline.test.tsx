@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { fireEvent, render as mount } from "@testing-library/react";
 import type { VerifiedEvent } from "nostr-tools";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as channelEvents from "../../lib/channelEvents";
@@ -98,5 +99,63 @@ describe("Timeline's per-Message data", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+/** The scroll that asks for older Messages is wiring: the rule is `createScrollWatcher`, tested in
+ * lib/, and what only a mounted Timeline shows is that it is the rule `onScroll` asks (#225). */
+describe("Timeline scrolling at the top of the history", () => {
+  function mounted() {
+    let asked = 0;
+    const timelineWith = (messages: VerifiedEvent[]) => (
+      <Timeline
+        client={{} as RelayClient}
+        channelId="channel"
+        channelName="general"
+        ownPubkey={ME}
+        signer={{} as Signer}
+        mediaUrl="https://media.example"
+        messages={messages}
+        replies={[]}
+        reactions={[]}
+        deletions={[]}
+        hasMore
+        onLoadOlder={() => (asked += 1)}
+        profiles={new Map()}
+        opened={null}
+        openThreadRootId={null}
+        onOpenThread={() => {}}
+      />
+    );
+    const oldest = message("m1", OTHER, 100, "the oldest loaded");
+    const { container, rerender } = mount(timelineWith([oldest]));
+    const timeline = container.querySelector(".timeline-scroll")!;
+    /** A Message arriving: the Timeline renders again, and where it was scrolled to must survive. */
+    const receive = () => rerender(timelineWith([oldest, message("m2", OTHER, 200, "just now")]));
+    /** happy-dom lays nothing out, so it has nowhere to scroll to: the position is set by hand,
+     * and the event is what the Timeline answers. */
+    const scrollTo = (top: number) => {
+      Object.defineProperty(timeline, "scrollTop", { value: top, configurable: true });
+      fireEvent.scroll(timeline);
+    };
+    return { scrollTo, receive, asked: () => asked };
+  }
+
+  test("scrolling down from the top asks for nothing (#225)", () => {
+    // A Channel opens at the top of what it loaded, so the first scroll there is the reader going
+    // down into it — and asking for a page there fetched one nobody wanted.
+    const { scrollTo, asked } = mounted();
+    scrollTo(40);
+    expect(asked()).toBe(0);
+  });
+
+  test("and scrolling back up to it does ask — even with a render in between", () => {
+    // Where the reader was is remembered across renders: a watcher made again on each one would
+    // read the way back up as coming from 0, and never ask.
+    const { scrollTo, receive, asked } = mounted();
+    scrollTo(40);
+    receive();
+    scrollTo(10);
+    expect(asked()).toBe(1);
   });
 });
