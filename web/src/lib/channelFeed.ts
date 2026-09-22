@@ -13,7 +13,7 @@ import {
   rootCompanionFilters,
 } from "./channelPagination";
 import { type Timer, timer } from "./clock";
-import { GapFiller, type GapState, type ReconnectAnswer, combinedGapState, heard, owedBy, watchAnswer } from "./feedGap";
+import { GapFiller, type GapState, combinedGapState } from "./feedGap";
 import type { SubscriptionHandle } from "./relay";
 
 /** All `ChannelFeed` needs of a `RelayClient` — and all a test has to stand in for. */
@@ -58,10 +58,17 @@ export class ChannelFeed {
    * to reach it: a page left open is re-issued by every reconnect, and the `loadingOlder` it
    * holds would outlive the start() that set it (#267). */
   private closeOlder: (() => void) | null = null;
-  /** The Messages a reconnect's answer was too long to bring (#254). Kept across a stop and
-   * start, like the Messages they are missing from. What its pages bring skips `coverRoots`: a
-   * Message accepted during the outage can only be answered after it, so its Replies and
-   * Reactions are the Channel-wide subscription's to bring. */
+  /**
+   * The Messages a reconnect's answer was too long to bring (#254). Kept across a stop and start,
+   * like the Messages they are missing from.
+   *
+   * What a reconnect's answer or a gap's page brings skips `coverRoots`. Everything in them is
+   * stamped no earlier than the reconnect's `since`, and the companion subscription asks again from
+   * the same `since` (#255): a Reply or Reaction is stamped after the Message it answers, so it is
+   * in that window too — whether the Message was accepted during the outage or, when the first
+   * page spanned less than the window, was history below the cursor. What that misses is one
+   * stamped before its own Message, below the window, and accepted before this run began.
+   */
   private readonly messageGap: GapFiller;
   /** The same for the companion subscription's two filters, each cut on its own (#255). */
   private readonly companionGap: GapFiller;
@@ -81,13 +88,13 @@ export class ChannelFeed {
     this.channelId = channelId;
     this.schedule = schedule;
     const filler = (kinds: number[]) =>
-      new GapFiller(
+      new GapFiller({
         client,
         schedule,
-        (gap) => channelGapFilters(channelId, kinds, gap),
-        (event) => this.apply(event),
-        () => this.emit(),
-      );
+        filtersFor: (gap) => channelGapFilters(channelId, kinds, gap),
+        take: (event) => this.apply(event),
+        changed: () => this.emit(),
+      });
     this.messageGap = filler([9]);
     this.companionGap = filler([1111, 7]);
     this.deletionGap = filler([5]);
@@ -97,22 +104,17 @@ export class ChannelFeed {
   start(): () => void {
     const firstPage: VerifiedEvent[] = [];
     let eosed = false;
-    /** A reconnect's answer, until its EOSE says whether the relay cut it. */
-    let reconnectAnswer: ReconnectAnswer | null = null;
     const liveMessages = this.client.subscribe(liveMessageFilters(this.channelId), {
       // A reconnect asks from the newest Message held, not for the newest page again (#226) —
       // but only once the first page has landed, whose size is what says there is more behind it.
       onResubscribe: () => {
         if (!eosed) return liveMessageFilters(this.channelId);
-        // Dropped in the middle of an answer: it was cut as surely as by the limit, and the newest
-        // Message held may now be one it brought, so the next `since` would start above the rest.
-        this.messageGap.owe(owedBy(reconnectAnswer, { dropped: true }));
         const filters = reconnectMessageFilters(this.channelId, newestCreatedAt([...this.messages.values()]));
-        reconnectAnswer = watchAnswer(filters[0]!);
+        this.messageGap.asking(filters[0]!);
         return filters;
       },
       onEvent: (event) => {
-        heard(reconnectAnswer, event);
+        this.messageGap.heard(event);
         this.apply(event);
         // A Message arriving live can have no history behind it: anything targeting it is
         // published later and reaches the Channel-wide companion subscription.
@@ -121,36 +123,28 @@ export class ChannelFeed {
       onEose: () => {
         if (!eosed) this.hasMore = firstPage.length >= PAGE_SIZE;
         eosed = true;
-        this.messageGap.owe(owedBy(reconnectAnswer, { dropped: false }));
-        reconnectAnswer = null;
         this.coverRoots(firstPage);
         this.emit();
-        // After a reconnect, or a start over a gap an earlier one left owed.
-        this.messageGap.fill();
+        this.messageGap.answered();
       },
     });
-    /** A reconnect's answers to the companion filters: Replies and Reactions, and deletions. */
-    let companionAnswers: [ReconnectAnswer | null, ReconnectAnswer | null] = [null, null];
     const companions = this.client.subscribe(channelCompanionFilters(this.channelId), {
       onResubscribe: () => {
-        this.companionGap.owe(owedBy(companionAnswers[0], { dropped: true }));
-        this.deletionGap.owe(owedBy(companionAnswers[1], { dropped: true }));
         const held = [...this.messages.values(), ...this.replies.values(), ...this.reactions.values(), ...this.deletions.values()];
         const filters = reconnectCompanionFilters(this.channelId, newestCreatedAt(held));
-        companionAnswers = [watchAnswer(filters[0]!), watchAnswer(filters[1]!)];
+        this.companionGap.asking(filters[0]!);
+        this.deletionGap.asking(filters[1]!);
         return filters;
       },
       onEvent: (event) => {
-        for (const answer of companionAnswers) heard(answer, event);
+        this.companionGap.heard(event);
+        this.deletionGap.heard(event);
         this.apply(event);
       },
       onEose: () => {
-        this.companionGap.owe(owedBy(companionAnswers[0], { dropped: false }));
-        this.deletionGap.owe(owedBy(companionAnswers[1], { dropped: false }));
-        companionAnswers = [null, null];
         this.emit();
-        this.companionGap.fill();
-        this.deletionGap.fill();
+        this.companionGap.answered();
+        this.deletionGap.answered();
       },
     });
     this.disposers.push(liveMessages, companions);

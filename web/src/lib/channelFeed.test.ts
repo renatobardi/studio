@@ -211,8 +211,11 @@ describe("ChannelFeed", () => {
     const before = relay.requests.length;
     relay.reconnect();
 
-    // One per subscription the socket had open: the Messages' and the companions'.
-    expect(relay.requests.length - before).toBe(2);
+    // One per subscription the socket had open — the Messages' and the companions' — and no page
+    // of a gap after them.
+    const asked = relay.requests.slice(before).flat();
+    expect(asked.filter((filter) => filter.kinds?.includes(9))).toHaveLength(1);
+    expect(asked.filter((filter) => filter.until !== undefined)).toHaveLength(0);
     expect(feed.getSnapshot().messages).toHaveLength(PAGE_SIZE + 20);
   });
 
@@ -305,6 +308,33 @@ describe("ChannelFeed", () => {
       { kinds: [9], "#h": [CHANNEL], since: first!.since, until: 200_000, limit: MAX_LIMIT },
     ]);
     expect(feed.getSnapshot().gap).toBe("filling");
+  });
+
+  test("a stop in the middle of a reconnect's answer leaves the rest of its window for the next start", () => {
+    // Starting again asks for a first page, not the window: without the gap, what the cut answer
+    // had not brought yet would never be asked for.
+    const subscriptions: { filters: Filter[]; handlers: Parameters<FakeRelay["subscribe"]>[1] }[] = [];
+    const client = {
+      subscribe(filters: Filter[], handlers: Parameters<FakeRelay["subscribe"]>[1]) {
+        subscriptions.push({ filters, handlers });
+        return Object.assign(() => {}, { update: () => {} });
+      },
+    };
+    const feed = new ChannelFeed(client, CHANNEL, () => () => {});
+    const stop = feed.start();
+    const live = subscriptions[0]!.handlers;
+    for (const event of messages(PAGE_SIZE, 100_000)) live.onEvent(event);
+    live.onEose?.();
+    const [first] = live.onResubscribe!();
+    for (const event of away(10)) live.onEvent(event);
+    stop();
+
+    feed.start();
+    subscriptions.at(-2)!.handlers.onEose?.();
+
+    expect(subscriptions.at(-1)!.filters).toEqual([
+      { kinds: [9], "#h": [CHANNEL], since: first!.since, until: 200_000, limit: MAX_LIMIT },
+    ]);
   });
 
   test("a Message stamped further back than an hour below the newest held still comes back", () => {

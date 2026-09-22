@@ -43,9 +43,9 @@ export function reconnectDmFilters(ownPubkey: string, newestHeldAt: number | nul
   ];
 }
 
-/** The gift wraps a reconnect's cut answer left unasked — `gapMessageFilters` for a Direct Message
+/** The gift wraps a reconnect's cut answer left unasked — `channelGapFilters` for a Direct Message
  * feed, with the same `MAX_LIMIT` so the answer's length says whether it was cut. */
-export function gapDmFilters(ownPubkey: string, gap: Gap): Filter[] {
+export function dmGapFilters(ownPubkey: string, gap: Gap): Filter[] {
   return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], since: gap.since, until: gap.until, limit: MAX_LIMIT }];
 }
 

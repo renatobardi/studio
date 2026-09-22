@@ -52,24 +52,11 @@ export function mergeGaps(a: Gap | null, b: Gap | null): Gap | null {
 }
 
 /** A reconnect's answer to one `since` filter, watched until its EOSE says whether it was cut. */
-export interface ReconnectAnswer {
+interface ReconnectAnswer {
   readonly since: number;
   readonly limit: number;
   readonly kinds: readonly number[] | undefined;
   readonly events: Map<string, { created_at: number }>;
-}
-
-/** Starts watching the answer to `filter` — nothing to watch for a filter with no `since`, which
- * is a first page asked again rather than a reconnect's window. */
-export function watchAnswer(filter: Filter): ReconnectAnswer | null {
-  if (filter.since === undefined) return null;
-  return { since: filter.since, limit: filter.limit ?? MAX_LIMIT, kinds: filter.kinds, events: new Map() };
-}
-
-/** Counts an event toward the answer of the filter that asked for it. */
-export function heard(answer: ReconnectAnswer | null, event: VerifiedEvent): void {
-  if (answer === null || (answer.kinds !== undefined && !answer.kinds.includes(event.kind))) return;
-  answer.events.set(event.id, event);
 }
 
 /**
@@ -77,7 +64,7 @@ export function heard(answer: ReconnectAnswer | null, event: VerifiedEvent): voi
  * before it, everything below the oldest it brought — which may be the newest held by now, and
  * the next `since` would start from it.
  */
-export function owedBy(answer: ReconnectAnswer | null, { dropped }: { dropped: boolean }): Gap | null {
+function owedBy(answer: ReconnectAnswer | null, { dropped }: { dropped: boolean }): Gap | null {
   if (answer === null) return null;
   const events = [...answer.events.values()];
   if (!dropped) return gapLeftBy(answer.since, events, answer.limit);
@@ -85,8 +72,10 @@ export function owedBy(answer: ReconnectAnswer | null, { dropped }: { dropped: b
 }
 
 /**
- * Asks for what a gap owes, newest first from its top, page after page until one comes back
- * shorter than it asked. A page is over once everything it brought is taken in — at once for a
+ * One filter of a reconnecting subscription, and what its answers leave owed (#254): it watches
+ * each reconnect's answer (`asking`, `heard`, `answered`), and asks for what a cut one left
+ * unasked, newest first from the top of the gap, page after page until one comes back shorter
+ * than it asked. A page is over once everything it brought is taken in — at once for a
  * Channel, once unwrapped for Direct Messages — and a deadline covers both the REQ and that, as
  * an older page's does (#232, #268). Overrunning it leaves the gap owed: `fill` again is the
  * reader's to ask for, or the next reconnect's, never a loop of its own.
@@ -99,31 +88,58 @@ export class GapFiller {
   /** Bumped by `stop`: a page that settles for an earlier run decides nothing. */
   private run = 0;
 
+  private answer: ReconnectAnswer | null = null;
+
   private readonly client: FeedClient;
   private readonly schedule: Timer;
   private readonly filtersFor: (gap: Gap) => Filter[];
   private readonly take: (event: VerifiedEvent) => Promise<void> | void;
   private readonly changed: () => void;
 
-  constructor(
-    client: FeedClient,
-    schedule: Timer,
-    filtersFor: (gap: Gap) => Filter[],
-    take: (event: VerifiedEvent) => Promise<void> | void,
-    changed: () => void,
-  ) {
-    this.client = client;
-    this.schedule = schedule;
-    this.filtersFor = filtersFor;
-    this.take = take;
-    this.changed = changed;
+  constructor(options: {
+    client: FeedClient;
+    schedule: Timer;
+    /** What to ask the relay for a gap. */
+    filtersFor: (gap: Gap) => Filter[];
+    /** Takes in what a page brought; the page is over once every promise returned settles. */
+    take: (event: VerifiedEvent) => Promise<void> | void;
+    changed: () => void;
+  }) {
+    this.client = options.client;
+    this.schedule = options.schedule;
+    this.filtersFor = options.filtersFor;
+    this.take = options.take;
+    this.changed = options.changed;
   }
 
   get state(): GapState {
     return gapState(this.gap, this.filling);
   }
 
-  owe(gap: Gap | null): void {
+  /** A reconnect is asking again with `filter`. An answer still unfinished was cut by the drop,
+   * as surely as by the limit. A filter with no `since` is a first page asked again: nothing to
+   * watch. */
+  asking(filter: Filter): void {
+    this.owe(owedBy(this.answer, { dropped: true }));
+    this.answer =
+      filter.since === undefined ? null : { since: filter.since, limit: filter.limit ?? MAX_LIMIT, kinds: filter.kinds, events: new Map() };
+  }
+
+  /** Counts an event toward the answer, if the filter asked for its kind. */
+  heard(event: VerifiedEvent): void {
+    if (this.answer === null || (this.answer.kinds !== undefined && !this.answer.kinds.includes(event.kind))) return;
+    this.answer.events.set(event.id, event);
+  }
+
+  /** The subscription's EOSE: what a cut answer left is owed, and anything owed is asked for —
+   * after a reconnect, or on a start over a gap an earlier run left. */
+  answered(): void {
+    this.owe(owedBy(this.answer, { dropped: false }));
+    this.answer = null;
+    this.fill();
+  }
+
+  private owe(gap: Gap | null): void {
     this.gap = mergeGaps(this.gap, gap);
   }
 
@@ -182,8 +198,11 @@ export class GapFiller {
     }, PAGE_DEADLINE_MS);
   };
 
-  /** Closes the page in flight, keeping what is owed for the next start. */
+  /** Closes the page in flight, keeping what is owed for the next start — including the rest of
+   * an answer the stop cut short. */
   stop(): void {
+    this.owe(owedBy(this.answer, { dropped: true }));
+    this.answer = null;
     this.run += 1;
     this.close?.();
     this.cancelDeadline?.();

@@ -5,14 +5,14 @@ import { type Timer, timer } from "./clock";
 import {
   DM_PAGE_SIZE,
   completeFrom,
-  gapDmFilters,
+  dmGapFilters,
   isLastDmPage,
   liveDmFilters,
   needsOpeningBackfill,
   olderDmFilters,
   reconnectDmFilters,
 } from "./dmPagination";
-import { GapFiller, type GapState, type ReconnectAnswer, heard, owedBy, watchAnswer } from "./feedGap";
+import { GapFiller, type GapState } from "./feedGap";
 import type { Rumor } from "./nip17";
 
 export interface DmSnapshot {
@@ -86,13 +86,13 @@ export class DmFeed {
     this.unwrap = unwrap;
     this.now = now;
     this.schedule = schedule;
-    this.wrapGap = new GapFiller(
+    this.wrapGap = new GapFiller({
       client,
       schedule,
-      (gap) => gapDmFilters(ownPubkey, gap),
-      (wrap) => this.apply(wrap),
-      () => this.emit(),
-    );
+      filtersFor: (gap) => dmGapFilters(ownPubkey, gap),
+      take: (wrap) => this.apply(wrap),
+      changed: () => this.emit(),
+    });
   }
 
   /** Opens the subscription; the returned function closes it and any page in flight. */
@@ -102,22 +102,18 @@ export class DmFeed {
     // first one already held would otherwise read an empty page and call the history exhausted.
     const firstPageIds = new Set<string>();
     let eosed = false;
-    /** A reconnect's answer, until its EOSE says whether the relay cut it. */
-    let reconnectAnswer: ReconnectAnswer | null = null;
     this.closeLive = this.client.subscribe(liveDmFilters(this.ownPubkey), {
       // A reconnect asks from the newest wrap held, not for the newest page again (#226) — but
       // only once the first page has landed: its size is what says whether there is history
       // behind it, and a `since` window counted into that would call a long history exhausted.
       onResubscribe: () => {
         if (!eosed) return liveDmFilters(this.ownPubkey);
-        // Dropped in the middle of an answer: cut as surely as by the limit (`ChannelFeed`).
-        this.wrapGap.owe(owedBy(reconnectAnswer, { dropped: true }));
         const filters = reconnectDmFilters(this.ownPubkey, newestCreatedAt([...this.wraps.values()]));
-        reconnectAnswer = watchAnswer(filters[0]!);
+        this.wrapGap.asking(filters[0]!);
         return filters;
       },
       onEvent: (wrap) => {
-        heard(reconnectAnswer, wrap);
+        this.wrapGap.heard(wrap);
         if (!eosed && !firstPageIds.has(wrap.id)) {
           firstPageIds.add(wrap.id);
           if (!this.wraps.has(wrap.id)) this.paged.set(wrap.id, wrap);
@@ -128,11 +124,8 @@ export class DmFeed {
         // A reconnect re-issues the REQ: its EOSE is not a second first page, only the end of an
         // answer the relay may have cut.
         if (eosed) {
-          if (reconnectAnswer === null) return;
-          this.wrapGap.owe(owedBy(reconnectAnswer, { dropped: false }));
-          reconnectAnswer = null;
           this.emit();
-          this.wrapGap.fill();
+          this.wrapGap.answered();
           return;
         }
         eosed = true;
@@ -140,8 +133,7 @@ export class DmFeed {
         this.emit();
         if (run !== this.run) return;
         this.backfill();
-        // A start over a gap an earlier run left owed.
-        this.wrapGap.fill();
+        this.wrapGap.answered();
       },
     });
     return () => {
