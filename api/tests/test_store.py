@@ -107,6 +107,18 @@ class TestHistoricalQuery:
         # newest two: id-4, id-3
         assert [e["id"] for e in result] == ["id-4", "id-3"]
 
+    async def test_since_with_a_limit_answers_the_newest_at_or_after_since(
+        self, store: EventStore
+    ) -> None:
+        # What a client's reconnect relies on (ADR-0008): a `since` window cut by `limit` keeps
+        # its newest events, so a full answer says the oldest part of the window is still owed.
+        for i in range(6):
+            await store.publish(make_event(id=f"id-{i}", created_at=100 + i))
+
+        result = await store.query([Filter(since=101, limit=3)])
+
+        assert [e["id"] for e in result] == ["id-5", "id-4", "id-3"]
+
     async def test_multiple_filters_are_unioned(self, store: EventStore) -> None:
         await store.publish(make_event(id="id-1", kind=1))
         await store.publish(make_event(id="id-2", kind=9))

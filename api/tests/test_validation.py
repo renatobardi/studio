@@ -2,6 +2,7 @@
 (15 min future / 30 days past), and published size limits.
 """
 
+import pytest
 from support import new_keypair, sign_event
 
 from studio_api.nostr.model import NostrEvent
@@ -202,3 +203,61 @@ def test_a_gift_wrap_without_a_p_tag_is_rejected() -> None:
 
     assert rejection is not None
     assert rejection.prefix == "invalid"
+
+
+# ADR-0008: a reconnect's `since` is sound only if nothing accepted during an outage is stamped
+# further back than the client's margin, so the kinds a feed pages by `since` get a tolerance of
+# their own — and every other kind keeps the 30 days.
+HOUR = 60 * 60
+DAY = 24 * HOUR
+
+_TAGS_BY_KIND: dict[int, list[list[str]]] = {
+    9: [["h", "chan1"]],
+    7: [["h", "chan1"], ["e", "msg1"], ["k", "9"], ["p", "author1"]],
+    1111: [
+        ["h", "chan1"],
+        ["E", "root1"], ["K", "9"], ["P", "author1"],
+        ["e", "root1"], ["k", "9"], ["p", "author1"],
+    ],
+    5: [["h", "chan1"], ["e", "reaction1"]],
+    1059: [["p", "b" * 64]],
+}
+
+_PAST_TOLERANCE_BY_KIND = {9: HOUR, 7: HOUR, 1111: HOUR, 5: HOUR, 1059: 2 * DAY + HOUR}
+
+
+@pytest.mark.parametrize(("kind", "tolerance"), _PAST_TOLERANCE_BY_KIND.items())
+def test_a_kind_with_its_own_tolerance_is_valid_at_its_edge(kind: int, tolerance: int) -> None:
+    sk, pubkey = new_keypair()
+    event = sign_event(sk, pubkey=pubkey, created_at=NOW - tolerance, kind=kind, tags=_TAGS_BY_KIND[kind])
+
+    assert validate_event(event, now=NOW) is None
+
+
+@pytest.mark.parametrize(("kind", "tolerance"), _PAST_TOLERANCE_BY_KIND.items())
+def test_a_kind_with_its_own_tolerance_is_refused_past_its_edge_naming_the_limit(
+    kind: int, tolerance: int
+) -> None:
+    sk, pubkey = new_keypair()
+    event = sign_event(
+        sk, pubkey=pubkey, created_at=NOW - tolerance - 1, kind=kind, tags=_TAGS_BY_KIND[kind]
+    )
+
+    rejection = validate_event(event, now=NOW)
+
+    assert rejection is not None
+    assert rejection.prefix == "invalid"
+    assert f"kind {kind}" in rejection.message
+    assert f"{tolerance}s" in rejection.message
+
+
+def test_a_kind_without_its_own_tolerance_keeps_the_thirty_days() -> None:
+    sk, pubkey = new_keypair()
+    event = sign_event(sk, pubkey=pubkey, created_at=NOW - 2 * DAY - HOUR - 1, kind=0, content="{}")
+
+    assert validate_event(event, now=NOW) is None
+
+
+def test_the_published_lower_limit_is_still_the_widest_tolerance() -> None:
+    # NIP-11 cannot say "per kind"; it keeps the one that is true for the kinds that still allow it.
+    assert LIMITATION["created_at_lower_limit"] == 30 * DAY
