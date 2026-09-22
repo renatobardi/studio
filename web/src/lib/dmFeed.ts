@@ -36,8 +36,9 @@ export interface DmSnapshot {
 export class DmFeed {
   private readonly wraps = new Map<string, VerifiedEvent>();
   /** The wraps a page brought — the only ones the cursor may page from. A live one is dated up
-   * to two days back (NIP-59) and says nothing about what lies between it and the pages. */
-  private readonly paged: VerifiedEvent[] = [];
+   * to two days back (NIP-59) and says nothing about what lies between it and the pages; the
+   * same wrap brought back by a page does, since the page covers everything down to it. */
+  private readonly paged = new Map<string, VerifiedEvent>();
   private readonly rumors = new Map<string, Rumor>();
   private hasMore = false;
   private pagesSettled = 0;
@@ -92,7 +93,7 @@ export class DmFeed {
       onEvent: (wrap) => {
         if (!eosed && !firstPageIds.has(wrap.id)) {
           firstPageIds.add(wrap.id);
-          if (!this.wraps.has(wrap.id)) this.paged.push(wrap);
+          if (!this.wraps.has(wrap.id)) this.paged.set(wrap.id, wrap);
         }
         void this.apply(wrap);
       },
@@ -135,11 +136,12 @@ export class DmFeed {
       this.pagesSettled += 1;
       this.emit();
     };
-    const unsubscribe = this.client.subscribe(olderDmFilters(this.ownPubkey, this.paged, [...this.wraps.values()]), {
+    const filters = olderDmFilters(this.ownPubkey, [...this.paged.values()], [...this.wraps.values()]);
+    const unsubscribe = this.client.subscribe(filters, {
       onEvent: (wrap) => {
         if (page.has(wrap.id)) return;
         page.set(wrap.id, wrap);
-        if (!knownIds.has(wrap.id)) this.paged.push(wrap);
+        this.paged.set(wrap.id, wrap);
         unwrapping.push(this.apply(wrap));
       },
       onEose: () => {
@@ -158,7 +160,7 @@ export class DmFeed {
           if (run !== this.run) return;
           this.cancelDeadline?.();
           this.cancelDeadline = null;
-          if (isLastDmPage(knownIds, [...page.values()])) {
+          if (isLastDmPage(knownIds, [...page.values()], filters[0]?.limit ?? 0)) {
             this.hasMore = false;
             this.exhausted = true;
           }
@@ -189,7 +191,7 @@ export class DmFeed {
     this.snapshot ??= {
       rumors: [...this.rumors.values()],
       hasMore: this.hasMore,
-      completeFrom: completeFrom(oldestCreatedAt(this.paged), this.hasMore),
+      completeFrom: completeFrom(oldestCreatedAt([...this.paged.values()]), this.hasMore),
       pages: this.pagesSettled,
       loadOlder: this.loadOlder,
     };
@@ -204,7 +206,7 @@ export class DmFeed {
   /** Opening the app pages in until the last day is complete — a Message sent a minute ago may
    * sit two days down the wrap order. */
   private backfill(): void {
-    if (needsOpeningBackfill(completeFrom(oldestCreatedAt(this.paged), this.hasMore), this.now())) this.loadOlder();
+    if (needsOpeningBackfill(completeFrom(oldestCreatedAt([...this.paged.values()]), this.hasMore), this.now())) this.loadOlder();
   }
 
   /** Settles once the wrap is unwrapped — or found not to be the caller's: a gift wrap that fails
