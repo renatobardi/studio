@@ -1,4 +1,5 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
+import type { Gap } from "./feedGap";
 import { CHANNEL_PAST_TOLERANCE_SECONDS, FUTURE_TOLERANCE_SECONDS, MAX_LIMIT } from "./relay";
 
 /** Messages per page — the timeline's own budget, never shared with Reactions or Replies. */
@@ -44,11 +45,18 @@ export function liveMessageFilters(channelId: string): Filter[] {
  *
  * `MAX_LIMIT` is asked for outright, since that is what the relay gives a filter that names no
  * limit. It is still a cut: more than that arriving during one outage leaves the oldest of them
- * between what is held and where the cursor reaches. Better than a page of 50, not a proof.
+ * between what is held and where the cursor reaches — which is why `ChannelFeed` reads an answer
+ * that long as a `Gap` and asks for the rest (#254).
  */
 export function reconnectMessageFilters(channelId: string, newestHeldAt: number | null): Filter[] {
   if (newestHeldAt === null) return liveMessageFilters(channelId);
   return [{ kinds: [9], "#h": [channelId], since: newestHeldAt - CHANNEL_RECONNECT_MARGIN_SECONDS, limit: MAX_LIMIT }];
+}
+
+/** The Messages a reconnect's cut answer left unasked (`Gap`), newest first from the top of the
+ * gap — the same `MAX_LIMIT` a reconnect asks for, so the answer's length says whether it was cut. */
+export function gapMessageFilters(channelId: string, gap: Gap): Filter[] {
+  return [{ kinds: [9], "#h": [channelId], since: gap.since, until: gap.until, limit: MAX_LIMIT }];
 }
 
 /**

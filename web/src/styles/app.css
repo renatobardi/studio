@@ -1558,6 +1558,19 @@ button.sidebar-group-label:hover {
   align-self: center;
 }
 
+/* Messages a reconnect could not bring at once (#254): a quiet line between the header and the
+   history, never a marker inside it. */
+.gap-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* The "New" divider (#147): a primary hairline either side of an uppercase label, above the
    first Message that arrived while the Channel was not on screen. */
 .new-divider {

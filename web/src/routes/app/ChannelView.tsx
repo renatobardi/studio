@@ -8,6 +8,7 @@ import { channelLayout } from "../../lib/paneLayout";
 import type { TargetRef } from "../../lib/channelEvents";
 import type { RelayClient } from "../../lib/relay";
 import type { OpenedChannel } from "../../lib/unread";
+import { GapNotice } from "./GapNotice";
 import { MembersPane } from "./MembersPane";
 import { MembersPill } from "./MembersPill";
 import { ThreadPane } from "./ThreadPane";
@@ -109,6 +110,7 @@ export function ChannelView({
                 />
               </span>
             </header>
+            <GapNotice gap={feed.gap} onRetry={feed.retryGap} />
             <Timeline
               client={client}
               channelId={channelId}
