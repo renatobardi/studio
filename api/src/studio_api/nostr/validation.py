@@ -22,7 +22,9 @@ GIFT_WRAP = 1059
 # newest event it holds less this and FUTURE_TOLERANCE_SECONDS (web/src/lib/channelPagination.ts,
 # dmPagination.ts): what was accepted while it was away can be stamped no earlier than that, so
 # nothing is skipped. A Channel's content is stamped when it is sent; a gift wrap is backdated by
-# up to two days (NIP-59), plus the hour for another client's clock.
+# up to two days (NIP-59), plus the hour for another client's clock. The hour binds every deletion
+# (kind 5), not only a Channel's: the kind is what the relay can see, and nothing in Studio deletes
+# anything long after deciding to.
 PAST_TOLERANCE_BY_KIND = {
     MESSAGE: 60 * 60,
     REACTION: 60 * 60,
@@ -36,8 +38,9 @@ PAST_TOLERANCE_BY_KIND = {
 ROOT_TAG_BY_KIND = {THREAD_REPLY: "E", REACTION: "e"}
 
 # Published verbatim in the NIP-11 `limitation` object so clients know what
-# a submission may not exceed. NIP-11 has no per-kind limit, so the lower one
-# is the widest there is; a kind refused sooner is told its own in the OK.
+# a submission may not exceed. NIP-11 cannot state a limit per kind, so
+# `created_at_lower_limit` is the 30 days most kinds get; a kind in
+# PAST_TOLERANCE_BY_KIND is told its own, narrower one in the OK that refuses it.
 LIMITATION = {
     "max_content_length": 8_196,
     "max_event_tags": 2_000,

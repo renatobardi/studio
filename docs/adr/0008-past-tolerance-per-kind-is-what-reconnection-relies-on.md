@@ -17,7 +17,7 @@ reconnect margins from those numbers rather than choosing its own:
 
 | Kinds | Accepted back to |
 |---|---|
-| 9, 7, 1111, 5 (Channel content) | 1 hour |
+| 9, 7, 1111, 5 (Channel content — the hour binds every deletion, since the kind is what the relay sees) | 1 hour |
 | 1059 (gift wrap) | 2 days + 1 hour |
 | everything else | 30 days, as before |
 

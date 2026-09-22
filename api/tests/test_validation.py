@@ -1,5 +1,6 @@
 """RED: event validity per ticket #2 — id/signature, created_at window
-(15 min future / 30 days past), and published size limits.
+(15 min future / 30 days past, narrower per kind since ADR-0008), and
+published size limits.
 """
 
 import pytest
@@ -253,9 +254,11 @@ def test_a_kind_with_its_own_tolerance_is_refused_past_its_edge_naming_the_limit
 
 def test_a_kind_without_its_own_tolerance_keeps_the_thirty_days() -> None:
     sk, pubkey = new_keypair()
-    event = sign_event(sk, pubkey=pubkey, created_at=NOW - 2 * DAY - HOUR - 1, kind=0, content="{}")
+    at_edge = sign_event(sk, pubkey=pubkey, created_at=NOW - 30 * DAY, kind=0, content="{}")
+    past_it = sign_event(sk, pubkey=pubkey, created_at=NOW - 30 * DAY - 1, kind=0, content="{}")
 
-    assert validate_event(event, now=NOW) is None
+    assert validate_event(at_edge, now=NOW) is None
+    assert validate_event(past_it, now=NOW) is not None
 
 
 def test_the_published_lower_limit_is_still_the_widest_tolerance() -> None:
