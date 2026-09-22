@@ -1,5 +1,6 @@
 import type { Filter, VerifiedEvent } from "nostr-tools";
 import { CLOCK_SKEW_SECONDS, oldestCreatedAt } from "./channelPagination";
+import type { Gap } from "./feedGap";
 import { FUTURE_TOLERANCE_SECONDS, GIFT_WRAP_PAST_TOLERANCE_SECONDS, MAX_LIMIT } from "./relay";
 import { GIFT_WRAP } from "./nip17";
 
@@ -33,13 +34,19 @@ export const DM_RECONNECT_MARGIN_SECONDS = GIFT_WRAP_PAST_TOLERANCE_SECONDS + FU
  * published while the client was away is stamped up to two days before it (NIP-59), so a `since`
  * at the newest one held would skip it (#226) — and it is the relay that refuses one stamped
  * further back, so the window is a bound rather than a hope (`DM_RECONNECT_MARGIN_SECONDS`).
- * The same `MAX_LIMIT` cut applies.
+ * The same `MAX_LIMIT` cut applies, and `DmFeed` reads an answer that long as a `Gap` (#254).
  */
 export function reconnectDmFilters(ownPubkey: string, newestHeldAt: number | null): Filter[] {
   if (newestHeldAt === null) return liveDmFilters(ownPubkey);
   return [
     { kinds: [GIFT_WRAP], "#p": [ownPubkey], since: newestHeldAt - DM_RECONNECT_MARGIN_SECONDS, limit: MAX_LIMIT },
   ];
+}
+
+/** The gift wraps a reconnect's cut answer left unasked — `gapMessageFilters` for a Direct Message
+ * feed, with the same `MAX_LIMIT` so the answer's length says whether it was cut. */
+export function gapDmFilters(ownPubkey: string, gap: Gap): Filter[] {
+  return [{ kinds: [GIFT_WRAP], "#p": [ownPubkey], since: gap.since, until: gap.until, limit: MAX_LIMIT }];
 }
 
 /**

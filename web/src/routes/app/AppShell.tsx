@@ -390,6 +390,8 @@ export function AppShell({
             hasMore={dmFeed.hasMore}
             pages={dmFeed.pages}
             onLoadOlder={dmFeed.loadOlder}
+            gap={dmFeed.gap}
+            onRetryGap={dmFeed.retryGap}
             profiles={profiles}
           />
         )}

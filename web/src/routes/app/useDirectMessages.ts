@@ -5,7 +5,15 @@ import { DmFeed, type DmSnapshot } from "../../lib/dmFeed";
 import { unwrapGiftWrap } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
 
-const NOTHING: DmSnapshot = { rumors: [], hasMore: false, completeFrom: -Infinity, pages: 0, loadOlder: () => {} };
+const NOTHING: DmSnapshot = {
+  rumors: [],
+  hasMore: false,
+  completeFrom: -Infinity,
+  pages: 0,
+  loadOlder: () => {},
+  gap: "none",
+  retryGap: () => {},
+};
 const noSubscription = () => () => {};
 const nothing = () => NOTHING;
 

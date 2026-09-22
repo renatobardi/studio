@@ -31,6 +31,7 @@ import {
 } from "../../lib/dmMedia";
 import { TOP_OF_HISTORY_PX, asksForOlder } from "../../lib/channelPagination";
 import { askOlder, dmHistoryView, openedConversation } from "../../lib/dmPagination";
+import type { GapState } from "../../lib/feedGap";
 import { downloadPriority } from "../../lib/mediaDownloads";
 import type { Rumor } from "../../lib/nip17";
 import type { RelayClient } from "../../lib/relay";
@@ -38,6 +39,7 @@ import { publishFailureMessage } from "../../lib/relayReasons";
 import { AttachmentDraftList } from "./AttachmentDraftList";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { GapNotice } from "./GapNotice";
 import { MessageRow } from "./MessageRow";
 import { DmAttachmentImage } from "./DmAttachmentImage";
 import { displayName, shortNpub, type useProfiles } from "./useProfiles";
@@ -62,6 +64,8 @@ export function ConversationView({
   hasMore,
   pages,
   onLoadOlder,
+  gap,
+  onRetryGap,
   profiles,
 }: Readonly<{
   client: RelayClient;
@@ -77,6 +81,9 @@ export function ConversationView({
    * since a page that brought nothing here moves nothing else. */
   pages: number;
   onLoadOlder: () => void;
+  /** Wraps a reconnect could not bring in one answer (`DmSnapshot.gap`, #254). */
+  gap: GapState;
+  onRetryGap: () => void;
   profiles: ReturnType<typeof useProfiles>["profiles"];
 }>) {
   const [draft, setDraft] = useState("");
@@ -233,6 +240,7 @@ export function ConversationView({
           </span>
         </span>
       </header>
+      <GapNotice gap={gap} onRetry={onRetryGap} />
       <div
         className="timeline-scroll dm-scroll"
         data-list="true"
